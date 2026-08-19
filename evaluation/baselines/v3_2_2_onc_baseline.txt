@@ -1,0 +1,14 @@
+=== v3.2.2 (26 rules) vs v3.2.2 (26 rules) ===
+eval pairs: 2000936  |  base rate (true matches): 1.000
+
+metric                         before    after  P(better)  verdict
+TPR (recall/sensitivity)       0.9508   0.9508      0.499  inconclusive
+FPR                            0.0011   0.0011      0.502  inconclusive
+FNR                            0.0492   0.0492      0.500  inconclusive
+Precision                      1.0000   1.0000      0.499  inconclusive
+F1                             0.9748   0.9748      0.498
+
+Paired recall (true matches): both=1901518 lost=0 gained=0 missed_by_both=98482
+  net recall change = +0.0%  churn = 0  P(candidate better, paired) = 0.499
+
+>>> OVERALL VERDICT: NEEDS MORE DATA
