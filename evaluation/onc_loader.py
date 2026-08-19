@@ -97,6 +97,8 @@ def load_onc_patients(csv_paths: List[Path]) -> List[Dict[str, Any]]:
     """Load one or more ONC shard CSVs into normalized FHIR Patient dicts."""
     patients: List[Dict[str, Any]] = []
     for path in csv_paths:
+        if ".." in str(path):
+            raise ValueError(f"Invalid file path: {path!r}")
         with open(path, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 patients.append(_row_to_patient(row))

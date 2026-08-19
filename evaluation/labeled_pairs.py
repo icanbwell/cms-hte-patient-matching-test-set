@@ -150,36 +150,41 @@ def generate_raw_pairs(
             strata={"pair_type": "hard_negative", **candidate.shared_fields},
         )
 
-    if include_special_populations:
-        for household_candidate in mine_shared_surname_household_negatives(normalized):
+    if not include_special_populations:
+        return
+
+    for household_candidate in mine_shared_surname_household_negatives(normalized):
+        yield RawPair(
+            pair_id=(
+                f"{household_candidate.query['id']}::"
+                f"{household_candidate.candidate['id']}::household"
+            ),
+            query_patient=household_candidate.query,
+            candidate_patient=household_candidate.candidate,
+            is_true_match=False,
+            strata={
+                "pair_type": "special_population",
+                "category": "multi_generational_household",
+                **household_candidate.shared_fields,
+            },
+        )
+    for institution_type in INSTITUTION_TYPES:
+        for institutional_candidate in construct_institutional_negatives(
+            normalized, institution_type, group_size=institutional_group_size, rng=rng
+        ):
             yield RawPair(
                 pair_id=(
-                    f"{household_candidate.query['id']}::"
-                    f"{household_candidate.candidate['id']}::household"
+                    f"{institutional_candidate.query['id']}::"
+                    f"{institutional_candidate.candidate['id']}::{institution_type}"
                 ),
-                query_patient=household_candidate.query,
-                candidate_patient=household_candidate.candidate,
+                query_patient=institutional_candidate.query,
+                candidate_patient=institutional_candidate.candidate,
                 is_true_match=False,
                 strata={
                     "pair_type": "special_population",
-                    "category": "multi_generational_household",
-                    **household_candidate.shared_fields,
+                    "category": institution_type,
                 },
             )
-        for institution_type in INSTITUTION_TYPES:
-            for institutional_candidate in construct_institutional_negatives(
-                normalized, institution_type, group_size=institutional_group_size, rng=rng
-            ):
-                yield RawPair(
-                    pair_id=(
-                        f"{institutional_candidate.query['id']}::"
-                        f"{institutional_candidate.candidate['id']}::{institution_type}"
-                    ),
-                    query_patient=institutional_candidate.query,
-                    candidate_patient=institutional_candidate.candidate,
-                    is_true_match=False,
-                    strata={"pair_type": "special_population", "category": institution_type},
-                )
 
 
 def build_labeled_pairs(

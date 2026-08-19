@@ -225,10 +225,8 @@ def mine_shared_surname_household_negatives(
         for i in range(len(group)):
             for j in range(i + 1, len(group)):
                 a, b = group[i], group[j]
-                if a.get("id") == b.get("id"):
-                    continue
                 dob_a, dob_b = a.get("birthDate"), b.get("birthDate")
-                if not dob_a or not dob_b:
+                if a.get("id") == b.get("id") or not dob_a or not dob_b:
                     continue
                 try:
                     gap_years = abs(date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year)
