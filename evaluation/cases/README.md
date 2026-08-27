@@ -94,11 +94,177 @@ carry real caveats (the diacritic and punctuation estimates are proxies for a re
 identical population, not direct measurements of the thing being tested) that matter for how
 much weight to put on them.
 
-## Option A: bring your own algorithm (any language, any organization)
+---
 
-Per the Doc's Section 6, the only thing your algorithm needs to satisfy is a minimal adapter
-contract: given two FHIR `Patient` documents, decide match or no-match. You do not need to adopt
-Python, this repo's data model, or any of its tooling.
+## Option A: FHIR `$match` adapter (recommended)
+
+The cross-organization adapter contract is the FHIR `$match` operation with **both** resource
+parameters supplied:
+
+| Parameter | Value |
+|---|---|
+| `resource` | the case's `source` — the query / "Outside Record" |
+| `match` | the case's `target` — the candidate / "Internal Record" |
+| `onlyCertainMatches` | optional; keep `false` so near-misses still come back with a score |
+| `count` | optional; irrelevant when exactly one candidate is supplied |
+
+Supplying `match` is what makes a pairwise test reproducible across organizations: the candidate
+set becomes the case's `target`, so the result does not depend on what happens to be loaded in
+the responder's own database, and no blocking stage sits between the query and the candidate.
+
+This is an HTTP contract, not a code contract — you do not need to adopt Python, this repo's
+data model, or any of its tooling.
+
+### ⚠️ `match` is a non-standard extension
+
+Core FHIR `$match` defines only `resource`, `onlyCertainMatches`, and `count`, and the candidate
+set is **always the server's own patient population**
+([R5 spec](https://www.hl7.org/fhir/patient-operation-match.html)). There is no standard way to
+pass a candidate record. Nor does one exist elsewhere: the
+[FAST Identity Matching IG](https://build.fhir.org/ig/HL7/fhir-identity-matching-ig/)'s
+`$IDI-match` is a constrained *profile* of the same 1-to-N operation, and HAPI FHIR / Smile CDR
+MDM expose link-management operations (`$mdm-query-links`, `$mdm-update-link`,
+`$mdm-merge-golden-resources`) rather than a pairwise scoring endpoint.
+
+b.well's [person-matching-service](https://github.com/icanbwell/person-matching-service)
+implements the `match` parameter as a distinct code path, which is where this contract comes
+from. If your `$match` does not accept `match`, use **Option B** instead — do not point a
+production `$match` at these cases, because it would score the query against your own patient
+population rather than against the case's `target`, which measures something else entirely.
+
+### Request
+
+```json
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    { "name": "resource", "resource": { "resourceType": "Patient", "...": "<case.source>" } },
+    { "name": "match",    "resource": { "resourceType": "Patient", "...": "<case.target>" } },
+    { "name": "onlyCertainMatches", "valueBoolean": false }
+  ]
+}
+```
+
+### Reading the response
+
+The response is a `searchset` Bundle. Read, per entry:
+
+- `entry[].search.score` — the numeric score
+- the `http://hl7.org/fhir/StructureDefinition/match-grade` extension on `entry[].search` —
+  `certain` / `probable` / `possible` / `certainly-not`
+
+Only `score` and `match-grade` are portable. Vendor extensions such as
+`https://www.icanbwell.com/person_match/total-score-unscaled`, `.../average-score`,
+`.../average-boost`, and `.../threshold` are implementation-specific — capture them if present,
+but never require them.
+
+### ⚠️ The threshold trap — do not treat a non-empty Bundle as a match
+
+On the user-provided-candidate path, `person-matching-service` returns **all** scored candidates
+with **no threshold filtering** (capped by `MAX_USER_PROVIDED_MATCHES`), while candidates found
+by its own blocking search *are* filtered by `MATCH_SCORE_THRESHOLD`. The two paths deliberately
+behave differently, and the pairwise one is the unfiltered one.
+
+That is the right behaviour for a test harness — you want the score, not the service's own
+pass/fail verdict — but it means:
+
+```python
+matched = bundle["total"] >= 1      # WRONG on the pairwise path: always True
+```
+
+The harness must derive the boolean itself and **record which rule it used**, because results are
+not comparable across organizations otherwise. Two defensible rules:
+
+1. **Grade-based (recommended, most portable):** `match-grade in {"certain", "probable"}`.
+2. **Score-based:** `score >= threshold`, where `threshold` is either read from the response
+   (if the implementation exposes it) or fixed by prior agreement. Report the value used.
+
+### Example
+
+```python
+import json
+
+import httpx
+
+MATCH_URL = "http://localhost:8000/$match"
+HEADERS = {"Content-Type": "application/fhir+json", "Authorization": "Bearer <token>"}
+MATCH_GRADE_URL = "http://hl7.org/fhir/StructureDefinition/match-grade"
+POSITIVE_GRADES = {"certain", "probable"}
+
+
+def build_parameters(source: dict, target: dict) -> dict:
+    return {
+        "resourceType": "Parameters",
+        "parameter": [
+            {"name": "resource", "resource": source},
+            {"name": "match", "resource": target},
+            {"name": "onlyCertainMatches", "valueBoolean": False},
+        ],
+    }
+
+
+def decide(bundle: dict) -> tuple[bool, float | None, str | None]:
+    """Return (matched, score, grade) for a single-candidate $match response.
+
+    NOTE: intentionally does not use `bundle["total"] >= 1` -- see "The threshold
+    trap" above. The decision comes from match-grade.
+    """
+    entries = bundle.get("entry") or []
+    if not entries:
+        return False, None, None
+    search = entries[0].get("search", {})
+    score = search.get("score")
+    grade = next(
+        (
+            ext.get("valueCode")
+            for ext in search.get("extension", [])
+            if ext.get("url") == MATCH_GRADE_URL
+        ),
+        None,
+    )
+    return grade in POSITIVE_GRADES, score, grade
+
+
+tp = fp = tn = fn = 0
+na = 0
+
+with httpx.Client(timeout=30.0) as client, open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
+    for line in f:
+        case = json.loads(line)
+        response = client.post(
+            MATCH_URL, headers=HEADERS, json=build_parameters(case["source"], case["target"])
+        )
+        if response.status_code != 200:
+            na += 1  # could not evaluate -- see the NA note below
+            continue
+
+        predicted_match, _score, _grade = decide(response.json())
+        actual_match = case["expected_match"]
+        if predicted_match and actual_match:
+            tp += 1
+        elif predicted_match and not actual_match:
+            fp += 1
+        elif not predicted_match and actual_match:
+            fn += 1
+        else:
+            tn += 1
+
+precision = tp / (tp + fp) if (tp + fp) else float("nan")
+recall = tp / (tp + fn) if (tp + fn) else float("nan")
+fpr = fp / (fp + tn) if (fp + tn) else float("nan")
+print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f}  (n={tp+fp+tn+fn}, na={na})")
+```
+
+This sample is 6,289 lines / ~6MB, so one HTTP call per case is fine; a much larger export may
+warrant batching or concurrency.
+
+---
+
+## Option B: bring your own algorithm in-process (any language, any organization)
+
+If you do not expose a `$match` endpoint that accepts a `match` parameter, the fallback contract
+is the minimal one from the Doc's Section 6: given two FHIR `Patient` documents, decide match or
+no-match. You do not need to adopt Python, this repo's data model, or any of its tooling.
 
 1. Read the file one line at a time (don't load the whole thing into memory unless you know it's
    small — this sample is 6,289 lines / ~6MB, but a larger export could be much bigger).
@@ -131,6 +297,10 @@ fpr = fp / (fp + tn) if (fp + tn) else float("nan")
 print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f}  (n={tp+fp+tn+fn})")
 ```
 
+---
+
+## Reporting requirements (both options)
+
 **Report broken out by `rationale`, not just as one aggregate number** — per the Doc's Section 5:
 this dataset is a curated set of specific spec provisions and edge cases, not a random sample of
 real-world pairs, so a single blended accuracy/precision number across the whole file conflates
@@ -154,9 +324,16 @@ Also report **how many cases your algorithm could actually evaluate vs. skipped 
 not-applicable** (e.g. it requires a field a given `Patient` doesn't have populated) — per the
 Doc's Section 5, this is mandatory, not optional: an algorithm that silently skips its hardest
 cases and reports metrics only over what it did attempt can look stronger than one that honestly
-attempted everything.
+attempted everything. On the `$match` path, keep transport failures (non-200, timeout) separate
+from a deliberate "not applicable" answer; the two mean different things.
 
-## Option B: testing this repo's own `MatchingEngine` against the dataset
+If you used Option A, also report **which boolean rule you applied** (grade-based or
+score-based, and the threshold value if score-based) — two organizations' precision figures are
+not comparable without it.
+
+---
+
+## Option C: testing this repo's own `MatchingEngine` against the dataset
 
 Since `patient-matching`'s engine already speaks the same FHIR `Patient` shape, you can run it
 against this dataset directly without writing an adapter:
@@ -211,8 +388,23 @@ before/after comparison) — use `rule_eval.py` directly for anything that needs
 (e.g. deciding whether a rule change is safe), per `docs/sessions/conventions.md`'s statistical
 rigor gate.
 
+### What Option A and Option C measure differently
+
+Option C calls `evaluate_pair()` directly, so it tests **rule correctness only** — no candidate
+retrieval, no blocking. Option A goes through a live service, which for the pairwise path also
+bypasses blocking (the candidate is supplied). Neither, therefore, tests **blocking recall** —
+whether a real deployment's candidate-generation stage would have surfaced the target at all
+before rules were ever applied. A candidate silently dropped by blocking is indistinguishable,
+in a pairwise result, from a rule that correctly declined to fire.
+
+Testing that requires a population-level run: load a corpus into the responder's own store and
+call `$match` with `resource` only, letting its blocking stage do the work. That is the
+workgroup Doc's Section 2 "Tier 2" exercise and is not what this file supports — see below.
+
 ## What this dataset does *not* tell you
 
+- **Blocking recall.** See the note directly above — every option here bypasses candidate
+  generation.
 - **Real-world collision probability.** This file tests whether your algorithm classifies
   specific, curated pairs correctly. It says nothing about how often two genuinely distinct
   people share a given field combination in a real population — that's the Doc's Section 4
