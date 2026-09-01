@@ -1,13 +1,52 @@
 # How to test a patient-matching algorithm against this dataset
 
+This repo's generation code was originally built against the cross-org workgroup's draft
+proposal, ["Proposal: A Shared Test Dataset for CMS v3.3.0 Patient Matching
+Compliance"](https://docs.google.com/document/d/1N6IQkaLkKPdQKVxPSWZYDaLbTCx0EYEgwBcCCPk-6pk)
+(**the draft Doc**, retained here for traceability — several session docs cite its section
+numbers directly). The workgroup has since finalized its methodology as ["A Shared Test Dataset
+for CMS Patient Matching Compliance —
+(current)"](https://docs.google.com/document/d/1A96--dAjIwID5RCDr9qZeqDnk6snOqNcQOg1ZBy3FWw)
+(**the current Doc**), which supersedes it — see
+`SYNTHETIC_DATA_COMPARISON.md`'s "What changed between the draft and the finalized proposal" and
+`docs/sessions/pending/session_12.md` for the full diff. Guidance below follows the current Doc.
+
+**Provenance / synthesis-method disclosure** (the current Doc requires each contributed segment
+to record how it was produced): every record in both tiers of this repo's data derives from the
+public ONC 2017 Patient Matching Algorithm Challenge dataset, transformed by this repo's own
+programmatic mutation/mining/construction code (`mutations.py`, `hard_negatives.py`,
+`special_populations.py`, `normalization_edge_cases.py`, `population_cases.py`). No real
+member-organization or client data, and no de-identification step, is involved anywhere in this
+pipeline — there is nothing here to de-identify, since ONC's source data is already public and
+synthetic. This repo currently has exactly one segment; if a second segment (e.g., synthetic
+records derived from a member organization's real data, per the current Doc's contribution
+options) is ever added here, it needs its own disclosure — a single repo-level note like this one
+stops being sufficient at that point.
+
 `sample_labeled_pairs.jsonl` (and any file generated the same way via
 `evaluation/export_test_dataset.py`) is a portable, algorithm-agnostic test-case manifest, per
-the cross-org workgroup Google Doc's (["Proposal: A Shared Test Dataset for CMS v3.3.0 Patient
-Matching Compliance"](https://docs.google.com/document/d/1N6IQkaLkKPdQKVxPSWZYDaLbTCx0EYEgwBcCCPk-6pk))
-Section 3 format and Design Principle 1: every test case is a pair of standard FHIR `Patient`
-resources plus an expected outcome — nothing about the format assumes any particular matching
-implementation. This means **any** matching algorithm (this repo's, or a completely different
-organization's) can be tested against it, not just `patient-matching`'s own engine.
+the current Doc's per-provision pair format and the draft Doc's Design Principle 1 (unchanged by
+finalization): every test case is a pair of standard FHIR `Patient` resources plus an expected
+outcome — nothing about the format assumes any particular matching implementation. This means
+**any** matching algorithm (this repo's, or a completely different organization's) can be tested
+against it, not just `patient-matching`'s own engine.
+
+## Two test tiers
+
+The current Doc names two distinct test kinds, and this repo now builds both:
+
+| Tier | Files | Shape | Valid metrics |
+|---|---|---|---|
+| **Per-provision pairs** | `sample_labeled_pairs.jsonl` (`evaluation/export_test_dataset.py`) | One `(source, target)` pair per spec provision, deliberately over-sampling rare/high-risk categories for statistical power. | Recall, FPR. **Not** precision, FDR, F1, or accuracy — see "Frequency and real-world representativeness" below. |
+| **Population query** | `population_queries.jsonl` + `population_candidates.jsonl` (`evaluation/export_population_dataset.py`) | One query patient per row, against a candidate pool (default 40), with an `expected_match_ids` set — possibly empty, possibly several. Naturally representative: each pool mixes a query's real duplicate cluster with a broad, mostly-random sample of the rest of the population, not a curated rare-case selection. | Precision, recall, FPR, FDR, F1, accuracy. |
+
+Pairs answer "does this algorithm correctly implement this specific spec provision" — the
+per-provision suite is *supposed* to be unrealistic (over-sampling twins, shelters, and other
+rare high-risk categories on purpose) so that rare-but-critical cases get enough statistical
+power. Population queries answer "when this algorithm searches a real-shaped population, does it
+return the right people" — the harder, more realistic FHIR `Patient/$match` shape the current Doc
+calls out: *"the genuinely hard failure is picking a plausible wrong candidate out of forty
+near-misses. Pairs can express neither."*
 
 ## The file format
 
@@ -40,6 +79,48 @@ synthetic (`"SYNTHETIC TEST ADDRESS"` in the address line, a reserved `000xx` ZI
 `evaluation/special_populations.py`'s module docstring for exactly which fields are real vs.
 constructed, per case category.
 
+## Population-query file format
+
+Two JSON Lines files, split so a candidate shared across multiple queries' pools isn't repeated:
+
+`population_candidates.jsonl` — one row per unique candidate:
+
+```json
+{"id": "14065387::family_transpose", "patient": { "resourceType": "Patient", "...": "..." }}
+```
+
+`population_queries.jsonl` — one row per query:
+
+```json
+{
+  "query_id": "14065387",
+  "query": { "resourceType": "Patient", "...": "..." },
+  "candidate_ids": ["14065387::family_transpose", "14065387::diacritic", "12311897", "..."],
+  "expected_match_ids": ["14065387::family_transpose", "14065387::diacritic"],
+  "rationale": "population/fuzzy_variant+normalization_edge_case"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `query_id` | The query patient's id. |
+| `query` | The query/"Outside Record" FHIR `Patient` resource. |
+| `candidate_ids` | Every candidate in this query's pool (default up to 40) — resolve each against `population_candidates.jsonl`. |
+| `expected_match_ids` | The subset of `candidate_ids` that are the same person as the query — **possibly empty** (a query with no known duplicate in the pool is a real, intentional case, not a bug). |
+| `rationale` | Which generation categories contributed to this pool. |
+
+A candidate id with no `::` suffix is a real, unmodified ONC record (either the query's own
+population co-member, used as a distractor, or a mined hard-negative/household decoy). A `::`
+suffix marks a generated variant (`::family_transpose`, `::diacritic`, `::punctuation`, one of
+`mutations.MUTATIONS`' keys) or a constructed special-population candidate
+(`::institutional::<type>`, whose `address` is a fabricated, unambiguously-synthetic institutional
+address per `special_populations.py` — the underlying identity is still a real, distinct ONC
+record). **Known simplification, read before treating this tier as equivalent to
+`labeled_pairs.py`'s institutional pairs:** `special_populations.construct_institutional_negatives()`
+fabricates the same address on *both* sides of a pair; this tier only injects the fabricated side
+into the decoy pool, so the query here keeps its real address. See `population_cases.py`'s module
+docstring for why.
+
 ## Frequency and real-world representativeness
 
 **The number of cases in each `rationale` category is an artifact of how this file was
@@ -51,20 +132,32 @@ coincidental ZIP+DOB collisions happened to occur in a 2,000-patient sample — 
 scenario is rare in reality. **Do not compute an aggregate "expected real-world accuracy" number
 by weighting categories according to their raw counts in this file.**
 
-The workgroup Doc itself flags this as an open, unresolved methodology question (§1: "Maintain
-frequency of use cases per real world datasets," "Make sure the test dataset follows the real
-world frequency so metrics are relevant to distribution"), and separately (§5) warns against the
-naive fix of just reshaping the curated dataset to mirror real-world prevalence — doing so would
-make rare-but-high-risk categories (e.g., shared institutional addresses) nearly disappear from
-the test set, undermining the whole point of testing them deliberately.
+The draft Doc flagged this as an open, unresolved methodology question (§1: "Maintain frequency
+of use cases per real world datasets") and separately (§5) warned against the naive fix of just
+reshaping the curated dataset to mirror real-world prevalence — doing so would make
+rare-but-high-risk categories (e.g., shared institutional addresses) nearly disappear from the
+test set, undermining the whole point of testing them deliberately. **The current Doc resolves
+this differently than this repo originally did:** rather than reweighting the curated suite via a
+per-category frequency multiplier, compute precision, recall, FDR, and FPR "only over the
+realistic population" — i.e., over a second, naturally-representative tier, not the curated one.
+That's exactly what the population-query tier above is for.
 
-This repo's approach: keep the file's raw case counts driven by what's needed for statistical
-power per category (see the discussion above), and carry real-world prevalence as **separate
-metadata** — the `frequency` field — that a consumer can use to compute a prevalence-weighted
-aggregate metric without needing the file itself to mirror real-world proportions.
+**Practical guidance, current as of session 12:**
+
+- **Recall and FPR** are valid on `sample_labeled_pairs.jsonl` as-is — over-sampling rare
+  categories doesn't distort them, since both are computed within the true-match or
+  true-non-match population respectively, not across the mixed base rate.
+- **Precision, FDR, F1, and accuracy** — compute these over `population_queries.jsonl`/
+  `population_candidates.jsonl` instead. Computing them over the curated per-provision suite
+  produces a number with no real-world interpretation, because the suite's should-match /
+  should-not-match ratio is a generation-parameter artifact, not a real base rate.
+- The `frequency` field below remains useful **documentation/analysis metadata** (e.g., "how rare
+  is this scenario really") — it is not, and was never meant to be, a substitute for computing
+  precision-family metrics over an actually-representative sample. Don't use it to compute a
+  weighted precision estimate from the curated suite; use the population tier instead.
 
 **Current state: `evaluation/prevalence_estimates.py` supplies real, publicly-sourced estimates
-for some categories — pending Imran's review, not yet treated as final.** The committed
+for some categories — pending maintainer review, not yet treated as final.** The committed
 `sample_labeled_pairs.jsonl` was regenerated using these estimates (via
 `export_test_dataset.py`'s `__main__`, `frequency_lookup=researched_frequency`). Pass
 `frequency_lookup=uniform_frequency` (or call `build_test_case_records()` with no
@@ -73,7 +166,7 @@ for some categories — pending Imran's review, not yet treated as final.** The 
 Every entry in `prevalence_estimates.PREVALENCE_ESTIMATES` is either a real, cited public-source
 estimate, or an explicit `has_public_estimate=False` placeholder pinned to `1.0` — never a
 guessed number standing in for real data. Sources are exclusively public (U.S. Census Bureau,
-CDC/NCHS, Pew Research Center, peer-reviewed record-linkage literature) — no b.well/WellSense
+CDC/NCHS, Pew Research Center, peer-reviewed record-linkage literature) — no member-organization
 client data, per this backlog's Option A+B-only scoping.
 
 | Category | `frequency` | Source | Direct measurement? |
@@ -128,8 +221,15 @@ with open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
 precision = tp / (tp + fp) if (tp + fp) else float("nan")
 recall = tp / (tp + fn) if (tp + fn) else float("nan")
 fpr = fp / (fp + tn) if (fp + tn) else float("nan")
-print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f}  (n={tp+fp+tn+fn})")
+fdr = fp / (fp + tp) if (fp + tp) else float("nan")
+print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f}  (n={tp+fp+tn+fn})")
 ```
+
+**On this file specifically, only trust `recall` and `fpr` from the numbers above** — `precision`
+and `fdr` are shown for completeness of the formula, but computing them over this curated,
+rare-case-oversampling suite has no real-world interpretation (see "Frequency and real-world
+representativeness" above). Compute `precision`/`fdr` over `population_queries.jsonl` instead
+(see "Option C" below).
 
 **Report broken out by `rationale`, not just as one aggregate number** — per the Doc's Section 5:
 this dataset is a curated set of specific spec provisions and edge cases, not a random sample of
@@ -211,15 +311,61 @@ before/after comparison) — use `rule_eval.py` directly for anything that needs
 (e.g. deciding whether a rule change is safe), per `docs/sessions/conventions.md`'s statistical
 rigor gate.
 
+## Option C: computing precision/FDR/F1/accuracy over the population tier
+
+This is where the metrics `sample_labeled_pairs.jsonl` can't validly produce actually come from.
+Load the candidate registry once, then score each query against its own pool:
+
+```python
+import json
+
+candidates = {}
+with open("evaluation/cases/population_candidates.jsonl") as f:
+    for line in f:
+        row = json.loads(line)
+        candidates[row["id"]] = row["patient"]
+
+tp = fp = tn = fn = 0
+with open("evaluation/cases/population_queries.jsonl") as f:
+    for line in f:
+        query_case = json.loads(line)
+        expected = set(query_case["expected_match_ids"])
+        for candidate_id in query_case["candidate_ids"]:
+            predicted_match = my_algorithm(query_case["query"], candidates[candidate_id])
+            actual_match = candidate_id in expected
+            if predicted_match and actual_match:
+                tp += 1
+            elif predicted_match and not actual_match:
+                fp += 1
+            elif not predicted_match and actual_match:
+                fn += 1
+            else:
+                tn += 1
+
+precision = tp / (tp + fp) if (tp + fp) else float("nan")
+recall = tp / (tp + fn) if (tp + fn) else float("nan")
+fpr = fp / (fp + tn) if (fp + tn) else float("nan")
+fdr = fp / (fp + tp) if (fp + tp) else float("nan")
+accuracy = (tp + tn) / (tp + fp + tn + fn) if (tp + fp + tn + fn) else float("nan")
+print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f} accuracy={accuracy:.4f}")
+```
+
+This flattens every (query, candidate) evaluation in every pool into the same four buckets as
+Option A/B — the population tier's realism comes from *how the pools were built* (mostly random
+distractors, not curated rare cases), not from a different scoring shape. The same not-applicable
+disclosure requirement applies here too: report how many (query, candidate) evaluations your
+algorithm could actually attempt vs. skipped.
+
 ## What this dataset does *not* tell you
 
-- **Real-world collision probability.** This file tests whether your algorithm classifies
-  specific, curated pairs correctly. It says nothing about how often two genuinely distinct
-  people share a given field combination in a real population — that's the Doc's Section 4
-  empirical collision-rate validation, a different exercise entirely (tracked as a candidate
-  future session in `docs/sessions/index.md`, not yet built).
+- **Real-world collision probability at population scale.** Even the population tier's pools
+  (default 40 candidates) are far short of the current/draft Doc's ≥1,000,000-record empirical
+  collision-rate validation — a different, larger exercise entirely (tracked as a candidate future
+  session, not yet built). The population tier tells you whether your algorithm picks the right
+  candidate out of a realistic-sized pool, not the population-wide collision probability of a
+  field combination.
 - **Administrative-restriction or insurance-identifier coverage.** Those categories aren't in
-  this sample yet — see `docs/sessions/pending/session_11.md` (blocked on session_6).
+  either tier yet — see `docs/sessions/pending/session_11.md` (blocked on session_6).
 - **Literal-twin behavior.** Deliberately excluded — see `special_populations.py`'s module
   docstring and `session_10.md`'s "Out of scope".
 
@@ -227,6 +373,7 @@ rigor gate.
 
 ```
 PYTHONPATH=. python evaluation/export_test_dataset.py
+PYTHONPATH=. python evaluation/export_population_dataset.py
 ```
 
 Same `SAMPLE_SIZE`/`OUTPUT_PATH` env-var overrides as `evaluation/labeled_pairs.py` — read

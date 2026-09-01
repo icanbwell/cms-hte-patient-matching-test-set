@@ -7,19 +7,12 @@ this code does and doesn't cover; this file is just how to run it.
 
 ## Setup
 
-1. Standard repo setup first, if you haven't already: `uv sync` from the repo root.
-2. `evaluation/` deliberately keeps `numpy`/`pandas`/`scipy`/`matplotlib` out of the shippable
-   `patient_matching` package (see `evaluation/DESIGN.md`) — install them into the same venv to
-   run anything under `evaluation/`, including this session's code (it imports `rule_eval`,
-   which needs `numpy`):
-   ```
-   uv pip install numpy pandas scipy matplotlib
-   ```
-   Without this, `evaluation/test_labeled_pairs.py` (and `test_rule_eval.py`,
-   `test_onc_baseline.py`) skip themselves cleanly via `pytest.importorskip("numpy")` rather than
-   failing — `evaluation/test_mutations.py` and `evaluation/test_hard_negatives.py` have no such
-   dependency and always run.
-3. No other new dependency is required — `nicknames` and `rapidfuzz` (used by
+1. Standard repo setup first, if you haven't already: `make setup` (or `uv sync` directly) from
+   the repo root. `numpy`/`pandas`/`scipy`/`matplotlib` are core dependencies of *this* repo's own
+   `pyproject.toml` (not of the upstream `patient_matching` package, which deliberately keeps them
+   out — see `evaluation/DESIGN.md`) — `uv sync` installs them, no separate `uv pip install` step
+   needed.
+2. No other new dependency is required — `nicknames` and `rapidfuzz` (used by
    `mutations.py`) are already core `patient_matching` dependencies (see `pyproject.toml`).
 
 ## Running the tests
@@ -28,12 +21,13 @@ this code does and doesn't cover; this file is just how to run it.
 uv run pytest evaluation/test_mutations.py evaluation/test_hard_negatives.py evaluation/test_labeled_pairs.py -v
 ```
 
-Or the full suite: `uv run pytest .` (`make tests` only collects the root `tests/` directory,
-not `evaluation/` — CI's actual gate, `.github/workflows/build_and_test.yml`, runs
-`uv run pytest .` from the repo root, which does collect it).
+Or the full suite: `make tests` (equivalently, `uv run pytest .` from the repo root) — this is
+also CI's actual gate, `.github/workflows/build_and_test.yml`.
 
-`evaluation/` and `notebooks/` are excluded from the pre-commit hook (see
-`.pre-commit-config.yaml`'s `exclude:` line) — run lint/type checks on new files here manually:
+Lint/format and type-check the whole repo with `make lint` / `make typecheck`, or both plus the
+formatter via `make run-pre-commit` (installed as a real git hook via `uv run pre-commit
+install`, and CI's `lint` job). `evaluation/` and `notebooks/` are **not** excluded — the
+pre-commit config covers the whole repo. To check just the files you're touching:
 
 ```
 uv run ruff check evaluation/mutations.py evaluation/hard_negatives.py evaluation/labeled_pairs.py
@@ -98,11 +92,42 @@ build from the same underlying generator, `labeled_pairs.generate_raw_pairs()` �
 mining/construction logic itself is written exactly once; only what's kept from each generated
 pair (extracted `PatientFields` vs. raw FHIR JSON) differs between the two callers.
 
+## Population-query tier (session 12)
+
+`evaluation/population_cases.py` builds the cross-org workgroup Doc's second test
+kind — one query patient against a candidate pool, expected answer a set rather
+than a single label — on top of the same generation logic as `labeled_pairs.py`.
+Run it the same way:
+
+```
+PYTHONPATH=. uv run python evaluation/export_population_dataset.py
+```
+
+Same `SAMPLE_SIZE` env-var override and one-shard default as `labeled_pairs.py`;
+additionally accepts `POOL_SIZE` (default 40, per the current Doc's "forty
+near-misses" framing) to control each query's candidate-pool cap. Writes two
+files (`OUTPUT_PATH`-style overrides: `CANDIDATES_PATH`, `QUERIES_PATH`) — see
+`evaluation/cases/README.md`'s "Two test tiers" section for the schema and how
+to consume it, and `docs/sessions/pending/session_12.md` for why this tier
+exists and what it does and doesn't cover relative to `labeled_pairs.py`'s
+per-provision pairs.
+
+**ONC ground-truth caveat (verified 2026-08-31, session 12):** the current Doc
+justifies adopting ONC by saying it "ships its own answer key" — multiple
+records per person, grouped by `EnterpriseID`. Direct inspection of this repo's
+vendored shards shows that's not true of this specific copy: all 1,000,000
+records have unique `EnterpriseID`s, zero duplicates (see `onc_loader.py`'s
+module docstring). `population_cases.py` and `labeled_pairs.py` don't depend on
+that structure — every true-match cluster is built from this repo's own
+single-edit variant generation, with ids assigned by the generator, not looked
+up from ONC — but don't assume ONC's native duplication is available here if
+you're building something new against it.
+
 ## Memory & scale — read before running this against the full ONC dataset
 
 This is a real, previously-encountered failure mode, not a hypothetical one: loading the full
 ONC dataset and running large transformations against it has crashed a Databricks cluster before
-(per Sean, 2026-08-14 design discussion). Three things compound this specifically for this
+(per an internal design discussion, 2026-08-14). Three things compound this specifically for this
 code path:
 
 1. **`onc_loader.load_onc_patients()` has no streaming.** It reads whichever CSV paths you pass
@@ -127,6 +152,12 @@ rather than following `onc_baseline.py`'s all-shards pattern. `export_test_datas
 `__main__` follows the identical default (one shard, `SAMPLE_SIZE`-limited) since it shares
 `generate_raw_pairs()` with `labeled_pairs.py` — the same caution applies before raising
 `SAMPLE_SIZE` or passing it more than one shard's worth of patients.
+`export_population_dataset.py`'s `__main__` follows the same default too, with one addition:
+`population_cases.py` normalizes its own copy of `patients` independently (needed for its
+random-distractor top-up step), on top of whatever `generate_raw_pairs()` already normalized
+internally — a third full copy at full scale, not just the two steps 1-2 already describe. Fine
+at the documented default (`SAMPLE_SIZE=2000` on one shard); worth remembering before raising
+`SAMPLE_SIZE`, `POOL_SIZE`, or passing more than one shard.
 
 **Practical guidance if you need to scale this up:**
 

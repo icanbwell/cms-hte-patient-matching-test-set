@@ -1,32 +1,70 @@
 # Synthetic CMS test-dataset generation: what this migrates, what it leaves behind, and open gaps
 
-**Audience:** Imran Qureshi, Adam Culbertson, and anyone else reviewing PR for session_9.
+**Audience:** the repo maintainers and anyone else reviewing the PR for session_9.
 **Sources this compares against:**
 - The cross-org workgroup Google Doc, ["Proposal: A Shared Test Dataset for CMS v3.3.0 Patient
   Matching Compliance"](https://docs.google.com/document/d/1N6IQkaLkKPdQKVxPSWZYDaLbTCx0EYEgwBcCCPk-6pk)
   (referenced below as "the Doc").
-- Imran's Slack ask, 2026-08-14 (b.well/CMS working-group group DM): *"remember the goal is to
-  have a test dataset and a methodology that anyone can use to verify if their algorithm
-  complies with the CMS HTE patient matching requirements."*
+- The repo maintainer's direct chat message, 2026-08-14 (this organization's internal CMS
+  working-group group chat): *"remember the goal is to have a test dataset and a methodology
+  that anyone can use to verify if their algorithm complies with the CMS HTE patient matching
+  requirements."*
 - `docs/sessions/pending/session_8.md`'s 2026-08-13 design update, which this work resolves.
+
+## What changed between the draft and the finalized proposal (session 12)
+
+The workgroup has since finalized its methodology as ["A Shared Test Dataset for CMS Patient
+Matching Compliance — (current)"](https://docs.google.com/document/d/1A96--dAjIwID5RCDr9qZeqDnk6snOqNcQOg1ZBy3FWw)
+(**the current Doc**), superseding the draft this document otherwise compares against. Most of the
+draft's substance survived finalization unchanged and needs no rework — ONC as the seed population,
+the per-provision ground-truth categories below, the portable JSONL manifest, and
+precision/recall/FPR-with-NA-disclosure reporting broken out by category. Five deltas did surface,
+closed by `docs/sessions/pending/session_12.md`:
+
+1. **New test shape.** The current Doc adds "query against a population" (one record, a candidate
+   pool, an expected match *set*) alongside per-provision pairs, modeled on FHIR `Patient/$match`.
+   Built by `evaluation/population_cases.py`/`evaluation/export_population_dataset.py` — see the
+   coverage table update below.
+2. **A verified, not just flagged, data-provenance problem.** The current Doc claims ONC "ships its
+   own answer key" via duplicate `EnterpriseID`s ("same identifier means same person... group by
+   enterprise patient ID, never by row ID"). Direct inspection of this repo's vendored shards
+   (session 12) shows that's false for this specific copy: all 1,000,000 rows have unique
+   `EnterpriseID`s. This resolves — in the negative — the open question this document's original
+   version left unresolved after session 9 ("is the Doc's ONC duplicate-identity claim actually true
+   of this dataset copy?"). See `onc_loader.py`'s module docstring.
+3. **The metrics-validity fix changed shape.** Session 10's answer to "the curated suite's raw
+   category counts don't reflect real-world prevalence" was a per-case `frequency` reweighting field
+   (`prevalence_estimates.py`). The current Doc answers the same problem differently: compute
+   precision/recall/FDR "only over the realistic population" — i.e., over a second, naturally
+   representative tier, not by reweighting the curated one. That tier is delta 1's population-query
+   tier — deltas 1 and 3 are the same missing piece, from two angles of the current Doc.
+4. **Contribution model narrowed.** The draft's four seed-population options (A/B/C/D, with a real
+   de-identification-adequacy-review gate for raw-data contribution) collapsed to two paths for
+   member orgs: synthetic-records-derived-from-real-data, or aggregate statistics — no path for
+   contributing raw real records at all. This directly un-blocks this document's own "Known gaps"
+   deferral of client-type field-availability modeling, below.
+5. **The harness/adapter contract reopened.** The draft's §6/§8 proposed a specific stdin/stdout
+   JSON adapter contract and CLI. The current Doc's "What we need to decide" list still carries the
+   adapter contract as unresolved — session 8 should confirm its status before building against
+   either version's specific shape.
 
 ## What this PR migrates
 
-Code originally written ~2025-12 on an unmerged `helix.personmatching` branch (`embed-proto`),
-never merged to `main` there, plus an earlier, less-developed copy in
-`data_science_rapid_prototyping/PatientMatching/utils/`. Neither location was ever a match/
-non-match dataset generator on its own — both built training data for an embedding-based
-matcher prototype. This PR extracts and rewrites the reusable, backend-agnostic parts:
+Code originally written ~2025-12 on an unmerged branch (`embed-proto`) of the legacy production
+matching engine, never merged to its `main` there, plus an earlier, less-developed copy in an
+internal rapid-prototyping repo's utilities. Neither location was ever a match/non-match dataset
+generator on its own — both built training data for an embedding-based matcher prototype. This PR
+extracts and rewrites the reusable, backend-agnostic parts:
 
 | Migrated to | Ported from | What changed |
 |---|---|---|
-| `evaluation/mutations.py` | `embed-proto`'s `utils/embedding/target_constructor/modifiers.py` (name edits) + `data_science_rapid_prototyping`'s `utils/modify.py` (DOB edits) | Rewritten to operate on `onc_loader.py`'s FHIR Patient dict shape instead of ONC's flat CSV-column dict. Dropped the `editdistance` library call in favor of using `rapidfuzz` conventions already in this repo (not directly needed once edits are generated by construction rather than measured after the fact). Dropped `TargetStrategy`/`ConstructorStrategy` entirely — that machinery only existed to build strings for an embedding model's input, which has no equivalent here. |
+| `evaluation/mutations.py` | `embed-proto`'s `utils/embedding/target_constructor/modifiers.py` (name edits) + the internal rapid-prototyping repo's `utils/modify.py` (DOB edits) | Rewritten to operate on `onc_loader.py`'s FHIR Patient dict shape instead of ONC's flat CSV-column dict. Dropped the `editdistance` library call in favor of using `rapidfuzz` conventions already in this repo (not directly needed once edits are generated by construction rather than measured after the fact). Dropped `TargetStrategy`/`ConstructorStrategy` entirely — that machinery only existed to build strings for an embedding model's input, which has no equivalent here. |
 | `evaluation/hard_negatives.py` | New code, not ported from either prior branch | See "Hard negatives: a different question than mutation" below — the old code had no equivalent of this. |
 | `evaluation/labeled_pairs.py` | New assembly code, following `evaluation/onc_baseline.py`'s existing pattern | Produces `rule_eval.LabeledPair`s directly, matching `build_onc_pairs`'s established shape rather than inventing new comparison plumbing. |
 
 ## What this PR deliberately leaves behind
 
-| Left in `helix.personmatching`'s `embed-proto` branch | Why it doesn't come along |
+| Left in the legacy production matching engine's `embed-proto` branch | Why it doesn't come along |
 |---|---|
 | `utils/record_keeper.py` (Redis/RedisVL vector store) | Coupled to a specific Redis docker-compose service and a nearest-neighbor embedding search backend. `patient-matching`'s engine is rule/score-based (`patient_matching/matching/`), not embedding-based — there's nothing for this to plug into. |
 | `utils/embedding/*`, `PatientMatching/OneToMany/` (CNN-ED training pipeline) | Trains a character-level embedding model for name matching. Out of scope for a rule-based matcher; would be a separate, much larger effort if ever pursued. |
@@ -38,7 +76,7 @@ Mutating a real record and labeling the mutation "not a match" only tests whethe
 fuzzy tolerance is *too generous* — a statement about the algorithm's behavior, not about
 reality. A genuine hard negative requires two records that were never derived from one another:
 the record actually has to not be the same person. This distinction — raised directly during
-design (Slack, 2026-08-14) — is why `hard_negatives.py` is new code, not a port: neither prior
+design (internal chat, 2026-08-14) — is why `hard_negatives.py` is new code, not a port: neither prior
 branch mined real-record pairs at all; both treated every non-match signal as "did the mutated
 embedding still land near the original."
 
@@ -59,12 +97,11 @@ copy of the dataset:
 - The CSVs (`evaluation/fixtures/onc/*.csv`) are a flat list — one row per `EnterpriseID`,
   split into 9 files purely by alphabetical last-name range. No duplicate-cluster or
   linkage-ground-truth column exists.
-- `helix.personmatching`'s original CMS test (`tests/cms_dataset/test_cms_dataset.py`, main
-  branch) never relied on any "distinct ID ⇒ distinct person" assumption — it runs the batch
-  against itself and checks only whether each record's *top-scoring* match is itself
-  ("MATCHES TO WRONG RECORD" = a self-match failure, not a labeled non-match test). The
-  match/non-match *concept* was never something ONC provided; it's something b.well layered on
-  top, exactly as Sean described.
+- The legacy production matching engine's original CMS test suite never relied on any "distinct
+  ID ⇒ distinct person" assumption — it runs the batch against itself and checks only whether
+  each record's *top-scoring* match is itself ("MATCHES TO WRONG RECORD" = a self-match failure,
+  not a labeled non-match test). The match/non-match *concept* was never something ONC provided;
+  it's something this organization layered on top, per design-time discussion.
 - The only place in this repo that *does* rely on the "distinct ID ⇒ distinct person" assumption
   is `evaluation/onc_baseline.py` (session 3, a later addition), which samples cross-record pairs
   as true-non-matches on that basis.
@@ -77,6 +114,13 @@ assumption. Recommend checking this against the original 2017 ONC Patient Matchi
 Challenge documentation (not committed in either repo) before treating either side of this as
 settled.
 
+**Update (session 12, 2026-08-31): resolved, for this specific dataset copy.** Direct count
+across all nine vendored shards: 1,000,000 rows, 1,000,000 unique `EnterpriseID`s, zero
+duplicates. So the "distinct ID ⇒ distinct person" assumption above is confirmed safe for this
+copy, and the current cross-org Doc's inverse claim ("same identifier means same person... group
+by enterprise patient ID, never row ID") does not describe this vendored copy — see
+`onc_loader.py`'s module docstring and `docs/sessions/pending/session_12.md`.
+
 ## Coverage against the Doc's §2 ground-truth pair categories
 
 | Doc §2 category | Covered by this PR? |
@@ -87,6 +131,7 @@ settled.
 | Administrative Restrictions (e.g. family-shared insurance IDs) | **No** — not attempted this PR; ONC's field set has no insurance/plan-ID column to construct this from. **Planned: `docs/sessions/pending/session_11.md`**, blocked on session_6 adding insurance-identifier fields. |
 | Named special/high-risk populations (twins, shelters, shared address, etc.) | **Yes, except literal twins** — session_10 (`evaluation/special_populations.py`) adds `mine_shared_surname_household_negatives()` (multi-generational households, mined real ONC pairs) and `construct_institutional_negatives()` (the other 8 named categories, constructed via a fabricated-but-marked-synthetic shared address over otherwise-distinct real ONC identities). Literal twins remain a separate, unresolvable case per the CMS spec itself — see session_10.md's "Out of scope". |
 | Normalization edge cases (diacritics, placeholder DOBs, punctuation) | **Yes** — session_10 (`evaluation/normalization_edge_cases.py`) adds `diacritic_variant()`/`punctuation_variant()` true-match pairs exercised end-to-end through `NormalizationManager`+`FieldExtractor`; a separate integration test (`patient_matching/normalization/tests/test_manager.py::TestPlaceholderDobExcludedEndToEnd`) confirms placeholder/out-of-range DOB never reaches a matchable field, without duplicating `placeholder_detector.py`'s own unit tests of the D.6 threshold itself. |
+| Population-level query tier (current Doc, not in the draft) — one query against a candidate pool, expected answer a set | **Yes** — session_12 (`evaluation/population_cases.py`/`export_population_dataset.py`) assembles per-query candidate pools from the same generation logic above, regrouped rather than re-generated. Known simplification: institutional-negative candidates carry the fabricated shared address on only one side of the pool (see `population_cases.py`'s module docstring) — narrower than `labeled_pairs.py`'s pairwise institutional cases, which fabricate it on both sides. |
 
 ## Coverage against the Doc's §3 test case format
 
@@ -124,8 +169,13 @@ are separate concerns).
 - **Client-type field-availability modeling** (e.g. "payer clients have phone numbers X% of the
   time") — raised as a good idea to eventually model data-availability differences by submitting
   client type, addressing a concern raised at the last CMS workgroup meeting. Deferred: needs
-  real b.well client-segmented statistics, and baking those into code that may eventually move to
-  a neutral, cross-org repo (see below) needs its own review before that happens.
+  real client-segmented statistics from this organization, and baking those into code that may
+  eventually move to a neutral, cross-org repo (see below) needs its own review before that
+  happens. **Update (session 12):** the current Doc formally opens exactly this path — "aggregate
+  statistics" is now one of only two sanctioned contribution methods (see
+  `docs/sessions/completed/session_12.md`'s delta 4) — so this item is no longer blocked on the
+  workgroup defining *a* path, only on this organization's own decision to use it. Still not
+  attempted here; still an org-policy decision, not an engineering one.
 - **Mining Person-Patient link outcomes as fuzzy-match ground truth** (e.g. "X% of matched
   Person/Patient pairs have non-identical first names") — considered and explicitly set aside:
   this would treat the current matching algorithm's own decisions as ground truth for building
@@ -146,7 +196,7 @@ are separate concerns).
 ## Memory & scale — a known risk, not new to this session
 
 Loading the full ONC dataset and transforming it at scale has crashed a Databricks cluster
-before (per Sean, 2026-08-14). `onc_loader.load_onc_patients()` has no streaming — it
+before (per an internal report, 2026-08-14). `onc_loader.load_onc_patients()` has no streaming — it
 materializes whatever CSVs you pass it as one Python list — and `NormalizationManager`
 produces a second full copy on top of that. `evaluation/onc_baseline.py`'s own `__main__`
 (session 3) already loads all 9 ONC shards (~1,000,000 records) unconditionally this way; this
@@ -169,6 +219,6 @@ the full labeled test set into its comparison harness.
 The Doc's §8 recommends the canonical shared dataset ultimately live in a neutral,
 workgroup-owned repository — not any single member organization's private codebase — precisely
 so no one company appears to control the industry-wide compliance test suite. `patient-matching`
-is being used here as b.well's own staging/working copy for the CMS workgroup effort, not
+is being used here as this organization's own staging/working copy for the CMS workgroup effort, not
 presented as that neutral repo. If/when the workgroup agrees on a shared home, this module (or
 its output) is a natural candidate to fork out, not something intended to live here permanently.
