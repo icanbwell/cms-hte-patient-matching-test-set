@@ -34,3 +34,20 @@ make run-pre-commit # ruff check + ruff format over the whole repo
 ```
 
 Run `uv run pre-commit install` once to also get these as a local git hook.
+
+## Data attribution
+
+Every record in `evaluation/fixtures/onc/` and every generated test case derived from it
+(`evaluation/cases/`) traces back to the public [ONC 2017 Patient Matching Algorithm
+Challenge](https://healthit.gov/blog/interoperability/demystifying-patient-matching-algorithms/)
+dataset, published by the Office of the National Coordinator for Health IT and also mirrored at
+[onc-healthit/patient-matching](https://github.com/onc-healthit/patient-matching) — already
+synthetic, non-PHI data. See `evaluation/cases/README.md`'s "How this test data was generated" for
+exactly how this repo's own code (mutation, mining, and construction — never any real
+member-organization data) builds on top of it. Vendoring this dataset here is for reproducibility;
+if you redistribute it further, independently confirm the terms ONC published it under.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). Contributions are accepted under the
+same license — see `CONTRIBUTING.md`.

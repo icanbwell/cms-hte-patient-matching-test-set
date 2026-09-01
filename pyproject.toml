@@ -3,6 +3,7 @@ name = "cms-hte-patient-matching-test-set"
 version = "0.1.0"
 description = "Test set and generation code for validating an algorithm against the CMS HTE Patient Matching Specification"
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
