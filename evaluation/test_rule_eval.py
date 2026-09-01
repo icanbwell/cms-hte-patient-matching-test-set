@@ -15,14 +15,14 @@ import pytest
 
 pytest.importorskip("numpy")
 
-import numpy as np  # noqa: E402
-import rule_eval as re  # noqa: E402
+import numpy as np
+import rule_eval as re
 
 
 # --------------------------------------------------------------------------------------
 # Synthetic labeled data
 # --------------------------------------------------------------------------------------
-def make_synthetic(seed: int = 7) -> List["re.LabeledPair"]:
+def make_synthetic(seed: int = 7) -> List[re.LabeledPair]:
     """Build a gold-standard set with a `score` feature and an `exact_id` signal.
 
     - True matches: score in [0.3, 1.0]; 120 of them are deliberately placed below the
@@ -72,11 +72,11 @@ def make_synthetic(seed: int = 7) -> List["re.LabeledPair"]:
     return pairs
 
 
-def threshold_matcher(t: float) -> "re.Matcher":
+def threshold_matcher(t: float) -> re.Matcher:
     return lambda f: f["score"] >= t
 
 
-def strict_better_matcher(t: float) -> "re.Matcher":
+def strict_better_matcher(t: float) -> re.Matcher:
     return lambda f: (f["score"] >= t) or bool(f.get("exact_id"))
 
 

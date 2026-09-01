@@ -10,7 +10,7 @@ import pytest
 
 pytest.importorskip("numpy")
 
-from labeled_pairs import build_labeled_pairs  # noqa: E402
+from labeled_pairs import build_labeled_pairs
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -20,7 +20,9 @@ def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
         "name": [{"family": family, "given": [given]}],
         "birthDate": "1980-06-15",
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ],
         "identifier": [],
     }
 
@@ -29,7 +31,9 @@ class TestBuildLabeledPairs:
     def test_produces_one_fuzzy_variant_pair_per_patient_by_default(self) -> None:
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
         pairs = build_labeled_pairs(patients, seed=0)
-        fuzzy_variants = [p for p in pairs if p.strata.get("pair_type") == "fuzzy_variant"]
+        fuzzy_variants = [
+            p for p in pairs if p.strata.get("pair_type") == "fuzzy_variant"
+        ]
         assert len(fuzzy_variants) == len(patients)
         assert all(p.is_true_match for p in fuzzy_variants)
 
@@ -43,7 +47,9 @@ class TestBuildLabeledPairs:
         # Same ZIP+DOB, distinct family names -> one mined hard negative.
         patients = [_patient("p1", family="Smith"), _patient("p2", family="Jones")]
         pairs = build_labeled_pairs(patients, seed=0)
-        hard_negatives = [p for p in pairs if p.strata.get("pair_type") == "hard_negative"]
+        hard_negatives = [
+            p for p in pairs if p.strata.get("pair_type") == "hard_negative"
+        ]
         assert len(hard_negatives) == 1
         assert hard_negatives[0].is_true_match is False
 
@@ -59,7 +65,9 @@ class TestBuildLabeledPairs:
 
     def test_normalization_edge_case_pairs_are_true_matches(self) -> None:
         pairs = build_labeled_pairs([_patient("p1")], seed=0)
-        edge_cases = [p for p in pairs if p.strata.get("pair_type") == "normalization_edge_case"]
+        edge_cases = [
+            p for p in pairs if p.strata.get("pair_type") == "normalization_edge_case"
+        ]
         cases = {p.strata["case"] for p in edge_cases}
         assert cases == {"diacritic", "punctuation"}
         assert all(p.is_true_match for p in edge_cases)

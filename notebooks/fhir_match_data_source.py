@@ -1,4 +1,4 @@
-# ruff: noqa: F821, E501
+# ruff: noqa: F821
 # mypy: ignore-errors
 """Real-World FHIR Match Data Source -- Tier 2 Statistical Rigor.
 
@@ -25,7 +25,7 @@ this parameterized notebook.
 import random
 from collections import Counter
 from math import comb
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Sequence, Set, Tuple
 
 from patient_matching.matching.collision import FIELD_U_PROBS
 from patient_matching.matching.field_extractor import FieldExtractor, PatientFields
@@ -35,7 +35,9 @@ from patient_matching.normalization.manager import NormalizationManager
 
 try:
     from evaluation.rule_eval import LabeledPair
-except ImportError:  # pragma: no cover - only hit when Databricks doesn't have evaluation/ on sys.path
+except (
+    ImportError
+):  # pragma: no cover - only hit when Databricks doesn't have evaluation/ on sys.path
     import sys
     from pathlib import Path
 
@@ -44,7 +46,9 @@ except ImportError:  # pragma: no cover - only hit when Databricks doesn't have 
 
 try:
     from notebooks._sql_safety import _validate_sql_identifier
-except ImportError:  # pragma: no cover - only hit when Databricks doesn't have notebooks/ on sys.path
+except (
+    ImportError
+):  # pragma: no cover - only hit when Databricks doesn't have notebooks/ on sys.path
     import sys
     from pathlib import Path
 
@@ -76,13 +80,23 @@ try:
     dbutils.widgets.text("fhir_catalog", "bronze", "FHIR Patient catalog")
     dbutils.widgets.text("fhir_schema", "fhir_lake", "FHIR Patient schema")
     dbutils.widgets.text("fhir_patient_table", "patient_4_0_0", "FHIR Patient table")
-    dbutils.widgets.text("match_links_table", "silver.fhir_lite.person_patient", "Person-Patient match links table")
-    dbutils.widgets.text("sample_size", "5000", "Row sample size (keep local processing tractable)")
+    dbutils.widgets.text(
+        "match_links_table",
+        "silver.fhir_lite.person_patient",
+        "Person-Patient match links table",
+    )
+    dbutils.widgets.text(
+        "sample_size", "5000", "Row sample size (keep local processing tractable)"
+    )
 
     FHIR_CATALOG = _validate_sql_identifier(dbutils.widgets.get("fhir_catalog"))
     FHIR_SCHEMA = _validate_sql_identifier(dbutils.widgets.get("fhir_schema"))
-    FHIR_PATIENT_TABLE_NAME = _validate_sql_identifier(dbutils.widgets.get("fhir_patient_table"))
-    FHIR_TABLE = _validate_sql_identifier(f"{FHIR_CATALOG}.{FHIR_SCHEMA}.{FHIR_PATIENT_TABLE_NAME}")
+    FHIR_PATIENT_TABLE_NAME = _validate_sql_identifier(
+        dbutils.widgets.get("fhir_patient_table")
+    )
+    FHIR_TABLE = _validate_sql_identifier(
+        f"{FHIR_CATALOG}.{FHIR_SCHEMA}.{FHIR_PATIENT_TABLE_NAME}"
+    )
     MATCH_TABLE = _validate_sql_identifier(dbutils.widgets.get("match_links_table"))
     SAMPLE_SIZE = int(dbutils.widgets.get("sample_size"))
     if SAMPLE_SIZE <= 0:
@@ -106,7 +120,15 @@ print(f"FHIR_TABLE={FHIR_TABLE}  MATCH_TABLE={MATCH_TABLE}  SAMPLE_SIZE={SAMPLE_
 # rows / SAMPLE_SIZE) -- a near-zero rate would mean this join key guess is wrong for
 # this workspace.
 
-_PATIENT_COLUMNS = ("_uuid", "name", "birthDate", "telecom", "address", "identifier", "gender")
+_PATIENT_COLUMNS = (
+    "_uuid",
+    "name",
+    "birthDate",
+    "telecom",
+    "address",
+    "identifier",
+    "gender",
+)
 
 
 def build_join_query(fhir_table: str, match_table: str, sample_size: int) -> str:
@@ -125,11 +147,15 @@ if IN_DATABRICKS:
     query = build_join_query(FHIR_TABLE, MATCH_TABLE, SAMPLE_SIZE)
     print(query)
     joined_rows = [r.asDict(recursive=True) for r in spark.sql(query).collect()]
-    print(f"Joined rows: {len(joined_rows)} of requested sample_size={SAMPLE_SIZE} "
-          f"(a low ratio may mean the _uuid<->patient_uuid join key assumption above is wrong for this workspace)")
+    print(
+        f"Joined rows: {len(joined_rows)} of requested sample_size={SAMPLE_SIZE} "
+        f"(a low ratio may mean the _uuid<->patient_uuid join key assumption above is wrong for this workspace)"
+    )
 else:
-    print("Not running in Databricks — nothing to query locally. Run this in a Databricks "
-          "notebook/cluster with real workspace access to pull real data.")
+    print(
+        "Not running in Databricks — nothing to query locally. Run this in a Databricks "
+        "notebook/cluster with real workspace access to pull real data."
+    )
     joined_rows = []
 
 # 2. Transform: join-row -> FHIR Patient dict -> LabeledPairs.
@@ -192,7 +218,10 @@ def build_person_patient_pairs(
     rng = random.Random(seed)
     seen: Set[Tuple[int, int]] = set()
     attempts = 0
-    max_attempts = n_negative_samples * _NEGATIVE_SAMPLE_RETRY_MULTIPLIER + _NEGATIVE_SAMPLE_RETRY_BASE
+    max_attempts = (
+        n_negative_samples * _NEGATIVE_SAMPLE_RETRY_MULTIPLIER
+        + _NEGATIVE_SAMPLE_RETRY_BASE
+    )
     while len(seen) < n_negative_samples and attempts < max_attempts:
         attempts += 1
         i, j = rng.randrange(len(person_ids)), rng.randrange(len(person_ids))
@@ -224,11 +253,14 @@ if IN_DATABRICKS:
         for row in joined_rows
     ]
     labeled_pairs = build_person_patient_pairs(
-        extracted_rows, n_negative_samples=min(len(extracted_rows), _MAX_NEGATIVE_SAMPLES)
+        extracted_rows,
+        n_negative_samples=min(len(extracted_rows), _MAX_NEGATIVE_SAMPLES),
     )
-    print(f"Built {len(labeled_pairs)} LabeledPairs "
-          f"({sum(p.is_true_match for p in labeled_pairs)} true-match, "
-          f"{sum(not p.is_true_match for p in labeled_pairs)} sampled non-match)")
+    print(
+        f"Built {len(labeled_pairs)} LabeledPairs "
+        f"({sum(p.is_true_match for p in labeled_pairs)} true-match, "
+        f"{sum(not p.is_true_match for p in labeled_pairs)} sampled non-match)"
+    )
 else:
     extracted_rows = []
     labeled_pairs = []
@@ -239,7 +271,7 @@ else:
 # often does the candidate engine's decision match what the current algorithm already
 # decided?", not "is the candidate correct?".
 
-_default_engine_singleton: Optional[MatchingEngine] = None
+_default_engine_singleton: MatchingEngine | None = None
 
 
 def _default_engine() -> MatchingEngine:
@@ -250,7 +282,9 @@ def _default_engine() -> MatchingEngine:
     return _default_engine_singleton
 
 
-def agreement_rate(pairs: Sequence[LabeledPair], engine: Optional[MatchingEngine] = None) -> float:
+def agreement_rate(
+    pairs: Sequence[LabeledPair], engine: MatchingEngine | None = None
+) -> float:
     """How often `engine.evaluate_pair` agrees with each pair's `is_true_match` label.
 
     `engine` defaults to a lazily-constructed module-level MatchingEngine (this notebook's
@@ -263,15 +297,18 @@ def agreement_rate(pairs: Sequence[LabeledPair], engine: Optional[MatchingEngine
     agreements = sum(
         1
         for p in pairs
-        if active_engine.evaluate_pair(p.features["query"], p.features["candidate"]) == p.is_true_match
+        if active_engine.evaluate_pair(p.features["query"], p.features["candidate"])
+        == p.is_true_match
     )
     return agreements / len(pairs)
 
 
 if IN_DATABRICKS and labeled_pairs:
     rate = agreement_rate(labeled_pairs)
-    print(f"Agreement with current algorithm's existing links: {rate:.1%} "
-          f"(descriptive statistic — NOT precision/recall; the current algorithm's links are not ground truth)")
+    print(
+        f"Agreement with current algorithm's existing links: {rate:.1%} "
+        f"(descriptive statistic — NOT precision/recall; the current algorithm's links are not ground truth)"
+    )
 
 # 4. Observed per-field collision rates vs. Table 3's conservative u-probabilities.
 # `observed_collision_rate` estimates P(two random distinct people share >=1 common
@@ -302,8 +339,17 @@ def observed_collision_rate(values_per_person: Sequence[Set[str]]) -> float:
 # Only fields FieldExtractor actually populates - zip_code/city/state/insurance_* are v3.3
 # additions not yet extracted (candidate scope for session 6, not this session).
 _COLLISION_FIELDS = (
-    "first_name", "last_name", "dob", "street_line", "phone", "email",
-    "ssn_last4", "itin_last4", "mbi", "legal_id", "namespace_id",
+    "first_name",
+    "last_name",
+    "dob",
+    "street_line",
+    "phone",
+    "email",
+    "ssn_last4",
+    "itin_last4",
+    "mbi",
+    "legal_id",
+    "namespace_id",
 )
 
 if IN_DATABRICKS and extracted_rows:
@@ -319,6 +365,8 @@ if IN_DATABRICKS and extracted_rows:
         observed = observed_collision_rate(values_per_person)
         conservative_u, _fuzzy_u = FIELD_U_PROBS[field_name]
         print(f"{field_name:<20}{observed:>12.6f}{conservative_u:>20.6f}")
-    print("\nDescriptive (Tier 2) only — not a precision/recall claim. A field where `observed` exceeds "
-          "Table 3's conservative u suggests this population is less selective on that field than the "
-          "spec assumes; flag for Sean/Imran before relying on it for a rule decision.")
+    print(
+        "\nDescriptive (Tier 2) only — not a precision/recall claim. A field where `observed` exceeds "
+        "Table 3's conservative u suggests this population is less selective on that field than the "
+        "spec assumes; flag for the lead engineer/maintainer before relying on it for a rule decision."
+    )

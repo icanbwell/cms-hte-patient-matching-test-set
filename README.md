@@ -25,3 +25,14 @@ uv sync
 
 `evaluation/onc_baseline.py`, `notebooks/fhir_match_data_source.py`, and a few other modules
 import from `patient_matching` (installed here as a git dependency — see `pyproject.toml`).
+
+## Development
+
+```
+make tests          # uv run pytest . — also CI's build_and_test.yml gate
+make lint           # uv run ruff check .
+make typecheck      # uv run mypy, evaluation/ and notebooks/ separately (see Makefile comment)
+make run-pre-commit # ruff check + ruff format over the whole repo
+```
+
+Run `uv run pre-commit install` once to also get these as a local git hook.

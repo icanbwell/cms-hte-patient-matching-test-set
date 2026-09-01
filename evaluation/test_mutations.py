@@ -11,7 +11,6 @@ import random
 from datetime import date
 
 import pytest
-
 from mutations import (
     DOB_ERROR_TYPES,
     MUTATIONS,
@@ -76,7 +75,8 @@ class TestMutateDob:
             patient = _patient()
             result = mutate_dob(patient, "day", rng=rng)
             delta = (
-                date.fromisoformat(result["birthDate"]) - date.fromisoformat(patient["birthDate"])
+                date.fromisoformat(result["birthDate"])
+                - date.fromisoformat(patient["birthDate"])
             ).days
             assert 1 <= abs(delta) <= 3
 

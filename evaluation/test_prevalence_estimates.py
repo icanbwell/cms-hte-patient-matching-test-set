@@ -6,29 +6,35 @@ test_rule_eval.py's module docstring for why these importorskip("numpy").
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 pytest.importorskip("numpy")
 
-from labeled_pairs import generate_raw_pairs  # noqa: E402
-from mutations import MUTATIONS  # noqa: E402
-from prevalence_estimates import (  # noqa: E402
+from labeled_pairs import generate_raw_pairs
+from mutations import MUTATIONS
+from prevalence_estimates import (
     NEUTRAL_FREQUENCY,
     PREVALENCE_ESTIMATES,
     PrevalenceEstimate,
     researched_frequency,
 )
-from special_populations import INSTITUTION_TYPES  # noqa: E402
+from special_populations import INSTITUTION_TYPES
 
 
-def _patient(id_: str, family: str = "Smith", given: str = "Katherine", zip_code: str = "10001"):
+def _patient(
+    id_: str, family: str = "Smith", given: str = "Katherine", zip_code: str = "10001"
+):
     return {
         "resourceType": "Patient",
         "id": id_,
         "name": [{"family": family, "given": [given]}],
         "birthDate": "1980-06-15",
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+        ],
         "identifier": [],
     }
 
@@ -69,7 +75,9 @@ class TestPrevalenceEstimateInvariants:
 
     @pytest.mark.parametrize("key,estimate", list(PREVALENCE_ESTIMATES.items()))
     def test_value_is_a_valid_proportion(self, key, estimate):
-        assert 0.0 <= estimate.value <= 1.0, f"{key}: value {estimate.value} out of [0, 1]"
+        assert 0.0 <= estimate.value <= 1.0, (
+            f"{key}: value {estimate.value} out of [0, 1]"
+        )
 
     @pytest.mark.parametrize("key,estimate", list(PREVALENCE_ESTIMATES.items()))
     def test_every_entry_has_a_nonempty_source_and_notes(self, key, estimate):
@@ -85,7 +93,9 @@ class TestPrevalenceEstimateInvariants:
             )
 
     @pytest.mark.parametrize("key,estimate", list(PREVALENCE_ESTIMATES.items()))
-    def test_is_direct_measurement_only_meaningful_with_a_public_estimate(self, key, estimate):
+    def test_is_direct_measurement_only_meaningful_with_a_public_estimate(
+        self, key, estimate
+    ):
         if not estimate.has_public_estimate:
             assert estimate.is_direct_measurement is False, (
                 f"{key}: is_direct_measurement should be False when there's no public "
@@ -102,7 +112,9 @@ class TestResearchedFrequency:
         """hard_negative and multi_generational_household rationales carry
         extra "(key=value, ...)" context from format_rationale() - the
         lookup must match on the base category, not the full string."""
-        result = researched_frequency("hard_negative (birthDate=1980-01-01, postalCode=10001)")
+        result = researched_frequency(
+            "hard_negative (birthDate=1980-01-01, postalCode=10001)"
+        )
         assert result == PREVALENCE_ESTIMATES["hard_negative"].value
 
     def test_household_rationale_with_context_resolves_correctly(self):
@@ -110,10 +122,18 @@ class TestResearchedFrequency:
             "special_population/multi_generational_household "
             "(age_gap_years=20, family_name=RIVERA, postalCode=10001)"
         )
-        assert result == PREVALENCE_ESTIMATES["special_population/multi_generational_household"].value
+        assert (
+            result
+            == PREVALENCE_ESTIMATES[
+                "special_population/multi_generational_household"
+            ].value
+        )
 
     def test_unknown_rationale_falls_back_to_neutral(self):
-        assert researched_frequency("some_future_category/not_yet_estimated") == NEUTRAL_FREQUENCY
+        assert (
+            researched_frequency("some_future_category/not_yet_estimated")
+            == NEUTRAL_FREQUENCY
+        )
 
     def test_every_fuzzy_variant_type_resolves_without_error(self):
         for mutation in MUTATIONS:
@@ -121,7 +141,9 @@ class TestResearchedFrequency:
 
     def test_every_institution_type_resolves_without_error(self):
         for institution_type in INSTITUTION_TYPES:
-            researched_frequency(f"special_population/{institution_type}")  # must not raise
+            researched_frequency(
+                f"special_population/{institution_type}"
+            )  # must not raise
 
 
 class TestResearchedFrequencyAgainstRealGeneration:
@@ -161,5 +183,5 @@ class TestPrevalenceEstimateDataclass:
             notes="a test estimate",
         )
         assert estimate.value == 0.5
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             estimate.value = 0.9  # type: ignore[misc]

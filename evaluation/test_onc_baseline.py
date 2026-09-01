@@ -10,8 +10,12 @@ import pytest
 
 pytest.importorskip("numpy")
 
-from onc_loader import _decode_sas_date  # noqa: E402
-from onc_baseline import MASKING_SCENARIOS, build_onc_pairs, current_engine_matcher  # noqa: E402
+from onc_baseline import (
+    MASKING_SCENARIOS,
+    build_onc_pairs,
+    current_engine_matcher,
+)
+from onc_loader import _decode_sas_date
 
 
 class TestOncTransform:

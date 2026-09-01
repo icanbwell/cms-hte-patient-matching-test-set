@@ -15,7 +15,17 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.1.1",
+    "ruff>=0.16.2",
+    "mypy>=1.14",
+    "pandas-stubs",
+    "pre-commit>=4.0",
 ]
 
 [tool.uv]
 package = false
+
+[tool.ruff.lint]
+# Codebase-wide convention, established across evaluation/*.py well before this
+# config existed: typing.Dict/List/Set over builtin generics. Ignored rather than
+# rewriting every existing file to match ruff's newer pyupgrade defaults.
+ignore = ["UP006", "UP035", "FURB192"]

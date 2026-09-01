@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import copy
 import random
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 Patient = Dict[str, Any]
 
@@ -50,7 +50,7 @@ def _copy_patient(patient: Patient) -> Patient:
     return copy.deepcopy(patient)
 
 
-def _rng(rng: Optional[random.Random]) -> random.Random:
+def _rng(rng: random.Random | None) -> random.Random:
     return rng if rng is not None else random.Random()
 
 
@@ -67,7 +67,9 @@ def _name_value(patient: Patient, field: str, *, name_index: int = 0) -> str:
     raise ValueError(f"Unknown name field: {field!r}")
 
 
-def _set_name_value(patient: Patient, field: str, value: str, *, name_index: int = 0) -> None:
+def _set_name_value(
+    patient: Patient, field: str, value: str, *, name_index: int = 0
+) -> None:
     names = patient.get("name") or []
     if name_index >= len(names):
         return
@@ -88,7 +90,7 @@ def diacritic_variant(
     field: str = "given",
     *,
     name_index: int = 0,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Replace the first occurrence of a foldable character in `field` with
     its accented form (e.g. "Nunez" -> "Nuñez", "Jose" -> "José"). No-op if
@@ -115,7 +117,7 @@ def punctuation_variant(
     *,
     name_index: int = 0,
     punctuation: str = "random",
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Insert one punctuation/whitespace character from PUNCTUATION_CHARS into
     `field` at a random internal position (e.g. "OBrien" -> "O'Brien",

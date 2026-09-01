@@ -16,12 +16,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Set, Tuple
 
 from onc_loader import load_onc_patients
-from rule_eval import LabeledPair, compare, format_report, min_sample_size
-
 from patient_matching.matching.field_extractor import FieldExtractor
 from patient_matching.matching.in_memory_backend import InMemoryBackend
 from patient_matching.matching.matching_engine import MatchingEngine
 from patient_matching.normalization.manager import NormalizationManager
+from rule_eval import LabeledPair, compare, format_report, min_sample_size
 
 MASKING_SCENARIOS = ("none", "drop_email_phone")
 

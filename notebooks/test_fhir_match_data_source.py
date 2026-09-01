@@ -19,7 +19,8 @@ import pytest
 
 pytest.importorskip("numpy")
 
-from notebooks.fhir_match_data_source import (  # noqa: E402
+from evaluation.rule_eval import LabeledPair
+from notebooks.fhir_match_data_source import (
     _CURRENT_ALGORITHM_LINK_SOURCE,
     agreement_rate,
     build_join_query,
@@ -27,12 +28,13 @@ from notebooks.fhir_match_data_source import (  # noqa: E402
     observed_collision_rate,
     row_to_fhir_patient,
 )
-from evaluation.rule_eval import LabeledPair  # noqa: E402
 
 
 class TestBuildJoinQuery:
     def test_generates_expected_sql(self):
-        query = build_join_query("bronze.fhir_lake.patient_4_0_0", "silver.fhir_lite.person_patient", 5000)
+        query = build_join_query(
+            "bronze.fhir_lake.patient_4_0_0", "silver.fhir_lite.person_patient", 5000
+        )
         assert query == (
             "SELECT p._uuid, p.name, p.birthDate, p.telecom, p.address, p.identifier, p.gender, "
             "m.person_uuid AS person_uuid "

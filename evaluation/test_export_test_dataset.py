@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("numpy")
 
-from export_test_dataset import (  # noqa: E402
+from export_test_dataset import (
     LabeledCaseRecord,
     build_test_case_records,
     format_rationale,
@@ -28,20 +28,28 @@ def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
         "name": [{"family": family, "given": [given]}],
         "birthDate": "1980-06-15",
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ],
         "identifier": [],
     }
 
 
 class TestFormatRationale:
     def test_includes_mutation_subtype(self):
-        rationale = format_rationale({"pair_type": "fuzzy_variant", "mutation": "dob_day"})
+        rationale = format_rationale(
+            {"pair_type": "fuzzy_variant", "mutation": "dob_day"}
+        )
         assert "fuzzy_variant" in rationale
         assert "dob_day" in rationale
 
     def test_includes_all_strata_keys_for_hard_negative(self):
         rationale = format_rationale(
-            {"pair_type": "hard_negative", "postalCode": "10001", "birthDate": "1980-01-01"}
+            {
+                "pair_type": "hard_negative",
+                "postalCode": "10001",
+                "birthDate": "1980-01-01",
+            }
         )
         assert "hard_negative" in rationale
         assert "postalCode=10001" in rationale
@@ -51,7 +59,9 @@ class TestFormatRationale:
         """category is one of the subtype keys (mutation/case/category), so it
         folds into the "<pair_type>/<subtype>" head, same as mutation/case -
         it should not also appear as a separate "category=..." context term."""
-        rationale = format_rationale({"pair_type": "special_population", "category": "shelter"})
+        rationale = format_rationale(
+            {"pair_type": "special_population", "category": "shelter"}
+        )
         assert rationale == "special_population/shelter"
 
     def test_bare_pair_type_with_no_subtype_or_context(self):

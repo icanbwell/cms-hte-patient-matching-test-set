@@ -33,7 +33,7 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 
@@ -60,7 +60,7 @@ class LabeledPair:
     features: Mapping[str, Any]
     is_true_match: bool
     strata: Mapping[str, str] = field(default_factory=dict)
-    pair_id: Optional[str] = None
+    pair_id: str | None = None
 
 
 def predict_all(matcher: Matcher, pairs: Sequence[LabeledPair]) -> np.ndarray:
@@ -116,7 +116,7 @@ class Confusion:
     @property
     def f1(self) -> float:
         p, r = self.precision, self.tpr
-        if not (p == p and r == r) or (p + r) == 0:  # nan-safe
+        if math.isnan(p) or math.isnan(r) or (p + r) == 0:
             return float("nan")
         return 2 * p * r / (p + r) if (p + r) else float("nan")
 
@@ -143,7 +143,8 @@ def _beta_ppf(q: float, a: float, b: float, rng: np.random.Generator) -> float:
         from scipy.stats import beta as _sbeta  # type: ignore
 
         return float(_sbeta.ppf(q, a, b))
-    except Exception:
+    except Exception:  # noqa: BLE001 - deliberately broad: scipy missing, or any
+        # numerical failure from ppf on extreme (a, b) - both fall back the same way.
         return float(np.quantile(rng.beta(a, b, 200_000), q))
 
 
@@ -177,11 +178,13 @@ class RatePosterior:
         return self.alpha / (self.alpha + self.beta)
 
     def credible_interval(
-        self, level: float = 0.95, rng: Optional[np.random.Generator] = None
+        self, level: float = 0.95, rng: np.random.Generator | None = None
     ) -> Tuple[float, float]:
         rng = rng or np.random.default_rng(0)
         lo, hi = (1 - level) / 2, 1 - (1 - level) / 2
-        return _beta_ppf(lo, self.alpha, self.beta, rng), _beta_ppf(hi, self.alpha, self.beta, rng)
+        return _beta_ppf(lo, self.alpha, self.beta, rng), _beta_ppf(
+            hi, self.alpha, self.beta, rng
+        )
 
     def sample(self, size: int, rng: np.random.Generator) -> np.ndarray:
         return rng.beta(self.alpha, self.beta, size)
@@ -192,7 +195,7 @@ def prob_improvement(
     after: RatePosterior,
     *,
     n_samples: int = 50_000,
-    rng: Optional[np.random.Generator] = None,
+    rng: np.random.Generator | None = None,
 ) -> float:
     """P(candidate metric is *better* than baseline), respecting direction.
 
@@ -243,7 +246,7 @@ class PairedRecall:
         return self.lost + self.gained
 
     def prob_candidate_better(
-        self, *, n_samples: int = 50_000, rng: Optional[np.random.Generator] = None
+        self, *, n_samples: int = 50_000, rng: np.random.Generator | None = None
     ) -> float:
         """Pairing-aware P(candidate recall > baseline recall) — Bayesian McNemar.
 
@@ -262,7 +265,7 @@ class PairedRecall:
             return 1.0
         k = min(b, c)
         # two-sided exact binomial(n, 0.5)
-        tail = sum(math.comb(n, i) for i in range(0, k + 1)) / (2 ** n)
+        tail = sum(math.comb(n, i) for i in range(k + 1)) / (2**n)
         return min(1.0, 2 * tail)
 
 
@@ -435,7 +438,12 @@ def _z(p: float) -> float:
 
 
 def min_sample_size(
-    p0: float, delta: float, *, alpha: float = 0.05, power: float = 0.80, two_sided: bool = True
+    p0: float,
+    delta: float,
+    *,
+    alpha: float = 0.05,
+    power: float = 0.80,
+    two_sided: bool = True,
 ) -> int:
     """Minimum labeled pairs *per arm* to detect a shift of ``delta`` from rate ``p0``.
 
@@ -448,8 +456,11 @@ def min_sample_size(
     p1 = min(max(p0 + delta, 1e-6), 1 - 1e-6)
     z_a = _z(1 - alpha / 2) if two_sided else _z(1 - alpha)
     z_b = _z(power)
-    num = (z_a * math.sqrt(2 * _pbar(p0, p1) * (1 - _pbar(p0, p1))) + z_b * math.sqrt(p0 * (1 - p0) + p1 * (1 - p1))) ** 2
-    return int(math.ceil(num / (delta ** 2)))
+    num = (
+        z_a * math.sqrt(2 * _pbar(p0, p1) * (1 - _pbar(p0, p1)))
+        + z_b * math.sqrt(p0 * (1 - p0) + p1 * (1 - p1))
+    ) ** 2
+    return math.ceil(num / (delta**2))
 
 
 def _pbar(p0: float, p1: float) -> float:
@@ -477,7 +488,7 @@ def stratified_split(
     pairs: Sequence[LabeledPair],
     *,
     holdout_frac: float = 0.70,
-    strata_keys: Optional[Sequence[str]] = None,
+    strata_keys: Sequence[str] | None = None,
     seed: int = 0,
 ) -> Tuple[List[LabeledPair], List[LabeledPair]]:
     """Split into (dev, holdout), stratified by gold label + demographic strata.
@@ -493,7 +504,9 @@ def stratified_split(
     rng = np.random.default_rng(seed)
     groups: Dict[Tuple, List[int]] = {}
     for i, p in enumerate(pairs):
-        key = (p.is_true_match,) + tuple(p.strata.get(k, "?") for k in (strata_keys or ()))
+        key = (p.is_true_match,) + tuple(
+            p.strata.get(k, "?") for k in (strata_keys or ())
+        )
         groups.setdefault(key, []).append(i)
 
     dev_idx: List[int] = []
@@ -501,7 +514,7 @@ def stratified_split(
     for key, idxs in groups.items():
         idxs = list(idxs)
         rng.shuffle(idxs)
-        n_hold = int(math.ceil(len(idxs) * holdout_frac))  # protect holdout: round up
+        n_hold = math.ceil(len(idxs) * holdout_frac)  # protect holdout: round up
         hold_idx.extend(idxs[:n_hold])
         dev_idx.extend(idxs[n_hold:])
     dev = [pairs[i] for i in sorted(dev_idx)]
@@ -524,10 +537,10 @@ def kfold_metric_variance(
     folds = np.array_split(idx, k)
     vals: List[float] = []
     for f in folds:
-        subset = [pairs[i] for i in f]
+        subset = [pairs[int(i)] for i in f]
         c = evaluate(matcher, subset)
         vals.append(getattr(c, metric))
-    clean = [v for v in vals if v == v]  # drop nan folds
+    clean = [v for v in vals if not math.isnan(v)]  # drop nan folds
     return {
         "metric": metric,
         "folds": vals,
@@ -579,19 +592,48 @@ def plot_credible_intervals(report: ComparisonReport):
     y = np.arange(len(metrics))
     for i, m in enumerate(metrics):
         ax.plot(
-            [m.before_ci[0], m.before_ci[1]], [i + 0.12, i + 0.12], color="#90a4ae", lw=3, solid_capstyle="round"
+            [m.before_ci[0], m.before_ci[1]],
+            [i + 0.12, i + 0.12],
+            color="#90a4ae",
+            lw=3,
+            solid_capstyle="round",
         )
-        ax.plot(m.before, i + 0.12, "o", color="#455a64", label="baseline" if i == 0 else None)
         ax.plot(
-            [m.after_ci[0], m.after_ci[1]], [i - 0.12, i - 0.12], color="#80cbc4", lw=3, solid_capstyle="round"
+            m.before,
+            i + 0.12,
+            "o",
+            color="#455a64",
+            label="baseline" if i == 0 else None,
         )
-        ax.plot(m.after, i - 0.12, "o", color="#00897b", label="candidate" if i == 0 else None)
-        ax.text(1.01, i, f"P(better)={m.prob_improvement:.2f}", va="center", fontsize=9, transform=ax.get_yaxis_transform())
+        ax.plot(
+            [m.after_ci[0], m.after_ci[1]],
+            [i - 0.12, i - 0.12],
+            color="#80cbc4",
+            lw=3,
+            solid_capstyle="round",
+        )
+        ax.plot(
+            m.after,
+            i - 0.12,
+            "o",
+            color="#00897b",
+            label="candidate" if i == 0 else None,
+        )
+        ax.text(
+            1.01,
+            i,
+            f"P(better)={m.prob_improvement:.2f}",
+            va="center",
+            fontsize=9,
+            transform=ax.get_yaxis_transform(),
+        )
     ax.set_yticks(y)
     ax.set_yticklabels([m.name for m in metrics])
     ax.set_xlim(0, 1)
     ax.set_xlabel("rate (posterior mean, 95% credible interval)")
-    ax.set_title(f"{report.candidate_name} vs {report.baseline_name}  —  verdict: {report.overall_verdict}")
+    ax.set_title(
+        f"{report.candidate_name} vs {report.baseline_name}  —  verdict: {report.overall_verdict}"
+    )
     ax.legend(loc="lower right")
     ax.invert_yaxis()
     fig.tight_layout()
@@ -607,14 +649,22 @@ def format_report(report: ComparisonReport) -> str:
         f"{'metric':28s} {'before':>8s} {'after':>8s} {'P(better)':>10s}  verdict",
     ]
     for m in report.metrics:
-        lines.append(f"{m.name:28s} {m.before:8.4f} {m.after:8.4f} {m.prob_improvement:10.3f}  {m.verdict}")
-    lines.append(f"{'F1':28s} {report.f1_before:8.4f} {report.f1_after:8.4f} {report.f1_prob_improvement:10.3f}")
+        lines.append(
+            f"{m.name:28s} {m.before:8.4f} {m.after:8.4f} {m.prob_improvement:10.3f}  {m.verdict}"
+        )
+    lines.append(
+        f"{'F1':28s} {report.f1_before:8.4f} {report.f1_after:8.4f} {report.f1_prob_improvement:10.3f}"
+    )
     lines += [
         "",
-        f"Paired recall (true matches): both={report.paired.both} lost={report.paired.lost} "
-        f"gained={report.paired.gained} missed_by_both={report.paired.neither}",
-        f"  net recall change = {report.paired.net_change:+.1%}  churn = {report.paired.churn}  "
-        f"P(candidate better, paired) = {report.paired_prob_better:.3f}",
+        (
+            f"Paired recall (true matches): both={report.paired.both} lost={report.paired.lost} "
+            f"gained={report.paired.gained} missed_by_both={report.paired.neither}"
+        ),
+        (
+            f"  net recall change = {report.paired.net_change:+.1%}  churn = {report.paired.churn}  "
+            f"P(candidate better, paired) = {report.paired_prob_better:.3f}"
+        ),
         "",
         f">>> OVERALL VERDICT: {report.overall_verdict}",
     ]

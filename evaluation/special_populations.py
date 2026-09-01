@@ -38,7 +38,7 @@ import copy
 import random
 from collections import defaultdict
 from datetime import date
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from hard_negatives import HardNegativeCandidate
 
@@ -122,7 +122,7 @@ def _postal_code(patient: Patient) -> str:
     return str(addresses[0].get("postalCode") or "") if addresses else ""
 
 
-def _rng(rng: Optional[random.Random]) -> random.Random:
+def _rng(rng: random.Random | None) -> random.Random:
     return rng if rng is not None else random.Random()
 
 
@@ -147,7 +147,7 @@ def construct_institutional_negatives(
     institution_type: str,
     *,
     group_size: int = 3,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> List[HardNegativeCandidate]:
     """Pair up `group_size` distinct, real ONC identities (different family
     name, different ID) at a single fabricated, unambiguously-synthetic
@@ -185,7 +185,9 @@ def construct_institutional_negatives(
                     candidate=group[j],
                     shared_fields={
                         "institution_type": institution_type,
-                        "postalCode": INSTITUTIONAL_ADDRESSES[institution_type]["postalCode"],
+                        "postalCode": INSTITUTIONAL_ADDRESSES[institution_type][
+                            "postalCode"
+                        ],
                     },
                 )
             )
@@ -229,7 +231,9 @@ def mine_shared_surname_household_negatives(
                 if a.get("id") == b.get("id") or not dob_a or not dob_b:
                     continue
                 try:
-                    gap_years = abs(date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year)
+                    gap_years = abs(
+                        date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year
+                    )
                 except ValueError:
                     continue
                 if gap_years < min_age_gap_years:
