@@ -6,13 +6,22 @@ developed against. As of session 13, this repo has no runtime dependency on that
 engine — it only produces portable, algorithm-agnostic test data (see `evaluation/DESIGN.md`'s
 Design Principle 1 and `docs/sessions/completed/session_13.md`).
 
+## Usage
+
+To test your own matching algorithm against this dataset, see
+[`evaluation/cases/README.md`](evaluation/cases/README.md) — it covers both test tiers
+(per-provision pairs and population queries), the file formats, runnable scoring examples that
+work with any language or algorithm, and (in its ["How this test data was
+generated"](evaluation/cases/README.md#how-this-test-data-was-generated) section) the exact
+mutation/mining/construction methodology behind every case.
+
 ## Contents
 
 - `evaluation/` — the generator: fuzzy-mutation and hard-negative-mining code that builds the
   labeled CMS test dataset. Start with `evaluation/DESIGN.md` and
   `evaluation/SYNTHETIC_DATA_SETUP.md`.
 - `evaluation/cases/` — the materialized, portable test-case dataset. See
-  `evaluation/cases/README.md` for how to run an algorithm against it.
+  [`evaluation/cases/README.md`](evaluation/cases/README.md) for how to run an algorithm against it.
 - `notebooks/` — `rule_eval_demo.ipynb`, a demo of the algorithm-agnostic statistical comparison
   harness (`evaluation/rule_eval.py`).
 - `docs/sessions/` — the session logs that narrate how this dataset and its generation code were
