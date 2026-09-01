@@ -10,8 +10,10 @@ Design Principle 1 and `docs/sessions/completed/session_13.md`).
 
 To test your own matching algorithm against this dataset, see
 [`evaluation/cases/README.md`](evaluation/cases/README.md) — it covers both test tiers
-(per-provision pairs and population queries), the file formats, and runnable scoring examples
-that work with any language or algorithm.
+(per-provision pairs and population queries), the file formats, runnable scoring examples that
+work with any language or algorithm, and (in its ["How this test data was
+generated"](evaluation/cases/README.md#how-this-test-data-was-generated) section) the exact
+mutation/mining/construction methodology behind every case.
 
 ## Contents
 
