@@ -1,11 +1,18 @@
 # Session 8 — Legacy Comparison Harness: Precision/Recall, Disagreement Buckets, Explanations
 
-**Status:** pending
+**Status:** pending — blocked by session 13, needs re-scoping before it can proceed as written.
+Session 13 removed this repo's git dependency on the reference matching engine entirely (this repo only
+produces test data now, it doesn't test any specific matching engine). This session's entire
+premise — comparing the legacy and new engines in-process, in this repo — depends on exactly
+the capability session 13 removed. Whoever picks this up next needs to decide whether the
+comparison work moves to a different repo (one that can depend on both engines) or gets dropped
+in favor of the algorithm-agnostic approach the rest of this repo now takes. See
+`docs/sessions/completed/session_13.md`.
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** L — a new cross-repo comparison harness, a disagreement-bucketing
 classifier, and a first-class explanation-output formatter; larger than a typical M/L session.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -18,32 +25,33 @@ precision/recall/FPR as **Tier 3** ("explicitly not a near-term blocker... track
 pre-production-cutover milestone, not a gate on any session in this backlog") — session 3's own
 "Out of scope" section defers exactly this to "session 4 (Tier 2) and, at population scale,
 Tier 3." This session is that Tier 3 work: it does not gate sessions 1-7, but it is the
-artifact that lets Sean/Imran actually decide go/no-go on cutover, per handoff §4.6's "Success
-criteria for go-live."
+artifact that lets the lead engineer and the repo maintainer actually decide go/no-go on cutover,
+per handoff §4.6's "Success criteria for go-live."
 
 This session builds the harness and produces the comparison; it does **not** perform the
 cutover itself (see "Out of scope").
 
-**Design update, 2026-08-13 (Sean, Slack):** rather than (or in addition to — see below)
-comparing the two engines' outputs against *each other* as this doc originally scoped, Sean's
-current thinking is a labeled test set — columns `Outside Record`, `Internal Record`,
-`IsMatch [0,1]` — with both engines scored independently against the same labels. Starting
-point: the straightforward ONC matching approach (session 3's `evaluation/onc_baseline.py`
-data/pairing pattern) plus **simple-negative mining** to generate the non-match rows, rather
-than random negatives. This sidesteps the "is legacy ground truth?" problem this doc's Scope
-item 2 and Open Questions wrestle with — a real `IsMatch` label makes both engines' precision/
-recall directly computable and comparable, not just their agreement with each other. **Sean
-said he'd discuss the test-data simulation methodology with Imran the same day (2026-08-13) —
-"multiple approaches" are still on the table, so treat the labeled-set *shape* (the three
-columns above) as settled, but the *simulation method* as not yet finalized.** Confirm with
-Sean before executing whether this replaces Scope item 1-2's legacy-vs-new comparison outright,
+**Design update, 2026-08-13 (the lead engineer, internal chat):** rather than (or in addition to
+— see below) comparing the two engines' outputs against *each other* as this doc originally
+scoped, the lead engineer's current thinking is a labeled test set — columns `Outside Record`,
+`Internal Record`, `IsMatch [0,1]` — with both engines scored independently against the same
+labels. Starting point: the straightforward ONC matching approach (session 3's
+`evaluation/onc_baseline.py` data/pairing pattern) plus **simple-negative mining** to generate
+the non-match rows, rather than random negatives. This sidesteps the "is legacy ground truth?"
+problem this doc's Scope item 2 and Open Questions wrestle with — a real `IsMatch` label makes
+both engines' precision/recall directly computable and comparable, not just their agreement with
+each other. **The lead engineer said they'd discuss the test-data simulation methodology with the
+repo maintainer the same day (2026-08-13) — "multiple approaches" are still on the table, so
+treat the labeled-set *shape* (the three columns above) as settled, but the *simulation method*
+as not yet finalized.** Confirm with the lead engineer before executing whether this replaces
+Scope item 1-2's legacy-vs-new comparison outright,
 
-**Update, 2026-08-14 (resolved — see `session_9.md`):** the Slack conversation with Imran
-happened 2026-08-14 (one day later than expected above), and the simulation methodology is now
-resolved: true-match rows come from single-edit-distance mutations of a real record (matching
-the CMS spec's own fuzzy-tolerance definition); true-non-match rows come from mining real,
-distinct-record pairs that collide on several fields — not from asserting a mutation is "a
-different person," which would only test the algorithm's own tolerance rather than reality.
+**Update, 2026-08-14 (resolved — see `session_9.md`):** the chat conversation with the repo
+maintainer happened 2026-08-14 (one day later than expected above), and the simulation
+methodology is now resolved: true-match rows come from single-edit-distance mutations of a real
+record (matching the CMS spec's own fuzzy-tolerance definition); true-non-match rows come from
+mining real, distinct-record pairs that collide on several fields — not from asserting a mutation
+is "a different person," which would only test the algorithm's own tolerance rather than reality.
 This is now built as **session_9** (`docs/sessions/in_review/session_9.md`,
 `evaluation/mutations.py` + `evaluation/hard_negatives.py` + `evaluation/labeled_pairs.py`),
 authored as an upstream dependency of this session rather than folded into it, since this
@@ -64,27 +72,28 @@ only annotated at each place it's relevant.
   `conventions.md`'s dependency rule, branching from `main` today would not have session 4's
   `notebooks/fhir_match_data_source.py` (the real-batch query/join/transform this session reuses
   for its "select a batch of real user records" step). **Do not start execution until session 4
-  is confirmed in `completed/`** — if told to start this session before then, stop and tell Sean,
-  per the "start the next session" protocol's step 3, rather than re-deriving the query logic
-  independently.
+  is confirmed in `completed/`** — if told to start this session before then, stop and tell the
+  lead engineer, per the "start the next session" protocol's step 3, rather than re-deriving the
+  query logic independently.
 - **Session 6** (Table 2 v3.3 expansion) — **soft/quality dependency, not a hard code
   dependency.** This session's harness-building tasks (1-4 below) can be built and tested against
-  whatever rule set currently exists in `patient_matching/matching/table2_rules.py` (today: the
+  whatever rule set currently exists in the reference matching engine's `matching/table2_rules.py` (today: the
   26-rule v3.2.2 set, since session 6 hasn't started — see index.md's Suggested Next Session).
   But the comparison numbers this session produces are only meaningful as a **go-live** artifact
   once session 6 (and any addenda-driven follow-up sessions — see the open `NEEDS HUMAN DECISION`
-  on rules 34/35/37 and the v3.3.1-3.3.6 addenda, flagged by Sean 2026-08-04 but not yet landed in
-  this repo) is in `completed/`. This session's own Definition of Done therefore includes an
-  explicit call-out (see Validation) distinguishing "harness works, produces a report" (achievable
-  now) from "report reflects the final rule set" (blocked on session 6 + addenda resolution).
+  on rules 34/35/37 and the v3.3.1-3.3.6 addenda, flagged by the lead engineer 2026-08-04 but not
+  yet landed in this repo) is in `completed/`. This session's own Definition of Done therefore
+  includes an explicit call-out (see Validation) distinguishing "harness works, produces a
+  report" (achievable now) from "report reflects the final rule set" (blocked on session 6 +
+  addenda resolution).
 
 ## Downstream sessions (unblocked by this one)
 
 None yet authored. This session's output (the comparison report + disagreement buckets) is the
-evidence base for the **not-yet-scoped Phase 2 work** — porting the engine into
-`helix.personmatching`, the `person-matching-service` response adapter, shadow-mode
-infrastructure, and the two-repo release sequence — but authoring those session-style docs is
-explicitly out of scope here (see "Out of scope").
+evidence base for the **not-yet-scoped Phase 2 work** — porting the engine into the legacy
+production matching engine's codebase, the production matching service's response adapter,
+shadow-mode infrastructure, and the two-repo release sequence — but authoring those session-style
+docs is explicitly out of scope here (see "Out of scope").
 
 ## Upstream data/system dependencies
 
@@ -99,21 +108,21 @@ explicitly out of scope here (see "Out of scope").
   `NEEDS HUMAN DECISION`):** implement hardness as SQL-expressible predicates only (multi-link
   count, multi-valued name/identifier count) — document the exact predicates used in *Execution
   notes* so the bias is reproducible and auditable, not ad hoc.
-- **Legacy engine output, for comparison.** The current production algorithm lives in
-  `helix.personmatching` (PyPI package: scoring in `logics/score_calculator.py`, entry rule set
-  `logics/rule_library.py`) — a different repo than `patient-matching`. No prior session in this
-  repo has taken a runtime dependency on another b.well repo's package (session 3 only copied
-  static, public ONC data and matched column semantics by inspection). **`NEEDS HUMAN DECISION —
-  Sean`:** is it acceptable for `patient-matching` to add `helix-personmatching` as a
-  dev/evaluation-only dependency (e.g. an optional `[dependency-groups] eval` extra, matching how
-  `evaluation/`'s numpy/pandas/scipy are already handled per `conventions.md`'s testing-structure
-  section) so this session can call the legacy scorer in-process, or is there a reason to keep the
-  two repos fully decoupled (e.g. a pinned/frozen legacy version requirement, or a policy against
-  cross-repo runtime deps)? **Recommended default if genuinely stuck:** add it as an eval-only
-  extra, pinned to whatever `helix.personmatching` version is actually live in prod at the time
-  this session executes (check `person-matching-service`'s deployed dependency pin, not just
-  PyPI's latest) — evaluation on a version that isn't the one in production would misrepresent
-  the comparison.
+- **Legacy engine output, for comparison.** The current production algorithm lives in this
+  organization's legacy production matching engine (a separate internal package: scoring in
+  `logics/score_calculator.py`, entry rule set `logics/rule_library.py`) — a different repo than
+  the originating repo. No prior session in this repo has taken a runtime dependency on another
+  internal repo's package (session 3 only copied static, public ONC data and matched column
+  semantics by inspection). **`NEEDS HUMAN DECISION — lead engineer`:** is it acceptable for
+  the originating repo to add the legacy engine as a dev/evaluation-only dependency (e.g. an
+  optional `[dependency-groups] eval` extra, matching how `evaluation/`'s numpy/pandas/scipy are
+  already handled per `conventions.md`'s testing-structure section) so this session can call the
+  legacy scorer in-process, or is there a reason to keep the two repos fully decoupled (e.g. a
+  pinned/frozen legacy version requirement, or a policy against cross-repo runtime deps)?
+  **Recommended default if genuinely stuck:** add it as an eval-only extra, pinned to whatever
+  version of the legacy engine is actually live in prod at the time this session executes (check
+  the production matching service's deployed dependency pin, not just the package index's latest)
+  — evaluation on a version that isn't the one in production would misrepresent the comparison.
 
 ## Downstream data/system dependencies
 
@@ -130,8 +139,8 @@ plus a disagreement-bucket table), never committed data or query output, per the
      compliant — table/predicate names only, no hardcoded real values).
    - Score each record pair with **both** engines: this repo's
      `MatchingEngine.evaluate_pair()` (session 3's pairwise API) for the new engine, and the
-     legacy `helix.personmatching` scorer (once the dependency question above is resolved) for
-     the baseline.
+     legacy production matching engine's scorer (once the dependency question above is resolved)
+     for the baseline.
    - Store both engines' outputs keyed by a stable pair/record identifier so every pair is
      joinable (mirrors the meeting notes' Step 2) — in memory for the run, never persisted as
      raw PHI-bearing output to this repo (matches session 4's "no query output committed"
@@ -139,13 +148,13 @@ plus a disagreement-bucket table), never committed data or query output, per the
    - Emit a diff table: agreements, new-engine-only matches (candidate false positives),
      legacy-only matches (candidate false negatives).
 2. **Precision/recall via `rule_eval.compare()`, framed as agreement, not ground truth** —
-   *see the 2026-08-13 design update above first: Sean's labeled-test-set direction
+   *see the 2026-08-13 design update above first: the lead engineer's labeled-test-set direction
    (`Outside Record`/`Internal Record`/`IsMatch`) would give real precision/recall per engine
    directly, which may supersede this item's "framed as agreement, not ground truth" hedge
-   rather than needing it alongside it. Confirm with Sean which one this session actually
-   delivers before building both.* Call
+   rather than needing it alongside it. Confirm with the lead engineer which one this session
+   actually delivers before building both.* Call
    `evaluation/rule_eval.py`'s existing `compare()`/`format_report()` with
-   `baseline_name="legacy (helix.personmatching)"` and `candidate_name="CMS v3.3 engine"` — this
+   `baseline_name="legacy engine"` and `candidate_name="CMS v3.3 engine"` — this
    is exactly the tool session 3 built for baseline-vs-candidate comparison, reused rather than
    reinvented. Per the meeting notes' Step 3, the report's own text must state explicitly that
    these are **agreement-rate** metrics against a non-ground-truth baseline, not true precision/
@@ -156,10 +165,11 @@ plus a disagreement-bucket table), never committed data or query output, per the
    enough to characterize disagreement patterns without becoming a second full validation pass)
    CSV-shaped sample of disagreeing pairs' *rule outcomes and bucket labels* (see Task 4) for a
    human to adjudicate — **never the underlying PHI values themselves**, consistent with the PHI
-   guardrail. **`NEEDS HUMAN DECISION — Sean`:** who actually adjudicates this sample (Sean
-   himself, or the cap team) — they need advance notice per the meeting notes' own gap list.
-   Default if unanswered at session-start: flag to Sean as a blocking question before this task
-   executes, since the sample can't be scored without an adjudicator identified.
+   guardrail. **`NEEDS HUMAN DECISION — lead engineer`:** who actually adjudicates this sample
+   (the lead engineer, or the reviewing team) — they need advance notice per the meeting notes'
+   own gap list. Default if unanswered at session-start: flag to the lead engineer as a blocking
+   question before this task executes, since the sample can't be scored without an adjudicator
+   identified.
 4. **Disagreement bucketing.** New function(s) in `evaluation/legacy_comparison.py` (or a
    sibling module if it grows large) that classify each disagreeing pair into exactly one of:
    nickname/diminutive, typo/transposition, name-order or compound/hyphenated surname, missing
@@ -179,22 +189,22 @@ plus a disagreement-bucket table), never committed data or query output, per the
 ### Out of scope
 
 - **Deployment** (meeting notes' Step 6: scheduling the job, staging pass, prod rollout with
-  batch-volume/match-rate/score-distribution monitoring). `patient-matching` has no deploy target
+  batch-volume/match-rate/score-distribution monitoring). The originating repo has no deploy target
   and "no deploy ceremony" by design (every session ends in a PR merged to `main`, per
-  `conventions.md`) — deployment is Phase 2, production-facing work that belongs in
-  `person-matching-service`'s feature-flag/shadow-mode infrastructure (handoff §4.4 item 6-7),
-  which has no session-doc convention of its own yet. Track as its own, not-yet-authored planning
-  effort, not a task here.
-- **The final written analysis for Sean/Imran** (meeting notes' Step 7). This session's report +
-  Execution notes are the raw material; the polished writeup is a human deliverable, not gated by
-  this session's Definition of Done.
+  `conventions.md`) — deployment is Phase 2, production-facing work that belongs in the production
+  matching service's feature-flag/shadow-mode infrastructure (handoff §4.4 item 6-7), which has no
+  session-doc convention of its own yet. Track as its own, not-yet-authored planning effort, not a
+  task here.
+- **The final written analysis for the lead engineer and repo maintainer** (meeting notes' Step
+  7). This session's report + Execution notes are the raw material; the polished writeup is a
+  human deliverable, not gated by this session's Definition of Done.
 - **Setting the numeric agreement/precision/recall acceptance threshold.** Explicitly unresolved
-  per the meeting notes' own gap list. `NEEDS HUMAN DECISION — Sean`: no threshold exists yet;
-  this session reports the numbers, it does not decide what counts as "good enough."
+  per the meeting notes' own gap list. `NEEDS HUMAN DECISION — lead engineer`: no threshold
+  exists yet; this session reports the numbers, it does not decide what counts as "good enough."
 - **Whether legacy is "ground truth" or merely "baseline"** for the purposes of the *external*
-  writeup's framing. `NEEDS HUMAN DECISION — Sean`: affects how results get presented externally,
-  not how this session computes them (this session always frames results as agreement-rate,
-  per Step 3's own reasoning, regardless of how that question is later answered).
+  writeup's framing. `NEEDS HUMAN DECISION — lead engineer`: affects how results get presented
+  externally, not how this session computes them (this session always frames results as
+  agreement-rate, per Step 3's own reasoning, regardless of how that question is later answered).
 - Resolving the session 6 / v3.3.1-3.3.6 addenda re-scope question, or building session 6 itself
   — separate, already-flagged gap (see "Upstream sessions").
 - Any change to Table 2 rules, P(collision) values, or `MatchingEngine.match()`/`evaluate_pair()`
@@ -205,7 +215,7 @@ plus a disagreement-bucket table), never committed data or query output, per the
 ## Tasks
 
 1. **Resolve both `NEEDS HUMAN DECISION` items in "Upstream data/system dependencies" and
-   Task 3's adjudicator question with Sean** before writing comparison code, per
+   Task 3's adjudicator question with the lead engineer** before writing comparison code, per
    `conventions.md`'s protocol step 4. Record answers in *Execution notes*.
 2. **Confirm session 4 is in `completed/`** (not just `in_review/`) before branching. If it
    isn't yet, stop per the "start the next session" protocol rather than re-implementing its
@@ -303,23 +313,23 @@ class TestComparisonReportFraming:
 
 ## Open questions
 
-- **`NEEDS HUMAN DECISION — Sean`** (stated above): whether `patient-matching` may take an
-  eval-only dependency on `helix-personmatching` to produce legacy comparison output in-process.
-  Recommended default: yes, as a pinned eval-only extra matching whatever version is actually
-  live in prod at execution time.
-- **`NEEDS HUMAN DECISION — Sean`**: who adjudicates the hand-adjudication sample (Sean or the
-  cap team) — they need advance notice.
-- **`NEEDS HUMAN DECISION — Sean`**: the numeric agreement/precision/recall acceptance threshold
-  for go-live. No recommended default given — this is a business/clinical-risk call, not one the
-  session author should guess at.
-- **`NEEDS HUMAN DECISION — Sean`**: whether to frame legacy as "ground truth" or "baseline" in
-  the eventual external writeup. Recommended default for *this session's own* internal reporting
-  regardless: always "baseline"/"agreement rate" language, per Step 3's own reasoning — never
-  overclaim precision/recall against a non-ground-truth system. (Sean's 2026-08-13 labeled-set
-  direction below may make this moot for the internal report — worth re-asking once that's
-  settled.)
-- **`NEEDS HUMAN DECISION — Sean`** (updated 2026-08-14, was new 2026-08-13): does the labeled
-  test-set approach (`Outside Record`/`Internal Record`/`IsMatch`, scoring both engines
+- **`NEEDS HUMAN DECISION — lead engineer`** (stated above): whether the originating repo may take
+  an eval-only dependency on the legacy production matching engine to produce legacy comparison
+  output in-process. Recommended default: yes, as a pinned eval-only extra matching whatever
+  version is actually live in prod at execution time.
+- **`NEEDS HUMAN DECISION — lead engineer`**: who adjudicates the hand-adjudication sample (the
+  lead engineer or the reviewing team) — they need advance notice.
+- **`NEEDS HUMAN DECISION — lead engineer`**: the numeric agreement/precision/recall acceptance
+  threshold for go-live. No recommended default given — this is a business/clinical-risk call,
+  not one the session author should guess at.
+- **`NEEDS HUMAN DECISION — lead engineer`**: whether to frame legacy as "ground truth" or
+  "baseline" in the eventual external writeup. Recommended default for *this session's own*
+  internal reporting regardless: always "baseline"/"agreement rate" language, per Step 3's own
+  reasoning — never overclaim precision/recall against a non-ground-truth system. (The lead
+  engineer's 2026-08-13 labeled-set direction below may make this moot for the internal report —
+  worth re-asking once that's settled.)
+- **`NEEDS HUMAN DECISION — lead engineer`** (updated 2026-08-14, was new 2026-08-13): does the
+  labeled test-set approach (`Outside Record`/`Internal Record`/`IsMatch`, scoring both engines
   independently against it) replace Scope items 1-2's legacy-vs-new comparison, or run alongside
   it? **The simulation-methodology half of this question is now resolved — see session_9 and the
   2026-08-14 update above. The replace-vs-alongside half is still open.**
@@ -329,7 +339,8 @@ class TestComparisonReportFraming:
 - **Session 9** (`docs/sessions/in_review/session_9.md`) — supplies the test-data simulation
   methodology this session's Task 3/4 were waiting on (`evaluation/mutations.py`,
   `evaluation/hard_negatives.py`, `evaluation/labeled_pairs.py`). Do not start Task 3/4 until
-  session 9 is `completed/` and the replace-vs-alongside question above is resolved with Sean.
+  session 9 is `completed/` and the replace-vs-alongside question above is resolved with the
+  lead engineer.
 
 ## Execution notes
 

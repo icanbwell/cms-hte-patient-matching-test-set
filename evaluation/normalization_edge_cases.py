@@ -2,34 +2,36 @@
 edge cases" (diacritic-folded names, punctuation/whitespace variation, and
 placeholder/out-of-range dates of birth), per CMS spec SS V.A.3-4.
 
-Unlike mutations.py's fuzzy-comparison variants (which rely on
-FieldComparator's edit-distance tolerance and are expected to match only
-because fuzzy comparison is *permitted* for that field), the two variant
-generators here produce values that CMS SS V.A requires normalization to fold
-into an EXACT match - a diacritic-folded or punctuation-stripped name is not
-"close enough via fuzzy tolerance", it is required to become byte-identical
-to the un-accented/unpunctuated form after NormalizationManager runs. Pairing
-these as LabeledPairs with is_true_match=True therefore exercises the
-normalization layer specifically, not the fuzzy comparator.
+Unlike mutations.py's fuzzy-comparison variants (which rely on an edit-
+distance tolerance and are expected to match only because fuzzy comparison is
+*permitted* for that field), the two variant generators here produce values
+that CMS SS V.A requires normalization to fold into an EXACT match - a
+diacritic-folded or punctuation-stripped name is not "close enough via fuzzy
+tolerance", it is required to become byte-identical to the un-accented/
+unpunctuated form after a spec-compliant normalization step runs. Marking
+these true-matches therefore exercises normalization behavior specifically,
+not fuzzy comparison - any matching engine under test is expected to
+normalize before comparing, per Design Principle 1.
 
 The third edge case (placeholder/out-of-range DOB) is deliberately NOT a
-variant-pair generator here - see
-patient_matching/normalization/tests/test_manager.py's
-TestPlaceholderDobExcludedEndToEnd for why (a single-patient normalization
-behavior, not a match/non-match pair).
+variant-pair generator here - a placeholder/out-of-range DOB should be
+excluded from matching entirely (never reach a matchable field), which is a
+single-patient normalization behavior, not a match/non-match pair this
+repo's pairwise/population manifests can express.
 """
 
 from __future__ import annotations
 
 import copy
 import random
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 Patient = Dict[str, Any]
 
 _MIN_MUTATABLE_LENGTH = 3
 
-# Common Latin-script diacritics folded by patient_matching.normalization.text_utils.fold_diacritics.
+# Common Latin-script diacritics folded by the reference matching engine's
+# normalization.text_utils.fold_diacritics.
 DIACRITIC_MAP: Dict[str, str] = {
     "a": "á",
     "e": "é",
@@ -50,7 +52,7 @@ def _copy_patient(patient: Patient) -> Patient:
     return copy.deepcopy(patient)
 
 
-def _rng(rng: Optional[random.Random]) -> random.Random:
+def _rng(rng: random.Random | None) -> random.Random:
     return rng if rng is not None else random.Random()
 
 
@@ -67,7 +69,9 @@ def _name_value(patient: Patient, field: str, *, name_index: int = 0) -> str:
     raise ValueError(f"Unknown name field: {field!r}")
 
 
-def _set_name_value(patient: Patient, field: str, value: str, *, name_index: int = 0) -> None:
+def _set_name_value(
+    patient: Patient, field: str, value: str, *, name_index: int = 0
+) -> None:
     names = patient.get("name") or []
     if name_index >= len(names):
         return
@@ -88,7 +92,7 @@ def diacritic_variant(
     field: str = "given",
     *,
     name_index: int = 0,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Replace the first occurrence of a foldable character in `field` with
     its accented form (e.g. "Nunez" -> "Nuñez", "Jose" -> "José"). No-op if
@@ -115,7 +119,7 @@ def punctuation_variant(
     *,
     name_index: int = 0,
     punctuation: str = "random",
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Insert one punctuation/whitespace character from PUNCTUATION_CHARS into
     `field` at a random internal position (e.g. "OBrien" -> "O'Brien",

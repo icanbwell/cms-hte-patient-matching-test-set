@@ -1,8 +1,8 @@
 """Unit tests for mutations.py (session 9).
 
-No numpy dependency here (unlike test_rule_eval.py/test_onc_baseline.py) -
-mutations.py only uses stdlib random/datetime plus `nicknames`, which is a
-core patient_matching dependency, so these tests always run.
+No numpy dependency here (unlike test_rule_eval.py/test_labeled_pairs.py) -
+mutations.py only uses stdlib random/datetime plus `nicknames`, a core
+dependency of this repo's own pyproject.toml, so these tests always run.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import random
 from datetime import date
 
 import pytest
-
 from mutations import (
     DOB_ERROR_TYPES,
     MUTATIONS,
@@ -76,7 +75,8 @@ class TestMutateDob:
             patient = _patient()
             result = mutate_dob(patient, "day", rng=rng)
             delta = (
-                date.fromisoformat(result["birthDate"]) - date.fromisoformat(patient["birthDate"])
+                date.fromisoformat(result["birthDate"])
+                - date.fromisoformat(patient["birthDate"])
             ).days
             assert 1 <= abs(delta) <= 3
 

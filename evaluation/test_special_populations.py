@@ -18,30 +18,52 @@ def _patient(id_, family, given="Pat", zip_code="10001", dob="1980-01-01"):
         "name": [{"family": family, "given": [given]}],
         "birthDate": dob,
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+        ],
         "identifier": [],
     }
 
 
 class TestConstructInstitutionalNegatives:
     def test_assigns_same_synthetic_address_to_every_group_member(self):
-        patients = [_patient("p1", "Smith"), _patient("p2", "Jones"), _patient("p3", "Lee")]
-        candidates = construct_institutional_negatives(patients, "shelter", group_size=3)
+        patients = [
+            _patient("p1", "Smith"),
+            _patient("p2", "Jones"),
+            _patient("p3", "Lee"),
+        ]
+        candidates = construct_institutional_negatives(
+            patients, "shelter", group_size=3
+        )
         assert len(candidates) == 3  # 3 choose 2
         for c in candidates:
-            assert c.query["address"][0]["postalCode"] == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
-            assert c.candidate["address"][0]["postalCode"] == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            assert (
+                c.query["address"][0]["postalCode"]
+                == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            )
+            assert (
+                c.candidate["address"][0]["postalCode"]
+                == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            )
             assert c.shared_fields["institution_type"] == "shelter"
 
     def test_never_pairs_two_patients_with_the_same_family_name(self):
-        patients = [_patient("p1", "Smith"), _patient("p2", "Smith"), _patient("p3", "Lee")]
-        candidates = construct_institutional_negatives(patients, "shelter", group_size=3)
+        patients = [
+            _patient("p1", "Smith"),
+            _patient("p2", "Smith"),
+            _patient("p3", "Lee"),
+        ]
+        candidates = construct_institutional_negatives(
+            patients, "shelter", group_size=3
+        )
         # Only 2 distinct family names available (Smith deduped) - group caps at 2, 1 pair.
         assert len(candidates) == 1
 
     def test_rejects_unknown_institution_type(self):
         with pytest.raises(ValueError):
-            construct_institutional_negatives([_patient("p1", "Smith")], "not_a_real_type")
+            construct_institutional_negatives(
+                [_patient("p1", "Smith")], "not_a_real_type"
+            )
 
     def test_does_not_mutate_the_original_patients(self):
         patients = [_patient("p1", "Smith"), _patient("p2", "Jones")]
@@ -71,8 +93,16 @@ class TestMineSharedSurnameHouseholdNegatives:
         "dob_a,dob_b,expect_match",
         [
             ("1988-01-01", "1990-06-01", False),  # ~2 years - below threshold
-            ("1988-01-01", "2002-06-01", False),  # exactly 14 years - just below threshold
-            ("1988-01-01", "2003-01-02", True),  # just over 15 years - at/above threshold
+            (
+                "1988-01-01",
+                "2002-06-01",
+                False,
+            ),  # exactly 14 years - just below threshold
+            (
+                "1988-01-01",
+                "2003-01-02",
+                True,
+            ),  # just over 15 years - at/above threshold
         ],
     )
     def test_age_gap_threshold_boundary(self, dob_a, dob_b, expect_match):

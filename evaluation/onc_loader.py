@@ -1,14 +1,31 @@
-"""Load the public ONC Patient Matching Algorithm Challenge dataset as normalized
-FHIR Patient dicts, for use as evaluation/rule_eval.py input.
+"""Load the public ONC Patient Matching Algorithm Challenge dataset as FHIR
+Patient dicts, for use as this repo's test-case generation input
+(labeled_pairs.py, population_cases.py, and the export_*.py manifest writers).
 
-Column mapping mirrors helix.personmatching's create_patient_resource() (see
-tests/cms_dataset/test_cms_dataset.py in that repo), extended to also populate
-MOTHERS_MAIDEN_NAME and ALIAS, which that transform reads from the CSV but never
-maps into the output FHIR resource.
+Column mapping mirrors the legacy production matching engine's own
+create_patient_resource() transform (confirmed via direct inspection of its CMS
+test suite), extended to also populate MOTHERS_MAIDEN_NAME and ALIAS, which
+that transform reads from the CSV but never maps into the output FHIR
+resource.
 
-Values are copied through as-is (raw CSV case/punctuation); callers must run the
-result through patient_matching.normalization.NormalizationManager before handing
-it to FieldExtractor, same as any other MatchingEngine caller.
+Values are copied through as-is (raw CSV case/punctuation) - this repo's own
+generation pipeline does not normalize them (see session_13, which dropped
+that step along with the removed matching-engine dependency). If you're testing your
+own matching engine against the exported cases, apply your own normalization
+convention first, same as you would for any other input.
+
+ONC EnterpriseID uniqueness (verified 2026-08-31, session_12): every row across
+all nine vendored shards under evaluation/fixtures/onc/ has a distinct
+EnterpriseID - 1,000,000 rows, 1,000,000 unique ids, zero duplicates. This
+means this specific vendored copy does NOT carry the "multiple records, same
+underlying person, grouped by EnterpriseID" duplicate-linkage structure the
+cross-org workgroup's current test-dataset proposal describes as ONC's built-in
+answer key. See docs/sessions/completed/session_12.md for the full discussion and
+why this repo's generation code (mutations.py's self-generated variants) does
+not depend on that structure existing here. One piece of confirmed good news
+this finding also settles: the "different EnterpriseID implies different
+person" true-negative sampling assumption hard_negatives.py relies on is safe
+for this dataset copy, since there is no found duplication to contradict it.
 """
 
 from __future__ import annotations
@@ -31,8 +48,8 @@ _GENDER_MAP = {
 def _decode_sas_date(raw: str) -> str:
     """ONC's DOB column is a SAS-style day-offset from 1900-01-01, minus 2.
 
-    Matches helix.personmatching's create_patient_resource() decoding exactly
-    (confirmed via direct inspection of tests/cms_dataset/test_cms_dataset.py,
+    Matches the legacy production matching engine's own create_patient_resource()
+    decoding exactly (confirmed via direct inspection of its CMS test suite,
     2026-07-29).
     """
     offset_days = int(raw) - 2
@@ -46,8 +63,9 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
     if row.get("ALIAS"):
         given.append(row["ALIAS"])
     family_names = [row["LAST"]]
-    # Not mapped by helix.personmatching's transform - included here so this
-    # repo's normalization/matching sees prior/maiden names per Core Principle 10.
+    # Not mapped by the legacy production matching engine's transform - included
+    # here so this repo's normalization/matching sees prior/maiden names per
+    # Core Principle 10.
     if row.get("MOTHERS_MAIDEN_NAME"):
         family_names.append(row["MOTHERS_MAIDEN_NAME"])
 
@@ -68,8 +86,9 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
         "identifier": [],
     }
     # The dataset's "Null" shard has intentionally-missing fields for incomplete-data
-    # testing; helix.personmatching's transform only sets birthDate when DOB is present
-    # (test_cms_dataset.py: `if row["DOB"]:`) - mirrored here rather than crashing.
+    # testing; the legacy production matching engine's transform only sets
+    # birthDate when DOB is present (`if row["DOB"]:`) - mirrored here rather
+    # than crashing.
     if row.get("DOB"):
         patient["birthDate"] = _decode_sas_date(row["DOB"])
     if row.get("PHONE"):

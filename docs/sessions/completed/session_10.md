@@ -1,11 +1,15 @@
 # Session 10 — Special-Population Non-Match Pairs + Normalization Edge-Case Pairs
 
-**Status:** pending
+**Status:** completed (code — `evaluation/special_populations.py`,
+`evaluation/normalization_edge_cases.py`, and their tests — has been in `main` and in production
+use since before session 9 closed; this doc's own status field was never updated to match. Fixed
+by session 12 as a housekeeping item; exact PR number/reviewer not on hand — see `git log` on
+these files for the actual merge history.)
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** M/L — two new small modules following `mutations.py`/`hard_negatives.py`'s
 existing shape, wiring into `labeled_pairs.py`, and their tests.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -27,14 +31,14 @@ Per `conventions.md`'s "Anatomy of a session doc" scope-anchor rule, session_9 e
 flagged as worth registering) a third canonical scope-anchor source beyond the handoff doc and
 the CMS spec: this cross-org workgroup Google Doc. This session reuses that same anchor.
 
-Following session_9's own methodology distinction (raised by Sean during its design, 2026-08-14):
+Following session_9's own methodology distinction (raised during its design, 2026-08-14):
 mutating a record and asserting the mutation is "a different person" only tests an algorithm's own
 tolerance, not reality. This session applies the same discipline both directions:
 
 - **Normalization edge cases** (diacritics, punctuation/whitespace) are **mutations** of a real
   record that **must still be recognized as the same person** after normalization — analogous to
   `mutations.py`'s existing fuzzy-variant pairs, but exercising the *normalization* layer
-  (`patient_matching/normalization/`) rather than fuzzy *comparison* (`FieldComparator`).
+  (the reference matching engine's `normalization/` module) rather than fuzzy *comparison* (`FieldComparator`).
 - **Special-population pairs** must, wherever the underlying dataset allows it, come from
   **genuinely distinct records** (mining), not mutations of one record — same principle
   `hard_negatives.py` already established. Where ONC has no natural examples of a named category
@@ -323,7 +327,7 @@ def mine_shared_surname_household_negatives(
 ```
 
 **2. `evaluation/normalization_edge_cases.py`** — two true-match variant generators exercising
-`patient_matching/normalization/` end-to-end (not `FieldComparator`'s fuzzy path), plus one
+the reference matching engine's `normalization/` module end-to-end (not `FieldComparator`'s fuzzy path), plus one
 standalone pipeline check (not a `LabeledPair` - see its docstring for why):
 
 ```python
@@ -352,7 +356,8 @@ Patient = Dict[str, Any]
 
 _MIN_MUTATABLE_LENGTH = 3
 
-# Common Latin-script diacritics folded by patient_matching.normalization.text_utils.fold_diacritics.
+# Common Latin-script diacritics folded by the reference matching engine's
+# normalization.text_utils.fold_diacritics.
 DIACRITIC_MAP: Dict[str, str] = {
     "a": "á",
     "e": "é",
@@ -576,8 +581,8 @@ def build_labeled_pairs(
 unchanged from session_9 — shown above only for placement context; do not duplicate the import.)
 
 **4. Placeholder-DOB pipeline check** — not a `LabeledPair` (a placeholder/out-of-range DOB is a
-single-patient normalization behavior, not a match/non-match pair; `patient_matching/normalization/
-placeholder_detector.py`'s `is_placeholder_date()` already has its own unit tests for the D.6
+single-patient normalization behavior, not a match/non-match pair; the reference matching engine's
+`normalization/placeholder_detector.py`'s `is_placeholder_date()` already has its own unit tests for the D.6
 threshold itself). What's untested is whether that detection is actually wired end-to-end through
 `NormalizationManager.normalize()` into `FieldExtractor.extract()`, so this session adds one
 integration-level test confirming a placeholder/out-of-range DOB never reaches `PatientFields.dob`
@@ -589,8 +594,8 @@ below), and add a short new section describing `special_populations.py`'s coinci
 constructed-sharing distinction (for a future reader deciding whether to trust a given pair as
 "real" or "constructed").
 
-**6. (Added post-implementation, same PR — Imran asked "did you create the test dataset?" once
-Tasks 1-5 landed, and the honest answer was no: `LabeledPair` output is in-memory only and holds
+**6. (Added post-implementation, same PR — the repo maintainer asked "did you create the test
+dataset?" once Tasks 1-5 landed, and the honest answer was no: `LabeledPair` output is in-memory only and holds
 this repo's own internal `PatientFields`, not the Doc §3 portable format.) Materialize an actual
 test-case manifest file.** New `evaluation/export_test_dataset.py`: refactor
 `labeled_pairs.py`'s pair-generation loop into a shared `generate_raw_pairs()` generator
@@ -624,18 +629,18 @@ concrete, reproducible artifact — not just a script that could be run. Documen
 - **Verifying the Doc §4 claim about ONC's duplicate-identity structure** — session_9's existing
   open question, not this session's to resolve.
 - **Doc §1 Option C (company-submitted de-identified real data)** as a seed-population layer.
-  Imran scoped this backlog down to Option A (ONC, already public/synthetic) + Option B
-  (programmatic mining/mutation/construction) only, 2026-08-16 — consistent with `conventions.md`'s
-  existing PHI guardrail, which already prohibits real WellSense/Databricks/Mongo data in this
-  repo's fixtures. This session's mined/constructed pairs stay entirely within Option A+B; no
-  task here reaches for real de-identified data.
+  The repo maintainer scoped this backlog down to Option A (ONC, already public/synthetic) +
+  Option B (programmatic mining/mutation/construction) only, 2026-08-16 — consistent with
+  `conventions.md`'s existing PHI guardrail, which already prohibits real member-organization/
+  Databricks/Mongo data in this repo's fixtures. This session's mined/constructed pairs stay
+  entirely within Option A+B; no task here reaches for real de-identified data.
 - **The Doc §8 reference scoring harness** (a `cms-match-harness score` CLI, adapter contract,
   TP/FP/TN/FN aggregation and reporting). Task 6 produces only the manifest (the dataset), per
   Design Principle 1's algorithm-agnostic split — scoring against it is session_8's eventual Tier
   3 harness territory, not this session's.
 - **Publishing `evaluation/cases/`'s output to the Doc §8-recommended neutral cross-org repo.**
-  This repo remains b.well's own staging copy (`SYNTHETIC_DATA_COMPARISON.md`'s "Repo-ownership
-  note"); Task 6 only materializes the file locally.
+  This repo remains this organization's own staging copy (`SYNTHETIC_DATA_COMPARISON.md`'s
+  "Repo-ownership note"); Task 6 only materializes the file locally.
 
 ## Tasks
 
@@ -804,15 +809,15 @@ class TestPunctuationVariant:
 ```
 
 ```python
-# addition to patient_matching/normalization/tests/test_manager.py (or a new
+# addition to the reference matching engine's normalization/tests/test_manager.py (or a new
 # evaluation/test_placeholder_dob_pipeline.py, sibling to labeled_pairs.py's own
 # tests - author's call at implementation time; either location is a legitimate
 # home for a pipeline-level, not unit-level, check):
 
 class TestPlaceholderDobExcludedEndToEnd:
     def test_out_of_range_dob_never_reaches_extracted_fields(self):
-        from patient_matching.normalization.manager import NormalizationManager
-        from patient_matching.matching.field_extractor import FieldExtractor
+        from reference_matching_engine.normalization.manager import NormalizationManager
+        from reference_matching_engine.matching.field_extractor import FieldExtractor
 
         patient = {
             "resourceType": "Patient",
@@ -868,8 +873,8 @@ diff — that's the equivalence proof, not a new test).
 - [ ] `make run-pre-commit` is clean — **could not run**; see Execution notes.
 - [x] Per `conventions.md`'s statistical rigor gate: this session does not itself change matching
       *behavior* (no `MatchingEngine`/`table2_rules.py` edits) — confirmed the diff touches only
-      `evaluation/*.py` plus `patient_matching/normalization/tests/test_manager.py` (a new test
-      class, no production code under `patient_matching/` changed) — Tier-1 gate does not apply.
+      `evaluation/*.py` plus the reference matching engine's `normalization/tests/test_manager.py` (a new test
+      class, no production code under the reference matching engine changed) — Tier-1 gate does not apply.
 - [x] **Task 6:** `evaluation/export_test_dataset.py` exists, imports cleanly, and every test in
       `evaluation/test_export_test_dataset.py` passes (9 passed).
 - [x] `generate_raw_pairs()` refactor is behavior-preserving: `evaluation/test_labeled_pairs.py`'s
@@ -883,7 +888,7 @@ diff — that's the equivalence proof, not a new test).
 ## Open questions
 
 - Exact home for the placeholder-DOB pipeline test: resolved as
-  `patient_matching/normalization/tests/test_manager.py` (new `TestPlaceholderDobExcludedEndToEnd`
+  the reference matching engine's `normalization/tests/test_manager.py` (new `TestPlaceholderDobExcludedEndToEnd`
   class) rather than a new `evaluation/` file, since it reads naturally alongside
   `TestNormalizationManager`'s other end-to-end normalize() checks in the same file.
 - `institutional_group_size=3` kept at its recommended default (24 constructed institutional pairs
@@ -898,7 +903,7 @@ designed module/function shapes.
 **Test execution environment:** this sandbox has no JFrog credentials (`uv sync` fails resolving
 `fastapi` from the private index) and no `.env` file, so neither `uv run pytest`/`uv run
 pre-commit` nor `make tests`/`make run-pre-commit` (Docker-based, needs `.env`) could actually run.
-Substituted: an existing local `.venv` (already had `patient_matching`'s core deps) supplemented
+Substituted: an existing local `.venv` (already had the reference matching engine's core deps) supplemented
 with `numpy`, `usaddress-scourgify` (note: NOT plain `scourgify` — that's a different, incompatible
 PyPI package; must be `usaddress-scourgify` per `pyproject.toml`) from public PyPI, then ran the
 full suite directly: **481 passed** (up from a confirmed 448-passing baseline before this
@@ -914,7 +919,7 @@ instead of Docker in CI") — pre-existing environment drift, not caused by this
 default-enabled rules (e.g. `UP006`/`UP035`/`DTZ011`). Rather than trust raw `ruff check` output,
 every finding was checked against already-merged sibling files
 (`evaluation/mutations.py`, `evaluation/hard_negatives.py`,
-`patient_matching/normalization/placeholder_detector.py`) run through the *same* venv — all three
+the reference matching engine's `normalization/placeholder_detector.py`) run through the *same* venv — all three
 produce the identical classes of finding despite being known-clean, merged code, confirming the
 findings are version drift, not real regressions. The one finding that was NOT drift (`I001`
 import-block sorting in the two new test files) was fixed via
@@ -935,10 +940,10 @@ distribution — not a silent cap, per the "no silent caps" principle.
 environment limitation above. Whoever reviews the PR in an environment with working JFrog/Docker
 credentials should run both before merging, per `conventions.md`'s Definition of Done.
 
-**Task 6 addendum, 2026-08-16 (same PR, later in the day):** Imran asked "did you create the test
-dataset?" after Tasks 1-5 landed — the honest answer at that point was no: `LabeledPair` was
+**Task 6 addendum, 2026-08-16 (same PR, later in the day):** the repo maintainer asked "did you
+create the test dataset?" after Tasks 1-5 landed — the honest answer at that point was no: `LabeledPair` was
 in-memory-only and held this repo's internal `PatientFields`, not the Doc §3 portable FHIR-JSON
-manifest format. Confirmed with him this was a real gap (not something already covered
+manifest format. Confirmed with the maintainer this was a real gap (not something already covered
 elsewhere), then closed it: refactored `labeled_pairs.py` to expose `generate_raw_pairs()`
 (confirmed behavior-preserving — `test_labeled_pairs.py`'s existing 9 tests pass unchanged, no
 edits needed), added `evaluation/export_test_dataset.py` (9 new tests, all passing), and
@@ -950,8 +955,8 @@ Full local suite: 490 passed (up from 481 immediately before this addendum). Sam
 methodology as the rest of this session (manual `ruff`/`mypy --strict`/`bandit`, cross-checked
 against already-clean files to rule out the sandbox's ruff-version drift) — all clean.
 
-**Task 7 addendum, 2026-08-16 (same PR, immediately after Task 6):** Imran asked for a doc
-explaining how to actually test a matching algorithm against the new dataset. Added
+**Task 7 addendum, 2026-08-16 (same PR, immediately after Task 6):** the repo maintainer asked
+for a doc explaining how to actually test a matching algorithm against the new dataset. Added
 `evaluation/cases/README.md` — covers the file format, data provenance (what's real ONC vs.
 mutated vs. fabricated-and-marked-synthetic), a generic bring-your-own-algorithm adapter pattern
 (Option A, any language/organization, per the Doc's Section 6 adapter contract), a concrete
@@ -966,9 +971,9 @@ Option A's generic snippet was checked for syntactic validity. Cross-referenced 
 
 **Task 8, 2026-08-16 (new stacked PR, `claude/session-10-frequency-uniform`, based on
 `claude/session-10-special-populations`):** After the "is 6,289 cases sufficient?" discussion
-surfaced the per-category sample-size gaps above, Imran separately asked whether the dataset
-represents each test case's real-world frequency — it doesn't, and hadn't been documented as a
-gap. Per his direction, split the fix into two stacked PRs so the mechanical schema change and
+surfaced the per-category sample-size gaps above, the repo maintainer separately asked whether the
+dataset represents each test case's real-world frequency — it doesn't, and hadn't been documented
+as a gap. Per their direction, split the fix into two stacked PRs so the mechanical schema change and
 the actual (debatable) frequency values get reviewed separately:
 
 - **This PR (Task 8):** add a `frequency: float = 1.0` field to `LabeledCaseRecord`, a
@@ -980,7 +985,7 @@ the actual (debatable) frequency values get reviewed separately:
   generation artifact, not a prevalence signal, per the same tension Doc §1/§5 already raise.
   3 new tests in `test_export_test_dataset.py`; full suite 493 passed (up from 490).
 **Task 9, 2026-08-16 (new stacked PR, `claude/session-10-frequency-estimates`, based on
-`claude/session-10-frequency-uniform`): FOR IMRAN'S REVIEW, not yet accepted as a default.**
+`claude/session-10-frequency-uniform`): FOR MAINTAINER REVIEW, not yet accepted as a default.**
 Research conducted via a dedicated research agent (public sources only, per Option A+B-only
 scoping): U.S. Census Bureau 2020 Census Group Quarters data, Pew Research Center on
 multigenerational households and marital surname choices, CDC/NCHS twin-birth rates,
@@ -1008,7 +1013,7 @@ data-entry-error context.
     field-collision question, already governed by this repo's own P(collision) framework, not a
     demographic-prevalence one).
   - CDC's 2023 twin-birth rate (30.7 per 1,000 live births) is recorded as a module constant for
-    documentation completeness, per Imran's original "represent frequency" ask — not applied to
+    documentation completeness, per the maintainer's original "represent frequency" ask — not applied to
     any category, since literal twins aren't generated (see Task 6's "Out of scope").
 - `export_test_dataset.py`'s `__main__` now uses `frequency_lookup=researched_frequency`;
   `build_test_case_records()`'s own default stays `uniform_frequency` (opt-in, not silently
@@ -1020,8 +1025,9 @@ data-entry-error context.
   never silently pass as `is_direct_measurement=True`; lookup correctness including the
   parenthetical-context-stripping case). Full suite 595 passed (up from 493).
 
-**Close-out:** PR opened from `claude/session-10-special-populations`. Left in `pending/` rather
-than moved to `in_review/`/`completed/` — merging is a human decision per `conventions.md` ("Every
-session ends with a PR" + Sean's review), not something to do unilaterally; whoever merges the PR
-should then move this doc to `completed/` and update `index.md` per the "Keeping this index
-current" steps.
+**Close-out:** PR opened from `claude/session-10-special-populations`. Originally left in
+`pending/` rather than moved to `in_review/`/`completed/` — merging is a human decision per
+`conventions.md` ("Every session ends with a PR" + reviewer sign-off), not something to do
+unilaterally. The code here was merged and in production use well before this note was ever
+updated to say so; session_12 (2026-08-31) fixed the doc's stale status field as a housekeeping
+item once that mismatch was noticed — see `docs/sessions/completed/session_12.md`.

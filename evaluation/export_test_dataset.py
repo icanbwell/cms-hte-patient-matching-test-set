@@ -40,8 +40,9 @@ Patient = Dict[str, Any]
 FrequencyLookup = Callable[[str], float]
 
 # cases/ (not a bare repo-root cases/, per the Doc's own proposed layout for
-# the eventual neutral cross-org repo) - this repo is b.well's staging copy,
-# not that repo, per SYNTHETIC_DATA_COMPARISON.md's "Repo-ownership note".
+# the eventual neutral cross-org repo) - this repo is this organization's
+# staging copy, not that repo, per SYNTHETIC_DATA_COMPARISON.md's
+# "Repo-ownership note".
 DEFAULT_OUTPUT_PATH = Path(__file__).parent / "cases" / "sample_labeled_pairs.jsonl"
 
 
@@ -66,6 +67,13 @@ class LabeledCaseRecord:
             evaluation/prevalence_estimates.py (a follow-up PR) for real,
             cited public-source estimates per category, and this module's
             `frequency_lookup` parameter for how to supply them.
+
+            SCOPE, per session 12: this field is documentation/analysis
+            metadata only, not a substitute for real precision/FDR/F1/
+            accuracy - the cross-org workgroup's finalized proposal computes
+            those over a separate, naturally-representative population-query
+            tier (evaluation/population_cases.py) instead of by reweighting
+            this file's curated, rare-case-oversampled counts.
     """
 
     case_id: str
@@ -177,8 +185,8 @@ def write_jsonl(records: List[LabeledCaseRecord], path: Path) -> None:
 
 if __name__ == "__main__":
     # researched_frequency() applies evaluation/prevalence_estimates.py's real,
-    # cited public-source prevalence weights (pending Imran's review as of
-    # this writing - see docs/sessions/pending/session_10.md's Task 9 notes).
+    # cited public-source prevalence weights (pending maintainer review as of
+    # this writing - see docs/sessions/completed/session_10.md's Task 9 notes).
     # Pass frequency_lookup=uniform_frequency explicitly (or call
     # build_test_case_records() directly) to opt back out to the neutral
     # default.

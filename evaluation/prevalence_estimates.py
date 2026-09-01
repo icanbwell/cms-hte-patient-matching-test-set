@@ -3,15 +3,15 @@
 exposes (see that module's `uniform_frequency()` and
 `LabeledCaseRecord.frequency` docstring for why this exists).
 
-FOR IMRAN'S REVIEW - not yet the default. Every value here is either:
+FOR MAINTAINER REVIEW - not yet the default. Every value here is either:
   (a) a real, cited public-source estimate (has_public_estimate=True), or
   (b) an explicit "no public estimate found" placeholder
       (has_public_estimate=False, value pinned to NEUTRAL_FREQUENCY) -
       never a guessed number standing in for real data.
 
 Sources are exclusively public (U.S. Census Bureau, CDC/NCHS, Pew Research
-Center, peer-reviewed record-linkage literature) - no b.well/WellSense client
-data, consistent with this backlog's Option A+B-only scoping (see
+Center, peer-reviewed record-linkage literature) - no member-organization
+client data, consistent with this backlog's Option A+B-only scoping (see
 docs/sessions/index.md, 2026-08-16).
 
 IMPORTANT CAVEAT ON WHAT THESE NUMBERS MEAN: these are rough, order-of-
@@ -26,6 +26,14 @@ mirror real-world proportions.
 
 Research conducted 2026-08-16 (see docs/sessions/pending/session_10.md's
 Task 9 execution notes for the full research trail).
+
+SCOPE, per session 12: these estimates remain useful documentation/analysis metadata (how rare is
+a given scenario, really), but are not a substitute for computing precision/FDR/F1/accuracy over
+an actually-representative sample. The cross-org workgroup's finalized proposal resolves the
+representativeness problem this module was built for differently than a per-category frequency
+multiplier does - see evaluation/population_cases.py and evaluation/cases/README.md's "Frequency
+and real-world representativeness" section for the population-query tier these metrics should be
+computed over instead.
 """
 
 from __future__ import annotations
@@ -145,7 +153,8 @@ _HOTEL_SHORT_TERM_HOUSING = PrevalenceEstimate(
     has_public_estimate=False,
     is_direct_measurement=False,
     source="U.S. Census Bureau, 2020 Census Group Quarters release (Aug 2021)",
-    notes="Hotels/motels used for transient/worker housing. " + _NO_INSTITUTIONAL_SPLIT_PUBLISHED,
+    notes="Hotels/motels used for transient/worker housing. "
+    + _NO_INSTITUTIONAL_SPLIT_PUBLISHED,
 )
 
 _HALFWAY_HOUSE = PrevalenceEstimate(
@@ -307,8 +316,8 @@ _HARD_NEGATIVE = PrevalenceEstimate(
         "distinct people sharing ZIP+DOB), not a demographic scenario with a "
         "'how common is this' prevalence question in the same sense as the "
         "other categories - it's already governed by this repo's own "
-        "P(collision) framework (patient_matching/matching/collision.py's "
-        "per-field u-probabilities), which is the correct tool for "
+        "P(collision) framework (the reference matching engine's "
+        "matching/collision.py per-field u-probabilities), which is the correct tool for "
         "collision-probability questions, not a population-prevalence "
         "estimate. Left at NEUTRAL_FREQUENCY; out of scope for this module."
     ),
@@ -342,8 +351,8 @@ PREVALENCE_ESTIMATES: Dict[str, PrevalenceEstimate] = {
 # Not assigned to any test-case category (no twin cases are generated - see
 # special_populations.py's module docstring and session_10.md's "Out of
 # scope" - literal twins are a separate, unresolvable case per the CMS spec
-# itself). Recorded here for documentation completeness only, per Imran's
-# ask about frequency representation in general:
+# itself). Recorded here for documentation completeness only, per the
+# maintainer's ask about frequency representation in general:
 # CDC/NCHS, "Births: Final Data for 2023" (National Vital Statistics
 # Reports Vol. 74, No. 1, Mar 18, 2025): 30.7 twin births per 1,000 live
 # births in 2023 (~3.07%), down from a peak of ~33.9 per 1,000 in 2014.

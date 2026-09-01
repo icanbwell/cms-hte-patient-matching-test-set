@@ -10,21 +10,21 @@ default, so a caller can compose `generate_fuzzy_variant()` output directly into
 a labeled pair alongside the unmutated original: (original, variant,
 is_true_match=True).
 
-Ported from two prior, never-merged prototypes and rewritten to operate on
+Ported from two prior, never-merged internal prototypes and rewritten to operate on
 onc_loader.py's FHIR Patient dict shape (not the ONC CSV's flat FIRST/LAST/DOB
 columns those prototypes used), and to use rapidfuzz (already a core
-patient-matching dependency) instead of the prototypes' Redis/embedding/
+dependency of the reference matching engine) instead of the prototypes' Redis/embedding/
 CNN-training machinery, which doesn't apply to this repo's rule-based matcher:
 
-  - DOB mutations: data_science_rapid_prototyping/PatientMatching/utils/modify.py
-    (RecordModifier.modify_birthdate)
-  - Name mutations: helix.personmatching's unmerged `embed-proto` branch,
-    helix_personmatching/utils/embedding/target_constructor/modifiers.py (the
-    NameModifier hierarchy) - ported as plain functions here rather than a class
-    hierarchy, to match this module's existing function-based style
-    (onc_baseline.py, rule_eval.py), and with the embedding-specific
-    `TargetStrategy`/`ConstructorStrategy` machinery dropped entirely, since it
-    only existed to build embedding-model input strings.
+  - DOB mutations: an internal rapid-prototyping repo's record-modification
+    utility (`RecordModifier.modify_birthdate`)
+  - Name mutations: an unmerged `embed-proto` branch of the legacy production
+    matching engine's embedding-prototype work (its `NameModifier` hierarchy) -
+    ported as plain functions here rather than a class hierarchy, to match this
+    module's existing function-based style (onc_baseline.py, rule_eval.py), and
+    with the embedding-specific `TargetStrategy`/`ConstructorStrategy`
+    machinery dropped entirely, since it only existed to build embedding-model
+    input strings.
 
 See SYNTHETIC_DATA_COMPARISON.md for the full accounting of what was carried
 over, what was deliberately left behind, and why.
@@ -36,7 +36,7 @@ import copy
 import random
 import string
 from datetime import date, timedelta
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 from nicknames import NickNamer
 
@@ -45,7 +45,7 @@ Patient = Dict[str, Any]
 # One shared NickNamer instance - it loads a static lookup table on construction,
 # so reuse it across calls rather than rebuilding it per mutation (same rationale
 # as onc_baseline.py's _engine() lru_cache: a read-only resource, safe to share).
-_nick_namer: Optional[NickNamer] = None
+_nick_namer: NickNamer | None = None
 
 
 def _get_nick_namer() -> NickNamer:
@@ -59,7 +59,7 @@ def _copy_patient(patient: Patient) -> Patient:
     return copy.deepcopy(patient)
 
 
-def _rng(rng: Optional[random.Random]) -> random.Random:
+def _rng(rng: random.Random | None) -> random.Random:
     return rng if rng is not None else random.Random()
 
 
@@ -71,7 +71,7 @@ DOB_ERROR_TYPES = ("day", "month", "year", "swap", "typo")
 
 
 def mutate_dob(
-    patient: Patient, error_type: str = "random", *, rng: Optional[random.Random] = None
+    patient: Patient, error_type: str = "random", *, rng: random.Random | None = None
 ) -> Patient:
     """Return a copy of `patient` with `birthDate` perturbed by `error_type`.
 
@@ -122,7 +122,7 @@ def _safe_replace(d: date, **kwargs: int) -> date:
         return d.replace(day=28, **kwargs)
 
 
-def _typo_digit(d: date, rng: random.Random) -> Optional[date]:
+def _typo_digit(d: date, rng: random.Random) -> date | None:
     """Substitute one digit of YYYYMMDD with a different digit, re-parsing the
     result. Returns None (caller keeps the original date) if the typo produces
     an invalid calendar date, rather than raising."""
@@ -156,7 +156,9 @@ def _name_value(patient: Patient, field: str, *, name_index: int = 0) -> str:
     raise ValueError(f"Unknown name field: {field!r}")
 
 
-def _set_name_value(patient: Patient, field: str, value: str, *, name_index: int = 0) -> None:
+def _set_name_value(
+    patient: Patient, field: str, value: str, *, name_index: int = 0
+) -> None:
     names = patient.get("name") or []
     if name_index >= len(names):
         return
@@ -178,7 +180,7 @@ def drop_letters(
     *,
     name_index: int = 0,
     drop_ratio: float = 0.2,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Drop a random subset of letters from `field`. No-op if the value is
     shorter than _MIN_MUTATABLE_LENGTH (dropping letters from e.g. "Li" isn't a
@@ -218,7 +220,7 @@ def transpose_characters(
     field: str = "family",
     *,
     name_index: int = 0,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Swap one adjacent pair of characters in `field` - the transposition edit
     the CMS spec's fuzzy-tolerance definition names explicitly."""
@@ -241,7 +243,7 @@ def typo_edit(
     name_index: int = 0,
     num_edits: int = 1,
     char_pool: str = string.ascii_uppercase,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
 ) -> Patient:
     """Apply `num_edits` single-character insert/delete/substitute operations to
     `field` - the other two edit types the CMS spec's fuzzy-tolerance definition
@@ -276,7 +278,7 @@ def _apply_single_edit(text: str, rng: random.Random, char_pool: str) -> str:
 
 
 def substitute_nickname(
-    patient: Patient, *, name_index: int = 0, rng: Optional[random.Random] = None
+    patient: Patient, *, name_index: int = 0, rng: random.Random | None = None
 ) -> Patient:
     """Replace the given (first) name with one of its common nicknames/
     diminutives (e.g. "Katherine" -> "Kate"), per the CMS Doc's Section 2 call for
@@ -290,7 +292,9 @@ def substitute_nickname(
     nicknames = {n for n in _get_nick_namer().nicknames_of(value.lower()) if n}
     if not nicknames:
         return patient
-    _set_name_value(patient, "given", rng.choice(sorted(nicknames)).title(), name_index=name_index)
+    _set_name_value(
+        patient, "given", rng.choice(sorted(nicknames)).title(), name_index=name_index
+    )
     return patient
 
 
@@ -315,7 +319,7 @@ MUTATIONS: Dict[str, Callable[[Patient, random.Random], Patient]] = {
 
 
 def generate_fuzzy_variant(
-    patient: Patient, mutation_type: str = "random", *, rng: Optional[random.Random] = None
+    patient: Patient, mutation_type: str = "random", *, rng: random.Random | None = None
 ) -> Tuple[Patient, str]:
     """Apply one named mutation (or a randomly-chosen one) to `patient`.
 

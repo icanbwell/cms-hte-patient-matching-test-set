@@ -1,10 +1,11 @@
 """Unit tests for rule_eval, using synthetic labeled data.
 
-The evaluation harness depends on numpy (and, for rendering, pandas/matplotlib),
-which are intentionally NOT part of the shippable ``patient_matching`` package. These
-tests therefore ``importorskip("numpy")`` so a numpy-less environment (e.g. the default
-service CI image) skips them cleanly rather than failing. Install the harness deps with
-``pip install numpy scipy pandas matplotlib`` (see evaluation/DESIGN.md) to run them.
+The evaluation harness depends on numpy (and, for rendering, pandas/matplotlib).
+These tests ``importorskip("numpy")`` so a numpy-less environment skips them
+cleanly rather than failing, matching test_labeled_pairs.py's convention.
+Install the harness deps with ``pip install numpy scipy pandas matplotlib``
+(see evaluation/DESIGN.md) to run them - though `uv sync` already installs
+them, since they're core dependencies of this repo's own pyproject.toml.
 """
 
 from __future__ import annotations
@@ -15,14 +16,14 @@ import pytest
 
 pytest.importorskip("numpy")
 
-import numpy as np  # noqa: E402
-import rule_eval as re  # noqa: E402
+import numpy as np
+import rule_eval as re
 
 
 # --------------------------------------------------------------------------------------
 # Synthetic labeled data
 # --------------------------------------------------------------------------------------
-def make_synthetic(seed: int = 7) -> List["re.LabeledPair"]:
+def make_synthetic(seed: int = 7) -> List[re.LabeledPair]:
     """Build a gold-standard set with a `score` feature and an `exact_id` signal.
 
     - True matches: score in [0.3, 1.0]; 120 of them are deliberately placed below the
@@ -72,11 +73,11 @@ def make_synthetic(seed: int = 7) -> List["re.LabeledPair"]:
     return pairs
 
 
-def threshold_matcher(t: float) -> "re.Matcher":
+def threshold_matcher(t: float) -> re.Matcher:
     return lambda f: f["score"] >= t
 
 
-def strict_better_matcher(t: float) -> "re.Matcher":
+def strict_better_matcher(t: float) -> re.Matcher:
     return lambda f: (f["score"] >= t) or bool(f.get("exact_id"))
 
 

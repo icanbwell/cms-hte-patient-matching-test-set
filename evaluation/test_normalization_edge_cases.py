@@ -28,9 +28,16 @@ def _patient(given="Jose", family="Nunez", dob="1980-01-01"):
 class TestDiacriticVariant:
     @pytest.mark.parametrize("field,name", [("given", "Jose"), ("family", "Nunez")])
     def test_introduces_exactly_one_accented_character(self, field, name):
-        patient = _patient(given=name if field == "given" else "Ana", family=name if field == "family" else "Ana")
+        patient = _patient(
+            given=name if field == "given" else "Ana",
+            family=name if field == "family" else "Ana",
+        )
         variant = diacritic_variant(patient, field=field, rng=random.Random(0))
-        value = variant["name"][0]["given"][0] if field == "given" else variant["name"][0]["family"]
+        value = (
+            variant["name"][0]["given"][0]
+            if field == "given"
+            else variant["name"][0]["family"]
+        )
         assert value != name
         assert any(accented in value for accented in DIACRITIC_MAP.values())
 

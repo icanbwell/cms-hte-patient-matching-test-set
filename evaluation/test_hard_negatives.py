@@ -12,7 +12,9 @@ def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01
         "name": [{"family": family, "given": ["Pat"]}],
         "birthDate": dob,
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+        ],
         "identifier": [],
     }
 
@@ -25,8 +27,14 @@ class TestMineSharedAddressHardNegatives:
         ]
         candidates = mine_shared_address_hard_negatives(patients)
         assert len(candidates) == 1
-        assert {candidates[0].query["id"], candidates[0].candidate["id"]} == {"p1", "p2"}
-        assert candidates[0].shared_fields == {"postalCode": "10001", "birthDate": "1980-01-01"}
+        assert {candidates[0].query["id"], candidates[0].candidate["id"]} == {
+            "p1",
+            "p2",
+        }
+        assert candidates[0].shared_fields == {
+            "postalCode": "10001",
+            "birthDate": "1980-01-01",
+        }
 
     def test_excludes_pairs_sharing_the_same_family_name(self) -> None:
         """Same ZIP+DOB+family name looks like a mutation/duplicate variant of one

@@ -1,11 +1,11 @@
 # Session 9 — Synthetic CMS Test-Dataset Generation: Fuzzy Mutations + Hard-Negative Mining
 
-**Status:** completed (PR #27 merged 2026-08-14 — reviewed by Kenan Spruill)
+**Status:** completed (PR #27 merged 2026-08-14 — reviewed by a colleague)
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** M — two new small modules (mutation generators, hard-negative miner), one
 assembly module wiring them into `rule_eval.LabeledPair`, and a comparison write-up.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -14,17 +14,18 @@ anchor — the handoff doc's Line A/Line B strategy, or the CMS spec itself. Thi
 anchor is a third source `conventions.md` doesn't yet name: the cross-org workgroup Google Doc,
 ["Proposal: A Shared Test Dataset for CMS v3.3.0 Patient Matching
 Compliance"](https://docs.google.com/document/d/1N6IQkaLkKPdQKVxPSWZYDaLbTCx0EYEgwBcCCPk-6pk),
-plus Imran Qureshi's direct Slack ask (2026-08-14, b.well/CMS working-group DM): *"remember the
-goal is to have a test dataset and a methodology that anyone can use to verify if their
-algorithm complies with the CMS HTE patient matching requirements."* Flagging this explicitly
-rather than silently stretching the existing rule — `conventions.md` may want a third canonical
-source added if this kind of cross-org-deliverable session recurs.
+plus the repo maintainer's direct chat message (2026-08-14, this organization's internal CMS
+working-group group chat): *"remember the goal is to have a test dataset and a methodology that
+anyone can use to verify if their algorithm complies with the CMS HTE patient matching
+requirements."* Flagging this explicitly rather than silently stretching the existing rule —
+`conventions.md` may want a third canonical source added if this kind of cross-org-deliverable
+session recurs.
 
-`session_8.md`'s 2026-08-13 design update records Sean's Slack conversation with Imran about a
-labeled test set (`Outside Record` / `Internal Record` / `IsMatch [0,1]`) and states: *"the
-test-data simulation methodology itself is still open ... check for the outcome of that
-conversation before starting Task 3/4."* That conversation happened 2026-08-14 (one day later
-than session_8.md anticipated). This session is the resolution: it supplies the simulation
+`session_8.md`'s 2026-08-13 design update records an internal chat conversation about a labeled
+test set (`Outside Record` / `Internal Record` / `IsMatch [0,1]`) and states: *"the test-data
+simulation methodology itself is still open ... check for the outcome of that conversation
+before starting Task 3/4."* That conversation happened 2026-08-14 (one day later than
+session_8.md anticipated). This session is the resolution: it supplies the simulation
 methodology session_8 was waiting on, as its own upstream session rather than folded into
 session_8's already-large scope (cross-repo legacy comparison, adjudication workflow,
 disagreement bucketing).
@@ -34,11 +35,12 @@ single-edit-distance mutations of a real record (matches the CMS spec's own lite
 tolerance definition); true-non-match rows come from **mining real, distinct-record pairs that
 happen to collide on several fields** — not from asserting that a mutation is "a different
 person," which would only test the algorithm's own tolerance, not reality (this distinction was
-raised directly by Sean during design).
+raised directly during design).
 
 See `evaluation/SYNTHETIC_DATA_COMPARISON.md` (this session's other main deliverable) for the
-full accounting against the Doc and Slack thread, including what was migrated from two prior,
-never-merged prototypes, what was deliberately left behind and why, and known coverage gaps.
+full accounting against the Doc and that conversation, including what was migrated from two
+prior, never-merged prototypes, what was deliberately left behind and why, and known coverage
+gaps.
 
 ## Upstream sessions (must be completed first)
 
@@ -67,10 +69,11 @@ persisted to this repo or any external system — same pattern as `onc_baseline.
 ### In scope
 
 1. **`evaluation/mutations.py`** — DOB mutations (`mutate_dob`: day/month/year/swap/typo,
-   ported from `data_science_rapid_prototyping`'s `RecordModifier.modify_birthdate`) and name
+   ported from an internal rapid-prototyping repo's `RecordModifier.modify_birthdate`) and name
    mutations (`typo_edit`, `transpose_characters`, `drop_letters`, `abbreviate`,
-   `substitute_nickname`, ported from `helix.personmatching`'s unmerged `embed-proto` branch's
-   `NameModifier` hierarchy), rewritten as plain functions operating on `onc_loader.py`'s FHIR
+   `substitute_nickname`, ported from the legacy production matching engine's unmerged
+   `embed-proto` branch's `NameModifier` hierarchy), rewritten as plain functions operating on
+   `onc_loader.py`'s FHIR
    Patient dict shape. `generate_fuzzy_variant()` composes these into a single named or random
    mutation, returning `(mutated_patient, mutation_type_applied)`.
 2. **`evaluation/hard_negatives.py`** — `mine_shared_address_hard_negatives()`: blocks ONC
@@ -83,13 +86,13 @@ persisted to this repo or any external system — same pattern as `onc_baseline.
    for a standalone smoke run (`PYTHONPATH=. python evaluation/labeled_pairs.py`), matching
    `onc_baseline.py`'s convention.
 4. **`evaluation/SYNTHETIC_DATA_COMPARISON.md`** — the deliverable write-up comparing this
-   migration against the Google Doc and Slack thread, including the flagged-but-unresolved claim
-   about the ONC dataset's duplicate-identity risk (Doc §4) and the explicitly-deferred
-   client-type field-availability and Person-Patient-link-mining ideas.
+   migration against the Google Doc and the internal design conversation, including the
+   flagged-but-unresolved claim about the ONC dataset's duplicate-identity risk (Doc §4) and the
+   explicitly-deferred client-type field-availability and Person-Patient-link-mining ideas.
 5. **`evaluation/SYNTHETIC_DATA_SETUP.md`** — setup/execution walkthrough (env setup, running
    tests, running the demo script), plus a "Memory & scale" section addressing a real prior
    failure: loading the full ~1,000,000-record ONC dataset and transforming it at scale has
-   crashed a Databricks cluster before (per Sean, 2026-08-14). `labeled_pairs.py`'s `__main__`
+   crashed a Databricks cluster before (per an internal report, 2026-08-14). `labeled_pairs.py`'s `__main__`
    defaults to one sampled-down shard (`DEFAULT_SAMPLE_SIZE`, overridable via `SAMPLE_SIZE`)
    rather than `onc_baseline.py`'s existing all-9-shards pattern, for exactly this reason.
 
@@ -161,11 +164,11 @@ seed. See the actual test files for the full parametrized case tables.
       all 9.
 - [x] `session_8.md` updated to record this session's resolution (done as part of this PR — see
       that file's changelog).
-- [x] PR reviewed and approved (Kenan Spruill, GitHub) and merged 2026-08-14. **Partial:**
-      Imran/Adam have not formally reviewed via GitHub — the methodology itself was built
-      directly from Sean's 2026-08-14 Slack design discussion with Imran, but neither has signed
-      off on the PR specifically. Follow up with them before treating the methodology direction
-      as fully confirmed, per the original plan.
+- [x] PR reviewed and approved (a colleague, GitHub) and merged 2026-08-14. **Partial:**
+      the repo maintainer and another reviewer have not formally reviewed via GitHub — the
+      methodology itself was built directly from a 2026-08-14 internal design discussion, but
+      neither has signed off on the PR specifically. Follow up with them before treating the
+      methodology direction as fully confirmed, per the original plan.
 
 ## Open questions
 
@@ -177,20 +180,26 @@ seed. See the actual test files for the full parametrized case tables.
   found in either repo corroborates or refutes it (see `SYNTHETIC_DATA_COMPARISON.md`). If
   false, `onc_baseline.py`'s existing cross-pair negative sampling (session 3) is unaffected; if
   true, both that code and this session's `hard_negatives.py` need revisiting.
-- Whether `patient-matching` remains a permanent home for this module or a staging copy ahead of
+  **Resolved (session_12, 2026-08-31): false for this dataset copy** — all 1,000,000 rows across
+  the nine vendored shards have unique `EnterpriseID`s, zero duplicates. `onc_baseline.py`'s and
+  `hard_negatives.py`'s "distinct ID ⇒ distinct person" assumption is confirmed safe; the
+  cross-org Doc's inverse claim (now restated more strongly in its finalized version) does not
+  describe this vendored copy. See `onc_loader.py`'s module docstring.
+- Whether the originating repo remains a permanent home for this module or a staging copy ahead of
   the Doc §8-recommended neutral cross-org repo is explicitly treated as an open question for
-  the workgroup, per Sean's design-time answer — not resolved here.
+  the workgroup, per a design-time answer — not resolved here.
 
 ## Execution notes
 
-Executed 2026-08-14 in a single session, alongside reading the source Slack thread and Google
-Doc directly (both fetched fresh, not from a committed copy, matching `conventions.md`'s
-guidance for the CMS v3.3 spec's own live-draft handling). Code and tests written and verified
-locally (`uv run pytest`, `ruff check`, `mypy`, and a real-data smoke run) before opening the PR.
-`session_8.md` and `docs/sessions/index.md` updated in the same PR to record this session's
-resolution of session_8's 2026-08-13 open question and register session_9 in the index.
+Executed 2026-08-14 in a single session, alongside reading the source internal design
+conversation and Google Doc directly (both fetched fresh, not from a committed copy, matching
+`conventions.md`'s guidance for the CMS v3.3 spec's own live-draft handling). Code and tests
+written and verified locally (`uv run pytest`, `ruff check`, `mypy`, and a real-data smoke run)
+before opening the PR. `session_8.md` and `docs/sessions/index.md` updated in the same PR to
+record this session's resolution of session_8's 2026-08-13 open question and register session_9
+in the index.
 
-**Close-out (2026-08-14):** PR #27 approved by Kenan Spruill and merged into `main` same day.
-Doc moved `in_review/` -> `completed/`; `index.md` updated accordingly. Imran/Adam have not yet
-formally reviewed the PR itself (see Validation) — the "replace vs. run alongside" open question
-for session_8 remains open regardless of that follow-up.
+**Close-out (2026-08-14):** PR #27 approved by a colleague and merged into `main` same day. Doc
+moved `in_review/` -> `completed/`; `index.md` updated accordingly. The repo maintainer and
+another reviewer have not yet formally reviewed the PR itself (see Validation) — the "replace vs.
+run alongside" open question for session_8 remains open regardless of that follow-up.
