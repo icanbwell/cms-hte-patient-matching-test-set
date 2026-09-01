@@ -2,8 +2,8 @@
 
 **Purpose.** Given any candidate change to the matching logic — a new blocking rule, a
 new scoring rule, or a threshold change — produce a **rigorous before/after comparison**
-on a labeled gold-standard set, so a reviewer (e.g., Sean while Zack is out) can decide
-**ship / reject / needs-more-data** from evidence, not vibes.
+on a labeled gold-standard set, so a reviewer — including a backup reviewer covering while the
+usual one is out — can decide **ship / reject / needs-more-data** from evidence, not vibes.
 
 **Design principle: rule-agnostic.** Everything downstream treats a "rule" as a single
 function, `features -> bool` (predicted match). A blocking rule, a scoring rule, and a

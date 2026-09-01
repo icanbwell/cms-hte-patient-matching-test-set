@@ -38,12 +38,11 @@ DOB) on the same family insurance plan.
   implements the FHIR `identifier.type.coding` code(s) it keys off of (session_6's Task 1
   explicitly deferred that exact code choice to its own implementation time). Do not start this
   session before session_6 is in `completed/` — per the "start the next session" protocol's step
-  3, stop and tell Sean if asked to start this session early.
-- **Session 10** (`pending/`) — not a code dependency (this session's fabrication module is
+  3, stop and tell the lead engineer if asked to start this session early.
+- **Session 10** (`completed/`) — not a code dependency (this session's fabrication module is
   independent of session_10's mining/mutation modules), but both extend `labeled_pairs.py`'s
-  `build_labeled_pairs()` — coordinate to avoid a merge conflict on that function's signature if
-  both are in flight at once. Recommend landing session_10 first, since it has no upstream
-  dependency and can start immediately.
+  `build_labeled_pairs()`. Session 10's code has already landed (see
+  `docs/sessions/completed/session_10.md`), so this note is now moot — no coordination needed.
 
 ## Downstream sessions (unblocked by this one)
 
@@ -332,7 +331,7 @@ session_10's coincidental-vs-constructed-sharing note for the parallel concept).
   exclusions as session_10, unrelated to this session's insurance-identifier focus.
 - **Doc §1 Option C (company-submitted de-identified real data)**, e.g. sourcing real
   family-plan/Subscriber-ID structures from an actual payer feed instead of fabricating them.
-  Imran scoped this backlog down to Option A + Option B only, 2026-08-16 — this session's
+  The repo maintainer scoped this backlog down to Option A + Option B only, 2026-08-16 — this session's
   fabrication approach (synthetic identifiers over real-but-public ONC demographics) is already
   entirely Option A+B; no Option C data is used or planned here.
 

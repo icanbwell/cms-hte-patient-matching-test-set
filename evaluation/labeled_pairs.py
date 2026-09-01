@@ -30,8 +30,8 @@ Python list of nested dicts with no streaming, and NormalizationManager then
 produces a second full copy of that list. Materializing all ~1,000,000 ONC
 records this way (all 9 shards) - and then running mutation/normalization
 transforms across all of them at once - is exactly the failure pattern that
-has previously crashed a Databricks cluster running this dataset (per Sean,
-2026-08-14). This script defaults to one shard, sampled down further, for
+has previously crashed a Databricks cluster running this dataset (per an
+internal report, 2026-08-14). This script defaults to one shard, sampled down further, for
 exactly that reason. See SYNTHETIC_DATA_SETUP.md's "Memory & scale" section
 before scaling this up, and note that `onc_baseline.py`'s own `__main__`
 (session 3) loads all 9 shards unconditionally - the same risk exists there,
@@ -51,15 +51,14 @@ from hard_negatives import mine_shared_address_hard_negatives
 from mutations import generate_fuzzy_variant
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
+from patient_matching.matching.field_extractor import FieldExtractor
+from patient_matching.normalization.manager import NormalizationManager
 from rule_eval import LabeledPair
 from special_populations import (
     INSTITUTION_TYPES,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
 )
-
-from patient_matching.matching.field_extractor import FieldExtractor
-from patient_matching.normalization.manager import NormalizationManager
 
 Patient = Dict[str, Any]
 
@@ -233,7 +232,9 @@ if __name__ == "__main__":
     counts = Counter(
         (
             p.strata.get("pair_type"),
-            p.strata.get("mutation") or p.strata.get("case") or p.strata.get("category"),
+            p.strata.get("mutation")
+            or p.strata.get("case")
+            or p.strata.get("category"),
         )
         for p in pairs
     )
@@ -246,5 +247,5 @@ if __name__ == "__main__":
         print(f"  {label}: {count}")
     print(
         "\nThis intentionally does not load all 9 ONC shards (~1,000,000 records) - "
-        "see SYNTHETIC_DATA_SETUP.md's \"Memory & scale\" section before scaling up."
+        'see SYNTHETIC_DATA_SETUP.md\'s "Memory & scale" section before scaling up.'
     )

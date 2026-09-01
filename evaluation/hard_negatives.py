@@ -14,21 +14,21 @@ be testing whether a matcher's fuzzy tolerance is *too* generous - a
 statement about the algorithm, not about reality. A genuine hard negative
 requires two records that were never derived from each other. See
 SYNTHETIC_DATA_COMPARISON.md for the full discussion (this distinction was
-raised directly by Sean during design, 2026-08-14 Slack).
+raised directly during design, 2026-08-14 internal chat).
 
 Caveat - read before treating this module's output as ground truth: it
 assumes distinct EnterpriseIDs in the ONC dataset denote distinct people.
 Direct inspection of the dataset (flat, alphabetically-sharded CSVs, one row
-per EnterpriseID, no duplicate-cluster column) and of helix.personmatching's
-original CMS test (`tests/cms_dataset/test_cms_dataset.py::test_cms_dataset`,
-a self-match-only design that never relied on this assumption - it only
-checks whether each record's top match is itself) turned up nothing in this
-repo corroborating - or refuting - the claim made in the Google Doc's Section
-4, that datasets "like" the ONC Challenge dataset intentionally contain
-multiple records for the same synthetic person under different IDs. Treat
-pairs mined here as hard-negative *candidates* pending independent
-verification of that claim against ONC's own published methodology, not as
-confirmed ground truth. See SYNTHETIC_DATA_COMPARISON.md.
+per EnterpriseID, no duplicate-cluster column) and of a prior internal
+self-match test suite (a self-match-only design that never relied on this
+assumption - it only checks whether each record's top match is itself) turned
+up nothing in this repo corroborating - or refuting - the claim made in the
+Google Doc's Section 4, that datasets "like" the ONC Challenge dataset
+intentionally contain multiple records for the same synthetic person under
+different IDs. Treat pairs mined here as hard-negative *candidates* pending
+independent verification of that claim against ONC's own published
+methodology, not as confirmed ground truth. See SYNTHETIC_DATA_COMPARISON.md
+(session 12 resolves this for this repo's specific vendored dataset copy).
 """
 
 from __future__ import annotations

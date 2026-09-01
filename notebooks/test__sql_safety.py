@@ -1,7 +1,7 @@
 """Tests for the shared `notebooks/_sql_safety.py` helpers.
 
 Moved out of `test_fhir_match_data_source.py` when the helpers were deduplicated out of
-`fhir_match_data_source.py` and `wellsense_member_matching_analysis.py` into this shared
+`fhir_match_data_source.py` and a sibling member-matching-analysis notebook into this shared
 module (PR #22 review) - both notebooks now import from here, so the contract is tested
 once instead of per-notebook.
 """
