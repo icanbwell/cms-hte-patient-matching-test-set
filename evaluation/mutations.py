@@ -13,7 +13,7 @@ is_true_match=True).
 Ported from two prior, never-merged internal prototypes and rewritten to operate on
 onc_loader.py's FHIR Patient dict shape (not the ONC CSV's flat FIRST/LAST/DOB
 columns those prototypes used), and to use rapidfuzz (already a core
-patient-matching dependency) instead of the prototypes' Redis/embedding/
+dependency of the reference matching engine) instead of the prototypes' Redis/embedding/
 CNN-training machinery, which doesn't apply to this repo's rule-based matcher:
 
   - DOB mutations: an internal rapid-prototyping repo's record-modification

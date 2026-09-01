@@ -6,7 +6,7 @@ see Execution notes)
 **Estimated size:** L — one new test tier (generator module + manifest format + tests), plus
 several smaller doc/metadata alignment fixes across existing modules.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -336,7 +336,7 @@ Executed 2026-08-31, same session as authoring. All eight tasks completed:
    tier split; no functional change.
 7. No code — flagged only, per scope (`SYNTHETIC_DATA_COMPARISON.md`'s updated deferral note).
 8. `session_10.md` moved to `completed/` with an honest status note (no PR/reviewer info exists in
-   this repo's own git history — the original PR happened pre-split, in `patient-matching`).
+   this repo's own git history — the original PR happened pre-split, in the originating repo).
 
 Verification: `uv run pytest .` — 232 passed. `ruff check` clean on all new/changed files modulo
 pre-existing `FURB192`/`UP006`/`UP035` debt already present in `labeled_pairs.py`/

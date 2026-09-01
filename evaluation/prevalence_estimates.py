@@ -316,8 +316,8 @@ _HARD_NEGATIVE = PrevalenceEstimate(
         "distinct people sharing ZIP+DOB), not a demographic scenario with a "
         "'how common is this' prevalence question in the same sense as the "
         "other categories - it's already governed by this repo's own "
-        "P(collision) framework (patient_matching/matching/collision.py's "
-        "per-field u-probabilities), which is the correct tool for "
+        "P(collision) framework (the reference matching engine's "
+        "matching/collision.py per-field u-probabilities), which is the correct tool for "
         "collision-probability questions, not a population-prevalence "
         "estimate. Left at NEUTRAL_FREQUENCY; out of scope for this module."
     ),

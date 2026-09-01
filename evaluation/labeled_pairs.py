@@ -21,7 +21,7 @@ Run standalone from the repo root:
     PYTHONPATH=. python evaluation/labeled_pairs.py
 
 SCOPE, per session 13: this module no longer normalizes patients (dropped the
-`patient_matching.normalization.NormalizationManager` dependency - see
+reference matching engine's normalization-manager dependency - see
 session_13.md) or wraps output for any matching engine to consume - this repo
 only produces portable test data now, per Design Principle 1's
 algorithm-agnostic stance. `generate_raw_pairs()`'s output carries whatever

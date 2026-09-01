@@ -10,7 +10,7 @@ resource.
 
 Values are copied through as-is (raw CSV case/punctuation) - this repo's own
 generation pipeline does not normalize them (see session_13, which dropped
-that step along with the patient_matching dependency). If you're testing your
+that step along with the removed matching-engine dependency). If you're testing your
 own matching engine against the exported cases, apply your own normalization
 convention first, same as you would for any other input.
 

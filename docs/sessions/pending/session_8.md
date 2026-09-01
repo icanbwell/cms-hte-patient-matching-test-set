@@ -1,7 +1,7 @@
 # Session 8 — Legacy Comparison Harness: Precision/Recall, Disagreement Buckets, Explanations
 
 **Status:** pending — blocked by session 13, needs re-scoping before it can proceed as written.
-Session 13 removed this repo's `patient_matching` git dependency entirely (this repo only
+Session 13 removed this repo's git dependency on the reference matching engine entirely (this repo only
 produces test data now, it doesn't test any specific matching engine). This session's entire
 premise — comparing the legacy and new engines in-process, in this repo — depends on exactly
 the capability session 13 removed. Whoever picks this up next needs to decide whether the
@@ -12,7 +12,7 @@ in favor of the algorithm-agnostic approach the rest of this repo now takes. See
 **Estimated size:** L — a new cross-repo comparison harness, a disagreement-bucketing
 classifier, and a first-class explanation-output formatter; larger than a typical M/L session.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -77,7 +77,7 @@ only annotated at each place it's relevant.
   query logic independently.
 - **Session 6** (Table 2 v3.3 expansion) — **soft/quality dependency, not a hard code
   dependency.** This session's harness-building tasks (1-4 below) can be built and tested against
-  whatever rule set currently exists in `patient_matching/matching/table2_rules.py` (today: the
+  whatever rule set currently exists in the reference matching engine's `matching/table2_rules.py` (today: the
   26-rule v3.2.2 set, since session 6 hasn't started — see index.md's Suggested Next Session).
   But the comparison numbers this session produces are only meaningful as a **go-live** artifact
   once session 6 (and any addenda-driven follow-up sessions — see the open `NEEDS HUMAN DECISION`
@@ -111,10 +111,10 @@ docs is explicitly out of scope here (see "Out of scope").
 - **Legacy engine output, for comparison.** The current production algorithm lives in this
   organization's legacy production matching engine (a separate internal package: scoring in
   `logics/score_calculator.py`, entry rule set `logics/rule_library.py`) — a different repo than
-  `patient-matching`. No prior session in this repo has taken a runtime dependency on another
+  the originating repo. No prior session in this repo has taken a runtime dependency on another
   internal repo's package (session 3 only copied static, public ONC data and matched column
   semantics by inspection). **`NEEDS HUMAN DECISION — lead engineer`:** is it acceptable for
-  `patient-matching` to add the legacy engine as a dev/evaluation-only dependency (e.g. an
+  the originating repo to add the legacy engine as a dev/evaluation-only dependency (e.g. an
   optional `[dependency-groups] eval` extra, matching how `evaluation/`'s numpy/pandas/scipy are
   already handled per `conventions.md`'s testing-structure section) so this session can call the
   legacy scorer in-process, or is there a reason to keep the two repos fully decoupled (e.g. a
@@ -189,7 +189,7 @@ plus a disagreement-bucket table), never committed data or query output, per the
 ### Out of scope
 
 - **Deployment** (meeting notes' Step 6: scheduling the job, staging pass, prod rollout with
-  batch-volume/match-rate/score-distribution monitoring). `patient-matching` has no deploy target
+  batch-volume/match-rate/score-distribution monitoring). The originating repo has no deploy target
   and "no deploy ceremony" by design (every session ends in a PR merged to `main`, per
   `conventions.md`) — deployment is Phase 2, production-facing work that belongs in the production
   matching service's feature-flag/shadow-mode infrastructure (handoff §4.4 item 6-7), which has no
@@ -313,7 +313,7 @@ class TestComparisonReportFraming:
 
 ## Open questions
 
-- **`NEEDS HUMAN DECISION — lead engineer`** (stated above): whether `patient-matching` may take
+- **`NEEDS HUMAN DECISION — lead engineer`** (stated above): whether the originating repo may take
   an eval-only dependency on the legacy production matching engine to produce legacy comparison
   output in-process. Recommended default: yes, as a pinned eval-only extra matching whatever
   version is actually live in prod at execution time.

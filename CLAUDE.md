@@ -5,11 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 This repo produces a portable, algorithm-agnostic **test dataset** for validating patient-matching
-algorithms against the CMS HTE Patient Matching Specification. It was split out of
-[icanbwell/patient-matching](https://github.com/icanbwell/patient-matching) (a reference matching
-implementation) and, as of session 13, has **no runtime dependency on that or any matching engine**
-— it only generates and exports test data. Everything in `evaluation/` produces FHIR `Patient` JSON
-and JSON Lines manifests; nothing here scores a matching algorithm itself.
+algorithms against the CMS HTE Patient Matching Specification. It was split out of a private
+reference matching implementation and, as of session 13, has **no runtime dependency on that or
+any matching engine** — it only generates and exports test data. Everything in `evaluation/`
+produces FHIR `Patient` JSON and JSON Lines manifests; nothing here scores a matching algorithm
+itself.
 
 Read `evaluation/DESIGN.md` and `evaluation/SYNTHETIC_DATA_SETUP.md` first for the full picture;
 `evaluation/cases/README.md` explains how a consumer (any org, any language) uses the generated
@@ -122,9 +122,9 @@ distributed job (Spark), not a single-process Python list — see `SYNTHETIC_DAT
   are deliberately ignored in `pyproject.toml` rather than rewriting every existing file).
 - Field values are copied through from the ONC CSVs as-is — this repo's generation pipeline does
   **not** normalize case/punctuation (that step was intentionally dropped in session 13 along with
-  the `patient_matching` dependency). Any consumer must apply its own normalization before comparing.
+  the removed matching-engine dependency). Any consumer must apply its own normalization before comparing.
 - Every generated case's `rationale` field traces to a specific category/provenance — never a
   black box (Design Principle 2 in `DESIGN.md`/the workgroup Doc).
 - `docs/sessions/` narrates the design history chronologically (`completed/` and `pending/`) —
   check there before assuming something is unimplemented; `session_13.md` in particular explains
-  the `patient_matching` dependency removal that shapes the current scope.
+  the removed matching-engine dependency and how that shapes the current scope.

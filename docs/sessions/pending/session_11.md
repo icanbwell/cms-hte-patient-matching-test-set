@@ -1,19 +1,19 @@
 # Session 11 — Administrative-Restriction & Insurance-Identifier Labeled Pairs
 
 **Status:** pending — partially superseded by session 13, needs re-scoping before it can proceed
-as written. Session 13 removed this repo's `patient_matching` git dependency entirely (this repo
-only produces test data now). The data-fabrication piece below (synthetic insurance-identifier
-values) is likely still valid as-is - it never needed the engine. But this doc's wiring into
-`build_labeled_pairs()` (deleted; `generate_raw_pairs()` remains and is the right place to wire
-into instead), its `NormalizationManager`/`FieldExtractor` usage, and its planned regression
-guard in `patient_matching/matching/tests/test_table2_rules.py` all assume the removed
-dependency and need rethinking. See `docs/sessions/completed/session_13.md`.
+as written. Session 13 removed this repo's git dependency on the reference matching engine entirely
+(this repo only produces test data now). The data-fabrication piece below (synthetic
+insurance-identifier values) is likely still valid as-is - it never needed the engine. But this
+doc's wiring into `build_labeled_pairs()` (deleted; `generate_raw_pairs()` remains and is the right
+place to wire into instead), its `NormalizationManager`/`FieldExtractor` usage, and its planned
+regression guard in the reference matching engine's `matching/tests/test_table2_rules.py` all assume
+the removed dependency and need rethinking. See `docs/sessions/completed/session_13.md`.
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** M/L — one new fabrication module (the repo's first genuinely *programmatic*
 synthetic-patient generator, not a mutation/mining of real ONC records), its wiring into
 `labeled_pairs.py`, and tests.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -58,8 +58,8 @@ None yet authored. Feeds the same `labeled_pairs.py` output session_8 eventually
 ## Upstream data/system dependencies
 
 None new (static ONC fixtures, same as prior sessions) — this session fabricates identifier
-*values*, not real Coverage data, so it takes no dependency on `patient_matching/fhir_client/`,
-Databricks, or any live payer system.
+*values*, not real Coverage data, so it takes no dependency on the reference matching engine's
+`fhir_client/`, Databricks, or any live payer system.
 
 ## Downstream data/system dependencies
 
@@ -94,8 +94,8 @@ FHIR identifier type-code note, read before editing MEMBER_ID_TYPE_CODE /
 SUBSCRIBER_ID_TYPE_CODE below: session_6 (docs/sessions/pending/session_6.md,
 Task 1) commits to extracting insurance_member_id/insurance_subscriber_id via
 Patient.identifier entries, but deliberately deferred the exact type.coding
-code(s) to its own implementation time (resolved by reading how
-patient_matching/fhir_client/ and patient_matching/ial2_extraction/ actually
+code(s) to its own implementation time (resolved by reading how the reference matching engine's
+fhir_client/ and ial2_extraction/ modules actually
 attach Coverage-derived identifiers to a Patient dict this engine receives).
 Before writing this module for real, read field_extractor.py's
 _extract_identifiers as session_6 actually left it, and set these two
@@ -299,7 +299,7 @@ explicit slice of donor patients rather than the full sampled list — wire it i
 `labeled_pairs.py`'s `__main__` block as an additional, clearly-labeled section of the printed
 summary, alongside (not replacing) the existing counts.
 
-**3. Regression guard in `patient_matching/matching/tests/test_table2_rules.py`** (extends
+**3. Regression guard in the reference matching engine's `matching/tests/test_table2_rules.py`** (extends
 session_6's own `test_first_last_dob_zip_never_appears` pattern to this session's restriction):
 
 ```python
@@ -352,7 +352,7 @@ session_10's coincidental-vs-constructed-sharing note for the parallel concept).
    constants).
 3. Write `evaluation/labeled_pairs.py`'s `build_insurance_identifier_pairs()` (code above) and
    wire it into the `__main__` block's printed summary.
-4. Add the Table 4 regression guard to `patient_matching/matching/tests/test_table2_rules.py`.
+4. Add the Table 4 regression guard to the reference matching engine's `matching/tests/test_table2_rules.py`.
 5. Update `evaluation/SYNTHETIC_DATA_COMPARISON.md`.
 
 ## Unit tests required
@@ -464,8 +464,8 @@ class TestRecycledMemberIdNegativePairs:
 
 Plus an integration test (in `evaluation/test_labeled_pairs.py`, `importorskip("numpy")`) that
 runs `build_insurance_identifier_pairs()` against 4 real ONC patients and asserts the expected
-`pair_type` strata values appear, and a test in `patient_matching/matching/tests/test_table2_rules.py`
-for Task 3's regression guard.
+`pair_type` strata values appear, and a test in the reference matching engine's
+`matching/tests/test_table2_rules.py` for Task 3's regression guard.
 
 ## Validation (definition of "resolved")
 

@@ -1,4 +1,4 @@
-# Session 13 — Remove the patient_matching Dependency: This Repo Only Produces Test Data
+# Session 13 — Remove the Reference-Matching-Engine Dependency: This Repo Only Produces Test Data
 
 **Status:** completed (executed 2026-09-01, same session as authoring — no PR/reviewer yet;
 see Execution notes)
@@ -9,11 +9,11 @@ the generation pipeline's normalization step, and touches most of this repo's do
 ## Outcome purpose
 
 Opening PR #3 (session 12's population-tier work) surfaced a real CI blocker: this repo's
-`pyproject.toml` depends on `patient_matching @ git+https://github.com/icanbwell/patient-matching.git`,
+`pyproject.toml` depends on the reference matching engine via a git dependency, pointing at
 a **private** repo. GitHub Actions' default `GITHUB_TOKEN` has zero cross-repo read access to it
-(confirmed via `patient_matching`'s own `actions/permissions/access` API: `access_level: "none"`),
+(confirmed via the reference matching engine's own `actions/permissions/access` API: `access_level: "none"`),
 so `uv sync` fails in CI with "remote: Repository not found" — not a credentials problem, a
-permissions one, and fixing it properly would mean either changing `patient_matching`'s own
+permissions one, and fixing it properly would mean either changing the reference matching engine's own
 cross-repo access settings or provisioning a PAT secret — both org-level decisions, not something
 to make unilaterally while fixing a CI pipeline for a different repo.
 
@@ -22,7 +22,7 @@ dependency**. This repo's actual deliverable, per `evaluation/DESIGN.md`'s and
 `evaluation/cases/README.md`'s own Design Principle 1, has always been supposed to be
 algorithm-agnostic test data — "every test case is a pair of standard FHIR Patient resources plus
 an expected outcome... nothing about the format assumes any particular matching implementation."
-Depending on `patient_matching` at all was in tension with that principle from the start; this
+Depending on the reference matching engine at all was in tension with that principle from the start; this
 session resolves the tension instead of working around the CI symptom.
 
 **Explicit scope confirmed with the maintainer before starting:** full removal, not just making
@@ -42,7 +42,7 @@ the dependency optional. Delete everything that exercises the live matching engi
   needing re-scoping in its own doc; not resolved here.
 - **Session 11** (`pending/`) — its data-fabrication piece is likely unaffected, but its planned
   wiring into `build_labeled_pairs()` (deleted) and a regression guard inside
-  `patient_matching`'s own test suite both assumed the removed dependency. Flagged as needing
+  the reference matching engine's own test suite both assumed the removed dependency. Flagged as needing
   re-scoping in its own doc; not resolved here.
 
 ## Upstream data/system dependencies
@@ -58,8 +58,8 @@ repo, private or public.
 
 ### In scope
 
-1. **`pyproject.toml`** — remove the `patient_matching` git dependency. Add `nicknames` as a
-   direct dependency (it was only being supplied transitively through `patient_matching` before;
+1. **`pyproject.toml`** — remove the git dependency on the reference matching engine. Add `nicknames` as a
+   direct dependency (it was only being supplied transitively through that dependency before;
    `mutations.py` imports it directly and would otherwise break). `rapidfuzz` was checked and
    found to be cited only in a docstring, never actually imported — no action needed there.
 2. **`.github/workflows/build_and_test.yml`** — remove the `git config
@@ -100,7 +100,7 @@ repo, private or public.
 
 ## Tasks
 
-1. Removed `patient_matching` from `pyproject.toml`; added `nicknames` directly. Verified via a
+1. Removed the reference-matching-engine dependency from `pyproject.toml`; added `nicknames` directly. Verified via a
    fresh `rm -rf .venv uv.lock && uv sync` that installation no longer touches any private repo.
 2. Removed the private-repo git-credential step from `.github/workflows/build_and_test.yml`.
 3. Deleted `onc_baseline.py`, `test_onc_baseline.py`, `fhir_match_data_source.py`,
@@ -130,7 +130,7 @@ repo, private or public.
 No new test files — this session is a removal. Existing test files updated in place (Task 6-7
 above); every other existing test file needed zero changes, since the generation logic itself
 (`mutations.py`/`hard_negatives.py`/`special_populations.py`/`normalization_edge_cases.py`) never
-imported `patient_matching` and is already robust to un-normalized (mixed-case) input — every
+imported the reference matching engine and is already robust to un-normalized (mixed-case) input — every
 case-sensitive comparison in that code already normalizes to a common case locally (e.g.
 `_primary_family_name(patient).upper()`) rather than assuming its input already was.
 
@@ -150,10 +150,9 @@ case-sensitive comparison in that code already normalizes to a common case local
       ("AABERG", "KATHERINE", `347-984-6839`) instead of the previously-normalized form
       ("aaberg", "katherine", `+13479846839`) - confirms the normalization removal is real, not
       just absent from the code path that happened to run.
-- [x] `grep -r patient_matching` across the repo (excluding `.venv`) returns only the
-      `icanbwell/patient-matching` GitHub URL in `README.md` (historical provenance, not a
-      dependency) and citation-only mentions in docstrings/historical session docs - no code
-      imports it.
+- [x] `grep -r patient_matching` across the repo (excluding `.venv`) returns only a historical-provenance
+      mention of the originating repo in `README.md` (not a dependency) and citation-only mentions
+      in docstrings/historical session docs - no code imports it.
 
 ## Open questions
 
@@ -161,15 +160,15 @@ case-sensitive comparison in that code already normalizes to a common case local
   that can depend on both the legacy and new matching engines), or does the workgroup no longer
   need it given the algorithm-agnostic direction the rest of this repo has taken? Not resolved
   here - flagged in `session_8.md`.
-- **For whoever revisits session 11:** same question, narrower - does its planned
-  `patient_matching`-side regression guard move elsewhere, or get dropped? The data-fabrication
+- **For whoever revisits session 11:** same question, narrower - does its planned regression
+  guard on the reference matching engine's side move elsewhere, or get dropped? The data-fabrication
   half of that session is likely unaffected and can probably proceed once session 6 unblocks it.
 
 ## Execution notes
 
 Executed 2026-09-01, prompted directly by PR #3's CI failure (see Outcome purpose). Verified the
 full blast radius by grep before touching anything: exactly three files had real
-`patient_matching` imports needing code changes (`labeled_pairs.py`, `population_cases.py`, plus
+reference-matching-engine imports needing code changes (`labeled_pairs.py`, `population_cases.py`, plus
 the seven files deleted outright); everything else was docstring/comment prose, fixed for
 accuracy but not functionally coupled. Confirmed `nicknames` was the only actual missing direct
 dependency (`rapidfuzz` was cited but never imported) before editing `pyproject.toml`. Ran the

@@ -42,7 +42,7 @@ the shared candidate registry, with that same person's real, address-intact
 record used elsewhere as a plain distractor.
 
 SCOPE, per session 13: this module no longer normalizes `patients` (dropped
-the `patient_matching.normalization.NormalizationManager` dependency - this
+the reference matching engine's normalization-manager dependency - this
 repo only produces portable test data now, per Design Principle 1's
 algorithm-agnostic stance). Candidate/query bodies carry whatever case/
 punctuation the caller passed in.

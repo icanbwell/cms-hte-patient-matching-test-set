@@ -30,7 +30,8 @@ Patient = Dict[str, Any]
 
 _MIN_MUTATABLE_LENGTH = 3
 
-# Common Latin-script diacritics folded by patient_matching.normalization.text_utils.fold_diacritics.
+# Common Latin-script diacritics folded by the reference matching engine's
+# normalization.text_utils.fold_diacritics.
 DIACRITIC_MAP: Dict[str, str] = {
     "a": "á",
     "e": "é",

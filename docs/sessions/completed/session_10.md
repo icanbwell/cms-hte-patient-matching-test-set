@@ -9,7 +9,7 @@ these files for the actual merge history.)
 **Estimated size:** M/L — two new small modules following `mutations.py`/`hard_negatives.py`'s
 existing shape, wiring into `labeled_pairs.py`, and their tests.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -38,7 +38,7 @@ tolerance, not reality. This session applies the same discipline both directions
 - **Normalization edge cases** (diacritics, punctuation/whitespace) are **mutations** of a real
   record that **must still be recognized as the same person** after normalization — analogous to
   `mutations.py`'s existing fuzzy-variant pairs, but exercising the *normalization* layer
-  (`patient_matching/normalization/`) rather than fuzzy *comparison* (`FieldComparator`).
+  (the reference matching engine's `normalization/` module) rather than fuzzy *comparison* (`FieldComparator`).
 - **Special-population pairs** must, wherever the underlying dataset allows it, come from
   **genuinely distinct records** (mining), not mutations of one record — same principle
   `hard_negatives.py` already established. Where ONC has no natural examples of a named category
@@ -327,7 +327,7 @@ def mine_shared_surname_household_negatives(
 ```
 
 **2. `evaluation/normalization_edge_cases.py`** — two true-match variant generators exercising
-`patient_matching/normalization/` end-to-end (not `FieldComparator`'s fuzzy path), plus one
+the reference matching engine's `normalization/` module end-to-end (not `FieldComparator`'s fuzzy path), plus one
 standalone pipeline check (not a `LabeledPair` - see its docstring for why):
 
 ```python
@@ -356,7 +356,8 @@ Patient = Dict[str, Any]
 
 _MIN_MUTATABLE_LENGTH = 3
 
-# Common Latin-script diacritics folded by patient_matching.normalization.text_utils.fold_diacritics.
+# Common Latin-script diacritics folded by the reference matching engine's
+# normalization.text_utils.fold_diacritics.
 DIACRITIC_MAP: Dict[str, str] = {
     "a": "á",
     "e": "é",
@@ -580,8 +581,8 @@ def build_labeled_pairs(
 unchanged from session_9 — shown above only for placement context; do not duplicate the import.)
 
 **4. Placeholder-DOB pipeline check** — not a `LabeledPair` (a placeholder/out-of-range DOB is a
-single-patient normalization behavior, not a match/non-match pair; `patient_matching/normalization/
-placeholder_detector.py`'s `is_placeholder_date()` already has its own unit tests for the D.6
+single-patient normalization behavior, not a match/non-match pair; the reference matching engine's
+`normalization/placeholder_detector.py`'s `is_placeholder_date()` already has its own unit tests for the D.6
 threshold itself). What's untested is whether that detection is actually wired end-to-end through
 `NormalizationManager.normalize()` into `FieldExtractor.extract()`, so this session adds one
 integration-level test confirming a placeholder/out-of-range DOB never reaches `PatientFields.dob`
@@ -808,15 +809,15 @@ class TestPunctuationVariant:
 ```
 
 ```python
-# addition to patient_matching/normalization/tests/test_manager.py (or a new
+# addition to the reference matching engine's normalization/tests/test_manager.py (or a new
 # evaluation/test_placeholder_dob_pipeline.py, sibling to labeled_pairs.py's own
 # tests - author's call at implementation time; either location is a legitimate
 # home for a pipeline-level, not unit-level, check):
 
 class TestPlaceholderDobExcludedEndToEnd:
     def test_out_of_range_dob_never_reaches_extracted_fields(self):
-        from patient_matching.normalization.manager import NormalizationManager
-        from patient_matching.matching.field_extractor import FieldExtractor
+        from reference_matching_engine.normalization.manager import NormalizationManager
+        from reference_matching_engine.matching.field_extractor import FieldExtractor
 
         patient = {
             "resourceType": "Patient",
@@ -872,8 +873,8 @@ diff — that's the equivalence proof, not a new test).
 - [ ] `make run-pre-commit` is clean — **could not run**; see Execution notes.
 - [x] Per `conventions.md`'s statistical rigor gate: this session does not itself change matching
       *behavior* (no `MatchingEngine`/`table2_rules.py` edits) — confirmed the diff touches only
-      `evaluation/*.py` plus `patient_matching/normalization/tests/test_manager.py` (a new test
-      class, no production code under `patient_matching/` changed) — Tier-1 gate does not apply.
+      `evaluation/*.py` plus the reference matching engine's `normalization/tests/test_manager.py` (a new test
+      class, no production code under the reference matching engine changed) — Tier-1 gate does not apply.
 - [x] **Task 6:** `evaluation/export_test_dataset.py` exists, imports cleanly, and every test in
       `evaluation/test_export_test_dataset.py` passes (9 passed).
 - [x] `generate_raw_pairs()` refactor is behavior-preserving: `evaluation/test_labeled_pairs.py`'s
@@ -887,7 +888,7 @@ diff — that's the equivalence proof, not a new test).
 ## Open questions
 
 - Exact home for the placeholder-DOB pipeline test: resolved as
-  `patient_matching/normalization/tests/test_manager.py` (new `TestPlaceholderDobExcludedEndToEnd`
+  the reference matching engine's `normalization/tests/test_manager.py` (new `TestPlaceholderDobExcludedEndToEnd`
   class) rather than a new `evaluation/` file, since it reads naturally alongside
   `TestNormalizationManager`'s other end-to-end normalize() checks in the same file.
 - `institutional_group_size=3` kept at its recommended default (24 constructed institutional pairs
@@ -902,7 +903,7 @@ designed module/function shapes.
 **Test execution environment:** this sandbox has no JFrog credentials (`uv sync` fails resolving
 `fastapi` from the private index) and no `.env` file, so neither `uv run pytest`/`uv run
 pre-commit` nor `make tests`/`make run-pre-commit` (Docker-based, needs `.env`) could actually run.
-Substituted: an existing local `.venv` (already had `patient_matching`'s core deps) supplemented
+Substituted: an existing local `.venv` (already had the reference matching engine's core deps) supplemented
 with `numpy`, `usaddress-scourgify` (note: NOT plain `scourgify` — that's a different, incompatible
 PyPI package; must be `usaddress-scourgify` per `pyproject.toml`) from public PyPI, then ran the
 full suite directly: **481 passed** (up from a confirmed 448-passing baseline before this
@@ -918,7 +919,7 @@ instead of Docker in CI") — pre-existing environment drift, not caused by this
 default-enabled rules (e.g. `UP006`/`UP035`/`DTZ011`). Rather than trust raw `ruff check` output,
 every finding was checked against already-merged sibling files
 (`evaluation/mutations.py`, `evaluation/hard_negatives.py`,
-`patient_matching/normalization/placeholder_detector.py`) run through the *same* venv — all three
+the reference matching engine's `normalization/placeholder_detector.py`) run through the *same* venv — all three
 produce the identical classes of finding despite being known-clean, merged code, confirming the
 findings are version drift, not real regressions. The one finding that was NOT drift (`I001`
 import-block sorting in the two new test files) was fixed via

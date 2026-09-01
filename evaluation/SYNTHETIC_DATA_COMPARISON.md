@@ -51,7 +51,8 @@ closed by `docs/sessions/completed/session_12.md`:
 ## Reading this document today (session 13)
 
 Everything below narrates what session 9/10 actually built, accurately, at the time it was
-built. Since then, session 13 removed this repo's `patient_matching` git dependency entirely —
+built. Since then, session 13 removed this repo's git dependency on the reference matching engine
+entirely —
 this repo only produces test data now; it doesn't test any specific matching engine itself. That
 means several things this document describes as current no longer exist: `evaluation/onc_baseline.py`
 (deleted), `labeled_pairs.build_labeled_pairs()` (deleted — `generate_raw_pairs()` itself remains
@@ -78,7 +79,7 @@ extracts and rewrites the reusable, backend-agnostic parts:
 
 | Left in the legacy production matching engine's `embed-proto` branch | Why it doesn't come along |
 |---|---|
-| `utils/record_keeper.py` (Redis/RedisVL vector store) | Coupled to a specific Redis docker-compose service and a nearest-neighbor embedding search backend. `patient-matching`'s engine is rule/score-based (`patient_matching/matching/`), not embedding-based — there's nothing for this to plug into. |
+| `utils/record_keeper.py` (Redis/RedisVL vector store) | Coupled to a specific Redis docker-compose service and a nearest-neighbor embedding search backend. The reference matching engine is rule/score-based (its `matching/` module), not embedding-based — there's nothing for this to plug into. |
 | `utils/embedding/*`, `PatientMatching/OneToMany/` (CNN-ED training pipeline) | Trains a character-level embedding model for name matching. Out of scope for a rule-based matcher; would be a separate, much larger effort if ever pursued. |
 | `utils/stats/{core,comparison,experiments,testing,analysis,visualization}.py` | This is the old "hard negative discovery" harness — but it discovers hard negatives by mutating a record, embedding it, and checking whether nearest-neighbor search still retrieves the original. That's fundamentally an embedding-search question, not a labeled-pair question, and doesn't port to a rule engine. `evaluation/rule_eval.py` (already in this repo, from session 3) is the rule-based equivalent — this PR feeds it, rather than re-implementing this harness against a different backend. |
 
@@ -142,7 +143,7 @@ by enterprise patient ID, never row ID") does not describe this vendored copy �
 | Negative pair per combination (two distinct patients sharing nothing on that combination) | **Partially** — `onc_baseline.py`'s existing random cross-pair sampling covers the general case; not combination-specific. |
 | Administrative Restrictions (e.g. family-shared insurance IDs) | **No** — not attempted this PR; ONC's field set has no insurance/plan-ID column to construct this from. **Planned: `docs/sessions/pending/session_11.md`**, blocked on session_6 adding insurance-identifier fields. |
 | Named special/high-risk populations (twins, shelters, shared address, etc.) | **Yes, except literal twins** — session_10 (`evaluation/special_populations.py`) adds `mine_shared_surname_household_negatives()` (multi-generational households, mined real ONC pairs) and `construct_institutional_negatives()` (the other 8 named categories, constructed via a fabricated-but-marked-synthetic shared address over otherwise-distinct real ONC identities). Literal twins remain a separate, unresolvable case per the CMS spec itself — see session_10.md's "Out of scope". |
-| Normalization edge cases (diacritics, placeholder DOBs, punctuation) | **Yes** — session_10 (`evaluation/normalization_edge_cases.py`) adds `diacritic_variant()`/`punctuation_variant()` true-match pairs exercised end-to-end through `NormalizationManager`+`FieldExtractor`; a separate integration test (`patient_matching/normalization/tests/test_manager.py::TestPlaceholderDobExcludedEndToEnd`) confirms placeholder/out-of-range DOB never reaches a matchable field, without duplicating `placeholder_detector.py`'s own unit tests of the D.6 threshold itself. |
+| Normalization edge cases (diacritics, placeholder DOBs, punctuation) | **Yes** — session_10 (`evaluation/normalization_edge_cases.py`) adds `diacritic_variant()`/`punctuation_variant()` true-match pairs exercised end-to-end through `NormalizationManager`+`FieldExtractor`; a separate integration test (the reference matching engine's `normalization/tests/test_manager.py::TestPlaceholderDobExcludedEndToEnd`) confirms placeholder/out-of-range DOB never reaches a matchable field, without duplicating `placeholder_detector.py`'s own unit tests of the D.6 threshold itself. |
 | Population-level query tier (current Doc, not in the draft) — one query against a candidate pool, expected answer a set | **Yes** — session_12 (`evaluation/population_cases.py`/`export_population_dataset.py`) assembles per-query candidate pools from the same generation logic above, regrouped rather than re-generated. Known simplification: institutional-negative candidates carry the fabricated shared address on only one side of the pool (see `population_cases.py`'s module docstring) — narrower than `labeled_pairs.py`'s pairwise institutional cases, which fabricate it on both sides. |
 
 ## Coverage against the Doc's §3 test case format
@@ -218,7 +219,7 @@ scale" section for the full guidance (including how to scale this up safely, e.g
 Databricks rather than a single-process Python list, if the Doc's §4 ≥1,000,000-record
 validation is ever attempted against this code).
 
-## Where this fits in `patient-matching`'s process
+## Where this fits in the reference matching engine's process
 
 This is `docs/sessions/pending/session_9.md`, authored as an upstream dependency of
 `session_8.md` (the Tier 3 legacy-comparison harness) rather than folded into it — session_8's
@@ -230,7 +231,7 @@ the full labeled test set into its comparison harness.
 
 The Doc's §8 recommends the canonical shared dataset ultimately live in a neutral,
 workgroup-owned repository — not any single member organization's private codebase — precisely
-so no one company appears to control the industry-wide compliance test suite. `patient-matching`
+so no one company appears to control the industry-wide compliance test suite. The originating repo
 is being used here as this organization's own staging/working copy for the CMS workgroup effort, not
 presented as that neutral repo. If/when the workgroup agrees on a shared home, this module (or
 its output) is a natural candidate to fork out, not something intended to live here permanently.

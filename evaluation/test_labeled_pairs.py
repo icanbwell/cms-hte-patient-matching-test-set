@@ -1,7 +1,7 @@
 """Unit tests for labeled_pairs.py (session 9).
 
-No numpy dependency here (session 13 dropped labeled_pairs.py's
-patient_matching/rule_eval usage entirely - generate_raw_pairs() only touches
+No numpy dependency here (session 13 dropped labeled_pairs.py's use of the
+reference matching engine and rule_eval entirely - generate_raw_pairs() only touches
 hard_negatives.py/mutations.py/normalization_edge_cases.py/
 special_populations.py, none of which need numpy), so these always run.
 """

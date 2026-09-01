@@ -5,7 +5,7 @@
 **Estimated size:** M — two new small modules (mutation generators, hard-negative miner), one
 assembly module wiring them into `rule_eval.LabeledPair`, and a comparison write-up.
 
-> This session doc originated in the patient-matching repo. Read [conventions.md](https://github.com/icanbwell/patient-matching/blob/main/docs/sessions/conventions.md) there first (this repo does not carry its own copy).
+> This session doc originated in the repo this test-data generation code was split out of. See that repo's own session-doc conventions if you need them (not carried over here).
 
 ## Outcome purpose
 
@@ -185,7 +185,7 @@ seed. See the actual test files for the full parametrized case tables.
   `hard_negatives.py`'s "distinct ID ⇒ distinct person" assumption is confirmed safe; the
   cross-org Doc's inverse claim (now restated more strongly in its finalized version) does not
   describe this vendored copy. See `onc_loader.py`'s module docstring.
-- Whether `patient-matching` remains a permanent home for this module or a staging copy ahead of
+- Whether the originating repo remains a permanent home for this module or a staging copy ahead of
   the Doc §8-recommended neutral cross-org repo is explicitly treated as an open question for
   the workgroup, per a design-time answer — not resolved here.
 

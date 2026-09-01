@@ -10,9 +10,9 @@ this code does and doesn't cover; this file is just how to run it.
 1. Standard repo setup first, if you haven't already: `make setup` (or `uv sync` directly) from
    the repo root. `numpy`/`pandas`/`scipy`/`matplotlib`/`nicknames` are all core dependencies of
    this repo's own `pyproject.toml` — `uv sync` installs everything needed, no separate `uv pip
-   install` step. (Session 13 removed this repo's `patient_matching` git dependency entirely -
-   this repo only produces test data now, it doesn't test any specific matching engine itself.
-   See session_13.md.)
+   install` step. (Session 13 removed this repo's git dependency on the reference matching engine
+   entirely - this repo only produces test data now, it doesn't test any specific matching engine
+   itself. See session_13.md.)
 
 ## Running the tests
 

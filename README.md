@@ -1,11 +1,10 @@
 # cms-hte-patient-matching-test-set
 Test set for validating an algorithm against the CMS HTE Patient Matching Specification.
 
-This repo was split out of [icanbwell/patient-matching](https://github.com/icanbwell/patient-matching),
-which holds a reference matching implementation this code was originally developed against.
-As of session 13, this repo has no runtime dependency on that (or any) matching engine — it only
-produces portable, algorithm-agnostic test data (see `evaluation/DESIGN.md`'s Design Principle 1
-and `docs/sessions/completed/session_13.md`).
+This repo was split out of a private reference matching implementation this code was originally
+developed against. As of session 13, this repo has no runtime dependency on that (or any) matching
+engine — it only produces portable, algorithm-agnostic test data (see `evaluation/DESIGN.md`'s
+Design Principle 1 and `docs/sessions/completed/session_13.md`).
 
 ## Contents
 
@@ -17,7 +16,7 @@ and `docs/sessions/completed/session_13.md`).
 - `notebooks/` — `rule_eval_demo.ipynb`, a demo of the algorithm-agnostic statistical comparison
   harness (`evaluation/rule_eval.py`).
 - `docs/sessions/` — the session logs that narrate how this dataset and its generation code were
-  designed and built (carried over from patient-matching's session-planning process).
+  designed and built (carried over from the originating repo's session-planning process).
 
 ## Setup
 
