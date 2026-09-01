@@ -6,6 +6,9 @@ two buckets: **code** (generation logic, tooling, docs) and **test data** (new c
 the dataset itself). Data contributions have their own rules — read that section before adding new
 cases.
 
+By submitting a contribution, you agree it's licensed under this repo's [Apache License, Version
+2.0](LICENSE), same as the rest of the codebase.
+
 ## Data contributions
 
 This dataset is meant to be usable as evidence in a cross-org compliance conversation, so what
