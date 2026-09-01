@@ -2,7 +2,7 @@
 candidates, expected answer a *set* (possibly empty, possibly several) - the
 current cross-org workgroup Doc's ("A Shared Test Dataset for CMS Patient
 Matching Compliance", current) second test kind, distinct from
-labeled_pairs.py's per-provision pairs. See docs/sessions/pending/session_12.md
+labeled_pairs.py's per-provision pairs. See docs/sessions/completed/session_12.md
 for the design rationale (Task 2) this module implements.
 
 Reuses mutations.py/normalization_edge_cases.py/hard_negatives.py/
@@ -41,12 +41,11 @@ suffix (not the plain ONC EnterpriseID) specifically to avoid colliding, in
 the shared candidate registry, with that same person's real, address-intact
 record used elsewhere as a plain distractor.
 
-MEMORY & SCALE - same caution as labeled_pairs.py: this module normalizes its
-own copy of `patients` independently (needed for random-distractor top-up),
-on top of whatever labeled_pairs.py-style callers already normalized. At this
-repo's documented default scale (one shard, sampled down via SAMPLE_SIZE) that
-extra copy is a non-issue; see SYNTHETIC_DATA_SETUP.md's "Memory & scale"
-section before raising SAMPLE_SIZE or POOL_SIZE.
+SCOPE, per session 13: this module no longer normalizes `patients` (dropped
+the `patient_matching.normalization.NormalizationManager` dependency - this
+repo only produces portable test data now, per Design Principle 1's
+algorithm-agnostic stance). Candidate/query bodies carry whatever case/
+punctuation the caller passed in.
 """
 
 from __future__ import annotations
@@ -58,7 +57,6 @@ from typing import Any, Dict, List, Set
 from hard_negatives import mine_shared_address_hard_negatives
 from mutations import generate_fuzzy_variant
 from normalization_edge_cases import diacritic_variant, punctuation_variant
-from patient_matching.normalization.manager import NormalizationManager
 from special_populations import (
     INSTITUTION_TYPES,
     construct_institutional_negatives,
@@ -100,7 +98,7 @@ class PopulationDataset:
     """The full population-query tier: every query case, plus the shared
     candidate registry (id -> Patient) their candidate_ids resolve against.
 
-    `candidates` deliberately holds every normalized input patient too (not
+    `candidates` deliberately holds every input patient too (not
     only ones that ended up in some query's pool) - any of them may be
     referenced as a random distractor in a *different* query's pool built
     from the same call, per module docstring's "splitting an existing file"
@@ -123,9 +121,7 @@ def build_population_dataset(
 ) -> PopulationDataset:
     """Build the population-query tier from ONC patients - see module
     docstring for the per-query pool-assembly rules."""
-    normalizer = NormalizationManager()
-    normalized = [normalizer.normalize(p) for p in patients]
-    by_id: Dict[str, Patient] = {p["id"]: p for p in normalized}
+    by_id: Dict[str, Patient] = {p["id"]: p for p in patients}
 
     rng = random.Random(seed)
     topup_rng = random.Random(f"{seed}:population_topup")
@@ -168,7 +164,7 @@ def build_population_dataset(
                 pid, f"{pid}::punctuation", punctuated, True, "normalization_edge_case"
             )
 
-    for hard_negative in mine_shared_address_hard_negatives(normalized):
+    for hard_negative in mine_shared_address_hard_negatives(patients):
         add_candidate(
             hard_negative.query["id"],
             hard_negative.candidate["id"],
@@ -178,7 +174,7 @@ def build_population_dataset(
         )
 
     if include_special_populations:
-        for household in mine_shared_surname_household_negatives(normalized):
+        for household in mine_shared_surname_household_negatives(patients):
             add_candidate(
                 household.query["id"],
                 household.candidate["id"],
@@ -188,7 +184,7 @@ def build_population_dataset(
             )
         for institution_type in INSTITUTION_TYPES:
             for institutional in construct_institutional_negatives(
-                normalized,
+                patients,
                 institution_type,
                 group_size=institutional_group_size,
                 rng=rng,

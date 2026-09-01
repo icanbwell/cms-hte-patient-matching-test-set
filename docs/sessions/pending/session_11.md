@@ -1,6 +1,13 @@
 # Session 11 — Administrative-Restriction & Insurance-Identifier Labeled Pairs
 
-**Status:** pending
+**Status:** pending — partially superseded by session 13, needs re-scoping before it can proceed
+as written. Session 13 removed this repo's `patient_matching` git dependency entirely (this repo
+only produces test data now). The data-fabrication piece below (synthetic insurance-identifier
+values) is likely still valid as-is - it never needed the engine. But this doc's wiring into
+`build_labeled_pairs()` (deleted; `generate_raw_pairs()` remains and is the right place to wire
+into instead), its `NormalizationManager`/`FieldExtractor` usage, and its planned regression
+guard in `patient_matching/matching/tests/test_table2_rules.py` all assume the removed
+dependency and need rethinking. See `docs/sessions/completed/session_13.md`.
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** M/L — one new fabrication module (the repo's first genuinely *programmatic*
 synthetic-patient generator, not a mutation/mining of real ONC records), its wiring into

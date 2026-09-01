@@ -1,7 +1,7 @@
 """Unit tests for prevalence_estimates.py (session 10, Task 9).
 
-Depends on numpy transitively via labeled_pairs -> rule_eval - see
-test_rule_eval.py's module docstring for why these importorskip("numpy").
+No numpy dependency (session 13 dropped labeled_pairs.py's rule_eval usage
+entirely), so these always run.
 """
 
 from __future__ import annotations
@@ -9,9 +9,6 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
-
-pytest.importorskip("numpy")
-
 from labeled_pairs import generate_raw_pairs
 from mutations import MUTATIONS
 from prevalence_estimates import (

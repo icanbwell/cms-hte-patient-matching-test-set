@@ -19,7 +19,7 @@ Matching Compliance — (current)"](https://docs.google.com/document/d/1A96--dAj
 draft's substance survived finalization unchanged and needs no rework — ONC as the seed population,
 the per-provision ground-truth categories below, the portable JSONL manifest, and
 precision/recall/FPR-with-NA-disclosure reporting broken out by category. Five deltas did surface,
-closed by `docs/sessions/pending/session_12.md`:
+closed by `docs/sessions/completed/session_12.md`:
 
 1. **New test shape.** The current Doc adds "query against a population" (one record, a candidate
    pool, an expected match *set*) alongside per-provision pairs, modeled on FHIR `Patient/$match`.
@@ -47,6 +47,18 @@ closed by `docs/sessions/pending/session_12.md`:
    JSON adapter contract and CLI. The current Doc's "What we need to decide" list still carries the
    adapter contract as unresolved — session 8 should confirm its status before building against
    either version's specific shape.
+
+## Reading this document today (session 13)
+
+Everything below narrates what session 9/10 actually built, accurately, at the time it was
+built. Since then, session 13 removed this repo's `patient_matching` git dependency entirely —
+this repo only produces test data now; it doesn't test any specific matching engine itself. That
+means several things this document describes as current no longer exist: `evaluation/onc_baseline.py`
+(deleted), `labeled_pairs.build_labeled_pairs()` (deleted — `generate_raw_pairs()` itself remains
+and is unchanged in shape), and the `NormalizationManager` normalization step that used to run
+inside generation (dropped — generated FHIR JSON now carries raw ONC case/punctuation). See
+`docs/sessions/completed/session_13.md` for the full rationale and migration notes. Left
+unedited below as historical record, not current state.
 
 ## What this PR migrates
 
@@ -119,7 +131,7 @@ across all nine vendored shards: 1,000,000 rows, 1,000,000 unique `EnterpriseID`
 duplicates. So the "distinct ID ⇒ distinct person" assumption above is confirmed safe for this
 copy, and the current cross-org Doc's inverse claim ("same identifier means same person... group
 by enterprise patient ID, never row ID") does not describe this vendored copy — see
-`onc_loader.py`'s module docstring and `docs/sessions/pending/session_12.md`.
+`onc_loader.py`'s module docstring and `docs/sessions/completed/session_12.md`.
 
 ## Coverage against the Doc's §2 ground-truth pair categories
 
@@ -149,8 +161,8 @@ extracted `PatientFields` from this repo's specific field model.
 
 `evaluation/export_test_dataset.py` (session_10 continuation, same PR) closes this: it builds the
 Section 3 manifest directly — `LabeledCaseRecord(case_id, source, target, expected_match,
-rationale)` — from the exact same generation logic `build_labeled_pairs()` uses
-(`labeled_pairs.generate_raw_pairs()`, refactored out so the mutation/mining/construction logic
+rationale)` — from the same underlying generator, `labeled_pairs.generate_raw_pairs()` (refactored
+out so the mutation/mining/construction logic
 in `mutations.py`/`hard_negatives.py`/`normalization_edge_cases.py`/`special_populations.py` is
 written once, not duplicated), and `write_jsonl()` serializes it to JSON Lines. A committed
 sample (`evaluation/cases/sample_labeled_pairs.jsonl`, 6,289 cases from `SAMPLE_SIZE=2000` on one

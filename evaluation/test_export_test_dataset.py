@@ -1,16 +1,12 @@
 """Unit tests for export_test_dataset.py (session 10 continuation).
 
-Depends on numpy transitively via labeled_pairs -> rule_eval - see
-test_rule_eval.py's module docstring for why these importorskip("numpy").
+No numpy dependency (session 13 dropped labeled_pairs.py's rule_eval usage
+entirely), so these always run.
 """
 
 from __future__ import annotations
 
 import json
-
-import pytest
-
-pytest.importorskip("numpy")
 
 from export_test_dataset import (
     LabeledCaseRecord,

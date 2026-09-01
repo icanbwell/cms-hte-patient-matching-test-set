@@ -1,6 +1,13 @@
 # Session 8 — Legacy Comparison Harness: Precision/Recall, Disagreement Buckets, Explanations
 
-**Status:** pending
+**Status:** pending — blocked by session 13, needs re-scoping before it can proceed as written.
+Session 13 removed this repo's `patient_matching` git dependency entirely (this repo only
+produces test data now, it doesn't test any specific matching engine). This session's entire
+premise — comparing the legacy and new engines in-process, in this repo — depends on exactly
+the capability session 13 removed. Whoever picks this up next needs to decide whether the
+comparison work moves to a different repo (one that can depend on both engines) or gets dropped
+in favor of the algorithm-agnostic approach the rest of this repo now takes. See
+`docs/sessions/completed/session_13.md`.
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** L — a new cross-repo comparison harness, a disagreement-bucketing
 classifier, and a first-class explanation-output formatter; larger than a typical M/L session.

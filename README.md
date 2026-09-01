@@ -2,18 +2,20 @@
 Test set for validating an algorithm against the CMS HTE Patient Matching Specification.
 
 This repo was split out of [icanbwell/patient-matching](https://github.com/icanbwell/patient-matching),
-which still holds the reference matching implementation this code was originally developed
-against.
+which holds a reference matching implementation this code was originally developed against.
+As of session 13, this repo has no runtime dependency on that (or any) matching engine — it only
+produces portable, algorithm-agnostic test data (see `evaluation/DESIGN.md`'s Design Principle 1
+and `docs/sessions/completed/session_13.md`).
 
 ## Contents
 
 - `evaluation/` — the generator: fuzzy-mutation and hard-negative-mining code that builds the
-  labeled CMS test dataset, plus the ONC self-match baseline harness. Start with
-  `evaluation/DESIGN.md` and `evaluation/SYNTHETIC_DATA_SETUP.md`.
+  labeled CMS test dataset. Start with `evaluation/DESIGN.md` and
+  `evaluation/SYNTHETIC_DATA_SETUP.md`.
 - `evaluation/cases/` — the materialized, portable test-case dataset. See
   `evaluation/cases/README.md` for how to run an algorithm against it.
-- `notebooks/` — demo notebooks (`cms_matching_demo.ipynb`, `rule_eval_demo.ipynb`) and the FHIR
-  match-data-source helper used to exercise the dataset against a live matching engine.
+- `notebooks/` — `rule_eval_demo.ipynb`, a demo of the algorithm-agnostic statistical comparison
+  harness (`evaluation/rule_eval.py`).
 - `docs/sessions/` — the session logs that narrate how this dataset and its generation code were
   designed and built (carried over from patient-matching's session-planning process).
 
@@ -22,9 +24,6 @@ against.
 ```
 uv sync
 ```
-
-`evaluation/onc_baseline.py`, `notebooks/fhir_match_data_source.py`, and a few other modules
-import from `patient_matching` (installed here as a git dependency — see `pyproject.toml`).
 
 ## Development
 

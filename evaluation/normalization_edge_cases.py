@@ -2,21 +2,22 @@
 edge cases" (diacritic-folded names, punctuation/whitespace variation, and
 placeholder/out-of-range dates of birth), per CMS spec SS V.A.3-4.
 
-Unlike mutations.py's fuzzy-comparison variants (which rely on
-FieldComparator's edit-distance tolerance and are expected to match only
-because fuzzy comparison is *permitted* for that field), the two variant
-generators here produce values that CMS SS V.A requires normalization to fold
-into an EXACT match - a diacritic-folded or punctuation-stripped name is not
-"close enough via fuzzy tolerance", it is required to become byte-identical
-to the un-accented/unpunctuated form after NormalizationManager runs. Pairing
-these as LabeledPairs with is_true_match=True therefore exercises the
-normalization layer specifically, not the fuzzy comparator.
+Unlike mutations.py's fuzzy-comparison variants (which rely on an edit-
+distance tolerance and are expected to match only because fuzzy comparison is
+*permitted* for that field), the two variant generators here produce values
+that CMS SS V.A requires normalization to fold into an EXACT match - a
+diacritic-folded or punctuation-stripped name is not "close enough via fuzzy
+tolerance", it is required to become byte-identical to the un-accented/
+unpunctuated form after a spec-compliant normalization step runs. Marking
+these true-matches therefore exercises normalization behavior specifically,
+not fuzzy comparison - any matching engine under test is expected to
+normalize before comparing, per Design Principle 1.
 
 The third edge case (placeholder/out-of-range DOB) is deliberately NOT a
-variant-pair generator here - see
-patient_matching/normalization/tests/test_manager.py's
-TestPlaceholderDobExcludedEndToEnd for why (a single-patient normalization
-behavior, not a match/non-match pair).
+variant-pair generator here - a placeholder/out-of-range DOB should be
+excluded from matching entirely (never reach a matchable field), which is a
+single-patient normalization behavior, not a match/non-match pair this
+repo's pairwise/population manifests can express.
 """
 
 from __future__ import annotations

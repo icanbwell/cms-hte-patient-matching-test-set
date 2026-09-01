@@ -1,10 +1,11 @@
 """Unit tests for rule_eval, using synthetic labeled data.
 
-The evaluation harness depends on numpy (and, for rendering, pandas/matplotlib),
-which are intentionally NOT part of the shippable ``patient_matching`` package. These
-tests therefore ``importorskip("numpy")`` so a numpy-less environment (e.g. the default
-service CI image) skips them cleanly rather than failing. Install the harness deps with
-``pip install numpy scipy pandas matplotlib`` (see evaluation/DESIGN.md) to run them.
+The evaluation harness depends on numpy (and, for rendering, pandas/matplotlib).
+These tests ``importorskip("numpy")`` so a numpy-less environment skips them
+cleanly rather than failing, matching test_labeled_pairs.py's convention.
+Install the harness deps with ``pip install numpy scipy pandas matplotlib``
+(see evaluation/DESIGN.md) to run them - though `uv sync` already installs
+them, since they're core dependencies of this repo's own pyproject.toml.
 """
 
 from __future__ import annotations

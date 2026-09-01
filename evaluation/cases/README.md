@@ -9,7 +9,7 @@ for CMS Patient Matching Compliance —
 (current)"](https://docs.google.com/document/d/1A96--dAjIwID5RCDr9qZeqDnk6snOqNcQOg1ZBy3FWw)
 (**the current Doc**), which supersedes it — see
 `SYNTHETIC_DATA_COMPARISON.md`'s "What changed between the draft and the finalized proposal" and
-`docs/sessions/pending/session_12.md` for the full diff. Guidance below follows the current Doc.
+`docs/sessions/completed/session_12.md` for the full diff. Guidance below follows the current Doc.
 
 **Provenance / synthesis-method disclosure** (the current Doc requires each contributed segment
 to record how it was produced): every record in both tiers of this repo's data derives from the
@@ -28,8 +28,13 @@ stops being sufficient at that point.
 the current Doc's per-provision pair format and the draft Doc's Design Principle 1 (unchanged by
 finalization): every test case is a pair of standard FHIR `Patient` resources plus an expected
 outcome — nothing about the format assumes any particular matching implementation. This means
-**any** matching algorithm (this repo's, or a completely different organization's) can be tested
-against it, not just `patient-matching`'s own engine.
+**any** matching algorithm can be tested against it — as of session 13, this repo doesn't depend
+on or test any specific matching engine itself; it only produces the data.
+
+**Case/punctuation, read before comparing exact strings:** field values carry whatever case and
+punctuation the ONC CSVs used (session 13 dropped this repo's own normalization step from
+generation - see session_13.md). Apply your own normalization convention before comparing fields,
+the same way you would for any other input.
 
 ## Two test tiers
 
@@ -229,7 +234,7 @@ print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f
 and `fdr` are shown for completeness of the formula, but computing them over this curated,
 rare-case-oversampling suite has no real-world interpretation (see "Frequency and real-world
 representativeness" above). Compute `precision`/`fdr` over `population_queries.jsonl` instead
-(see "Option C" below).
+(see "Option B" below).
 
 **Report broken out by `rationale`, not just as one aggregate number** — per the Doc's Section 5:
 this dataset is a curated set of specific spec provisions and edge cases, not a random sample of
@@ -256,62 +261,7 @@ Doc's Section 5, this is mandatory, not optional: an algorithm that silently ski
 cases and reports metrics only over what it did attempt can look stronger than one that honestly
 attempted everything.
 
-## Option B: testing this repo's own `MatchingEngine` against the dataset
-
-Since `patient-matching`'s engine already speaks the same FHIR `Patient` shape, you can run it
-against this dataset directly without writing an adapter:
-
-```python
-import json
-
-from patient_matching.matching.field_extractor import FieldExtractor
-from patient_matching.matching.matching_engine import MatchingEngine
-from patient_matching.matching.backend import MatchingBackend
-from patient_matching.normalization.manager import NormalizationManager
-
-
-class _NoopBackend(MatchingBackend):
-    """evaluate_pair() below doesn't use backend search - only needed to
-    satisfy MatchingEngine's constructor."""
-
-    def search(self, criteria):
-        return []
-
-
-normalizer = NormalizationManager()
-extractor = FieldExtractor()
-engine = MatchingEngine(backend=_NoopBackend())
-
-tp = fp = tn = fn = 0
-with open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
-    for line in f:
-        case = json.loads(line)
-        source_fields = extractor.extract(normalizer.normalize(case["source"]))
-        target_fields = extractor.extract(normalizer.normalize(case["target"]))
-        predicted_match = engine.evaluate_pair(source_fields, target_fields)
-        actual_match = case["expected_match"]
-        if predicted_match and actual_match:
-            tp += 1
-        elif predicted_match and not actual_match:
-            fp += 1
-        elif not predicted_match and actual_match:
-            fn += 1
-        else:
-            tn += 1
-
-print(f"TP={tp} FP={fp} TN={tn} FN={fn}")
-```
-
-`MatchingEngine.evaluate_pair()` is the pairwise decision function (no backend search, no
-uniqueness check) — the same one `evaluation/onc_baseline.py` uses for its own self-match
-baseline. This is a reasonable smoke test that the engine's current rule set handles this
-dataset sanely, but it is **not** a substitute for `evaluation/rule_eval.py`'s
-`compare()`/`ComparisonReport` machinery (Beta-posterior credible intervals, stratified
-before/after comparison) — use `rule_eval.py` directly for anything that needs statistical rigor
-(e.g. deciding whether a rule change is safe), per `docs/sessions/conventions.md`'s statistical
-rigor gate.
-
-## Option C: computing precision/FDR/F1/accuracy over the population tier
+## Option B: computing precision/FDR/F1/accuracy over the population tier
 
 This is where the metrics `sample_labeled_pairs.jsonl` can't validly produce actually come from.
 Load the candidate registry once, then score each query against its own pool:

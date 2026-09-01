@@ -5,11 +5,11 @@ description = "Test set and generation code for validating an algorithm against 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "patient_matching @ git+https://github.com/icanbwell/patient-matching.git@main",
     "numpy",
     "pandas",
     "scipy",
     "matplotlib",
+    "nicknames",
 ]
 
 [dependency-groups]
