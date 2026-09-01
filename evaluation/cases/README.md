@@ -29,11 +29,25 @@ stops being sufficient at that point.
 
 The ONC 2017 Patient Matching Algorithm Challenge dataset: 9 alphabetically-sharded CSVs,
 ~1,000,000 records total, public and already synthetic (`evaluation/fixtures/onc/`).
-`onc_loader.py` maps its flat CSV columns to FHIR `Patient` dicts. Values are copied through
-as-is — this repo's generation pipeline does not normalize case/punctuation. **Verified (session
-12): every `EnterpriseID` across all 9 shards is unique** — this specific vendored copy has no
-native duplicate-person clusters. Every true-match cluster below is built by this repo's own
-generators, not looked up from ONC.
+`onc_loader.py` maps its flat CSV columns to FHIR `Patient` dicts:
+
+| ONC CSV column(s) | FHIR `Patient` field | Notes |
+|---|---|---|
+| `EnterpriseID` | `id` | The stable identifier every generated `case_id`/`candidate_id` is built from |
+| `FIRST`, `MIDDLE`, `ALIAS` | `name[0].given` | Appended in that order, each only if present |
+| `LAST` | `name[0].family` | |
+| `MOTHERS_MAIDEN_NAME` | a second `name[]` entry's `family` | Not mapped by the reference matching engine's own transform — added here so normalization/matching sees prior/maiden names |
+| `SUFFIX` | `name[0].suffix` | |
+| `DOB` | `birthDate` | SAS-style day-offset from `1900-01-01` minus 2; decoded to an ISO date. Only set if the column is non-empty — the dataset's "Null" shard has intentionally-missing fields for incomplete-data testing, mirrored rather than raising |
+| `GENDER` | `gender` | `M`/`MALE`→`male`, `F`/`FEMALE`→`female`, anything else→`unknown` |
+| `PHONE`, `EMAIL` | `telecom[]` | |
+| `ADDRESS1`, `ADDRESS2`, `CITY`, `STATE`, `ZIP` | `address[0]` | `ADDRESS2` appended to `line` only if present |
+| `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn` |
+
+Values are copied through as-is — this repo's generation pipeline does not normalize
+case/punctuation. **Verified (session 12): every `EnterpriseID` across all 9 shards is unique** —
+this specific vendored copy has no native duplicate-person clusters. Every true-match cluster
+below is built by this repo's own generators, not looked up from ONC.
 
 ### True-match pairs — fuzzy-tolerance variants (`mutations.py`)
 
@@ -87,16 +101,37 @@ reality. Always two genuinely distinct real ONC records instead:
 
 ### Assembly, export, and reproducibility
 
-- **`labeled_pairs.py`** combines all of the above into `(source, target, is_true_match)` triples
-  — the shared generation core everything else builds on.
+- **`labeled_pairs.py`**'s `generate_raw_pairs()` combines all of the above into
+  `(source, target, is_true_match)` triples — the shared generation core everything else builds
+  on. It runs on **one shared `random.Random(seed)` instance** (default `seed=0`), consumed in a
+  fixed order (fuzzy variants → normalization edge cases → hard negatives → households →
+  institutional pairs per type), so a given `seed` always reproduces the same output byte-for-byte
+  given the same input patients.
+- **Every case gets a stable, self-describing id**, built from the ONC `EnterpriseID`(s)
+  involved: `{id}::{mutation_type}` for a fuzzy variant (e.g. `14065387::family_transpose`),
+  `{id}::diacritic` / `{id}::punctuation` for normalization edge cases, `{query_id}::{candidate_id}`
+  for a mined hard negative, `{query_id}::{candidate_id}::household` for a mined household pair,
+  and `{query_id}::{candidate_id}::{institution_type}` for a constructed institutional pair.
+- **Every case gets a `rationale` string** built by `format_rationale()`: the pair's category plus
+  its most specific subtype as `<pair_type>/<subtype>` (e.g. `fuzzy_variant/dob_day`,
+  `special_population/shelter`), with any remaining context (e.g. `postalCode=...,
+  birthDate=...` for a hard negative) appended as `key=value` pairs, sorted for determinism.
 - **`export_test_dataset.py`** materializes these as the per-provision pairs manifest
-  (`sample_labeled_pairs.jsonl`), attaching a `case_id`, a `rationale` (which generator/category
-  produced it), and an optional real-world frequency weight (see below).
-- **`population_cases.py`** regroups the same underlying pairs into the population-query shape:
-  each query's known-match cluster (its own generated variants) plus a decoy pool (mined hard
-  negatives/special-population candidates, topped up with random distractors) up to `POOL_SIZE`
-  candidates (default 40) — never displacing a true match. **`export_population_dataset.py`**
-  writes this as `population_queries.jsonl`/`population_candidates.jsonl`.
+  (`sample_labeled_pairs.jsonl`), pairing each `case_id`/`rationale` with an optional real-world
+  frequency weight (see below).
+- **`population_cases.py`**'s `build_population_dataset()` regroups the same underlying generation
+  logic into the population-query shape, using two independent RNGs so topping up a pool with
+  random distractors never perturbs the same random stream used to generate variants: a
+  query's **known-match cluster** is its own fuzzy-variant/normalization-edge-case candidates
+  (added to its pool first, so trimming logic below can never drop them); its **decoy pool** is
+  its mined hard-negative/household/institutional candidates, deduplicated against a per-query
+  "already in this pool" set. If the pool is still under `pool_size` (default 40) after that, it's
+  topped up with randomly-shuffled distractors from the rest of the sample; if it's over, only
+  decoys are trimmed — true matches are never dropped to make room. Institutional decoys are
+  namespaced as `{candidate_id}::institutional::{institution_type}` in the shared candidate
+  registry specifically so they don't collide with that same person's plain, address-intact record
+  if it's also used as a distractor elsewhere. **`export_population_dataset.py`** writes the result
+  as `population_queries.jsonl`/`population_candidates.jsonl`.
 - Every export defaults to **one ONC shard, sampled down to `SAMPLE_SIZE`** (2,000 patients) —
   loading and transforming the full ~1,000,000-record dataset at once has crashed a cluster
   before; see `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising this.
@@ -105,11 +140,17 @@ reality. Always two genuinely distinct real ONC records instead:
 
 ### Frequency weighting (`prevalence_estimates.py`)
 
-Each case's `rationale` category can optionally carry a real-world prevalence weight instead of
-the uniform default — e.g. shelter residency (~0.06% of the population, U.S. Census Bureau) vs.
-nursing-facility residency (~0.49%). Every value is either a cited public-source estimate or an
-explicit "no public estimate found" placeholder — never a guessed number. See "Frequency and
-real-world representativeness" below for how (and how not) to use this field.
+`build_test_case_records()` takes a `frequency_lookup(rationale) -> float` callable and stamps its
+result onto each record's `frequency` field. Two lookups exist: `uniform_frequency()` (the
+neutral default — every case weighted `1.0`, i.e. no real-world weighting) and
+`researched_frequency()`, which maps each `rationale` prefix to a real, cited public-source
+prevalence estimate — e.g. shelter residency (~0.06% of the population, U.S. Census Bureau) vs.
+nursing-facility residency (~0.49%) — or an explicit "no public estimate found" placeholder pinned
+to a neutral value, never a guessed number. **The committed `sample_labeled_pairs.jsonl` was
+generated with `researched_frequency()`** (pending maintainer review, not yet treated as final);
+pass `frequency_lookup=uniform_frequency` to `build_test_case_records()` if you want every case
+weighted equally instead. See "Frequency and real-world representativeness" below for how (and
+how not) to use this field.
 
 `sample_labeled_pairs.jsonl` (and any file generated the same way via
 `evaluation/export_test_dataset.py`) is a portable, algorithm-agnostic test-case manifest, per
