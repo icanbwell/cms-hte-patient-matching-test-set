@@ -26,23 +26,42 @@ mutation/mining/construction methodology behind every case.
   harness (`evaluation/rule_eval.py`).
 - `docs/sessions/` — the session logs that narrate how this dataset and its generation code were
   designed and built (carried over from the originating repo's session-planning process).
+- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — current-state summary of the generation
+  methodology and what's still left to do.
 
 ## Setup
 
 ```
-uv sync
+uv sync    # or: make setup
 ```
 
 ## Development
 
 ```
-make tests          # uv run pytest . — also CI's build_and_test.yml gate
-make lint           # uv run ruff check .
-make typecheck      # uv run mypy, evaluation/ and notebooks/ separately (see Makefile comment)
-make run-pre-commit # ruff check + ruff format over the whole repo
+make tests           # uv run pytest . — also CI's build_and_test.yml gate
+make lint            # uv run ruff check .
+make typecheck       # uv run mypy evaluation (notebooks/ has no .py files left)
+make run-pre-commit  # ruff check --fix + ruff format over the whole repo
 ```
 
 Run `uv run pre-commit install` once to also get these as a local git hook.
+
+Run a single test file or test case directly:
+
+```
+uv run pytest evaluation/test_mutations.py -v
+uv run pytest evaluation/test_mutations.py::test_some_case -v
+```
+
+Run the generation/export scripts directly — these default to one ONC shard, sampled down (see
+`evaluation/DESIGN.md`/`SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" before raising that):
+
+```
+PYTHONPATH=. uv run python evaluation/labeled_pairs.py             # demo: prints pair counts
+PYTHONPATH=. uv run python evaluation/export_test_dataset.py       # writes evaluation/cases/sample_labeled_pairs.jsonl
+PYTHONPATH=. uv run python evaluation/export_population_dataset.py # writes population_{candidates,queries}.jsonl
+SAMPLE_SIZE=20000 PYTHONPATH=. uv run python evaluation/labeled_pairs.py  # override sample size
+```
 
 ## Data attribution
 
@@ -59,4 +78,6 @@ if you redistribute it further, independently confirm the terms ONC published it
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE). Contributions are accepted under the
-same license — see `CONTRIBUTING.md`.
+same license — see `CONTRIBUTING.md`. See [`NOTICE`](NOTICE) for copyright/attribution notices and
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for this repo's third-party dependency licenses
+(regenerate the latter with `make third-party-notices` after changing dependencies).
