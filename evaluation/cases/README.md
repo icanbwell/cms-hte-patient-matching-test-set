@@ -321,18 +321,15 @@ carry real caveats (the diacritic and punctuation estimates are proxies for a re
 identical population, not direct measurements of the thing being tested) that matter for how
 much weight to put on them.
 
-## Option A: bring your own algorithm (any language, any organization)
+## Option A: score the per-provision pairs (`sample_labeled_pairs.jsonl`)
 
-Per the Doc's Section 6, the only thing your algorithm needs to satisfy is a minimal adapter
-contract: given two FHIR `Patient` documents, decide match or no-match. You do not need to adopt
-Python, this repo's data model, or any of its tooling.
+Your algorithm just needs to satisfy one contract: given two FHIR `Patient` documents, decide
+match or no-match. Any language, any org — no need to adopt Python or this repo's tooling.
 
-1. Read the file one line at a time (don't load the whole thing into memory unless you know it's
-   small — this sample is 6,289 lines / ~6MB, but a larger export could be much bigger).
-2. For each line, parse the JSON and hand `source`/`target` to your algorithm exactly as you
-   would any two records from your own system.
-3. Compare your algorithm's answer to `expected_match` and tally into the four buckets below.
-4. Compute metrics from the tallies (not per-case, and not by averaging per-case percentages).
+1. Stream the file line by line (it's ~6,300 lines / ~6MB as committed; don't assume that stays small).
+2. Parse each line's JSON and hand `source`/`target` to your algorithm.
+3. Compare its answer to `expected_match` and tally into `tp`/`fp`/`fn`/`tn`.
+4. Compute metrics from the tallies — never per-case, never by averaging per-case percentages.
 
 ```python
 import json
@@ -352,48 +349,27 @@ with open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
         else:
             tn += 1
 
-precision = tp / (tp + fp) if (tp + fp) else float("nan")
 recall = tp / (tp + fn) if (tp + fn) else float("nan")
 fpr = fp / (fp + tn) if (fp + tn) else float("nan")
-fdr = fp / (fp + tp) if (fp + tp) else float("nan")
-print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f}  (n={tp+fp+tn+fn})")
+print(f"recall={recall:.4f} fpr={fpr:.4f}  (n={tp+fp+tn+fn})")
 ```
 
-**On this file specifically, only trust `recall` and `fpr` from the numbers above** — `precision`
-and `fdr` are shown for completeness of the formula, but computing them over this curated,
-rare-case-oversampling suite has no real-world interpretation (see "Frequency and real-world
-representativeness" above). Compute `precision`/`fdr` over `population_queries.jsonl` instead
-(see "Option B" below).
+Three rules for reporting results from this tier:
 
-**Report broken out by `rationale`, not just as one aggregate number** — per the Doc's Section 5:
-this dataset is a curated set of specific spec provisions and edge cases, not a random sample of
-real-world pairs, so a single blended accuracy/precision number across the whole file conflates
-categories your algorithm handles well with categories it doesn't. Group by the `rationale`
-prefix (before the `/`) at minimum, ideally by the full `rationale` string:
+- **Only trust `recall`/`fpr` here.** `precision`/`fdr`/`accuracy` have no real-world
+  interpretation on this curated, rare-case-oversampled file — compute those over the population
+  tier instead (Option B). See "Frequency and real-world representativeness" above for why.
+- **Break results out by `rationale`**, not one blended number — group by the prefix before the
+  `/` (`case["rationale"].split("/")[0]`), e.g. `fuzzy_variant`, `hard_negative`. A single number
+  hides categories your algorithm handles well vs. poorly.
+- **Report skipped cases separately** — if your algorithm can't evaluate a case (e.g. a required
+  field is empty), count that, don't silently exclude it from the tallies. An algorithm that skips
+  its hardest cases shouldn't look stronger than one that attempted everything.
 
-```python
-from collections import defaultdict
+## Option B: score the population tier (`population_queries.jsonl` + `population_candidates.jsonl`)
 
-buckets = defaultdict(lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
-# ... inside the loop above, additionally:
-category = case["rationale"].split("/")[0].split(" ")[0]  # e.g. "fuzzy_variant", "hard_negative"
-bucket = buckets[category]
-bucket["tp" if predicted_match and actual_match else
-       "fp" if predicted_match and not actual_match else
-       "fn" if not predicted_match and actual_match else
-       "tn"] += 1
-```
-
-Also report **how many cases your algorithm could actually evaluate vs. skipped as
-not-applicable** (e.g. it requires a field a given `Patient` doesn't have populated) — per the
-Doc's Section 5, this is mandatory, not optional: an algorithm that silently skips its hardest
-cases and reports metrics only over what it did attempt can look stronger than one that honestly
-attempted everything.
-
-## Option B: computing precision/FDR/F1/accuracy over the population tier
-
-This is where the metrics `sample_labeled_pairs.jsonl` can't validly produce actually come from.
-Load the candidate registry once, then score each query against its own pool:
+This tier is where valid precision/FDR/F1/accuracy numbers come from. Load the candidate registry
+once, then score every query against its own candidate pool:
 
 ```python
 import json
@@ -429,11 +405,9 @@ accuracy = (tp + tn) / (tp + fp + tn + fn) if (tp + fp + tn + fn) else float("na
 print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f} accuracy={accuracy:.4f}")
 ```
 
-This flattens every (query, candidate) evaluation in every pool into the same four buckets as
-Option A/B — the population tier's realism comes from *how the pools were built* (mostly random
-distractors, not curated rare cases), not from a different scoring shape. The same not-applicable
-disclosure requirement applies here too: report how many (query, candidate) evaluations your
-algorithm could actually attempt vs. skipped.
+Every (query, candidate) pair in every pool flattens into the same four buckets as Option A — the
+realism here comes from *how the pools were built* (mostly random distractors, not curated rare
+cases), not a different scoring shape. Report skipped evaluations the same way as Option A.
 
 ## What this dataset does *not* tell you
 
@@ -451,10 +425,14 @@ algorithm could actually attempt vs. skipped.
 ## Regenerating or extending this file
 
 ```
-PYTHONPATH=. python evaluation/export_test_dataset.py
-PYTHONPATH=. python evaluation/export_population_dataset.py
+PYTHONPATH=. uv run python evaluation/export_test_dataset.py
+PYTHONPATH=. uv run python evaluation/export_population_dataset.py
 ```
 
-Same `SAMPLE_SIZE`/`OUTPUT_PATH` env-var overrides as `evaluation/labeled_pairs.py` — read
-`SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE` or passing more
-than one ONC shard's worth of patients.
+Both scripts share the same `SAMPLE_SIZE` override as `evaluation/labeled_pairs.py`. Beyond that,
+`export_test_dataset.py` also takes `OUTPUT_PATH` (default `evaluation/cases/sample_labeled_pairs.jsonl`),
+while `export_population_dataset.py` takes its own `POOL_SIZE` (default 40), `CANDIDATES_PATH`
+(default `evaluation/cases/population_candidates.jsonl`), and `QUERIES_PATH` (default
+`evaluation/cases/population_queries.jsonl`) — it does not read `OUTPUT_PATH`. Read
+`SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE`/`POOL_SIZE` or
+passing more than one ONC shard's worth of patients.
