@@ -120,11 +120,6 @@ def _full_name(patient: Patient) -> str:
     return f"{first} {family}".strip().upper()
 
 
-def _family_name(patient: Patient) -> str:
-    names = patient.get("name") or []
-    return str(names[0].get("family") or "").upper() if names else ""
-
-
 def _levenshtein_distance(a: str, b: str, max_distance: int | None = None) -> int:
     """Standard edit distance, stdlib-only - session 13 confirmed rapidfuzz
     is not an actual dependency of this repo (cited only in a docstring,
@@ -192,7 +187,7 @@ def mine_name_collision_negatives(
     - before raising SAMPLE_SIZE past the low tens of thousands."""
     buckets: Dict[str, List[Patient]] = defaultdict(list)
     for patient in patients:
-        family = _family_name(patient)
+        family = _primary_family_name(patient).upper()
         if not family or not _postal_code(patient) or not patient.get("birthDate"):
             continue
         buckets[family[0]].append(patient)
