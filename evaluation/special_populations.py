@@ -38,7 +38,7 @@ import copy
 import random
 from collections import defaultdict
 from datetime import date
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from hard_negatives import HardNegativeCandidate
 
@@ -194,24 +194,15 @@ def construct_institutional_negatives(
     return candidates
 
 
-def mine_shared_surname_household_negatives(
-    patients: Iterable[Patient],
-    *,
-    min_age_gap_years: int = 15,
+def _mine_same_surname_zip_pairs(
+    patients: Iterable[Patient], *, age_gap_ok: Callable[[int], bool]
 ) -> List[HardNegativeCandidate]:
-    """Mine real ONC pairs sharing a postal code AND family name, but with
-    birth years far enough apart to represent a parent/child pair rather than
-    the same person or a twin - the Doc's "multi-generational households"
-    category.
-
-    Deliberately the inverse filter from hard_negatives.py's
-    mine_shared_address_hard_negatives() (which *excludes* same-family-name
-    pairs to stay disjoint from mutation-style variants of one identity): here
-    the shared family name is exactly the signal this category is testing.
-    The min_age_gap_years requirement is what keeps this disjoint from a twin
-    or fuzzy-variant scenario (same family name + near-identical DOB would be
-    those cases instead, not this one).
-    """
+    """Shared bucketing/pairing core for mine_shared_surname_household_negatives()
+    and mine_sibling_negatives() - both mine real ONC pairs sharing a postal
+    code AND family name, differing only in which birth-year gap they accept
+    (`age_gap_ok`). Factored out so the two functions' age-gap thresholds
+    can never drift apart from a copy-pasted bucketing/candidate-building
+    bug - only their own docstring-and-predicate differ."""
     buckets: Dict[Tuple[str, str], List[Patient]] = defaultdict(list)
     for patient in patients:
         zip_code = _postal_code(patient)
@@ -236,7 +227,7 @@ def mine_shared_surname_household_negatives(
                     )
                 except ValueError:
                     continue
-                if gap_years < min_age_gap_years:
+                if not age_gap_ok(gap_years):
                     continue
                 candidates.append(
                     HardNegativeCandidate(
@@ -250,3 +241,58 @@ def mine_shared_surname_household_negatives(
                     )
                 )
     return candidates
+
+
+def mine_shared_surname_household_negatives(
+    patients: Iterable[Patient],
+    *,
+    min_age_gap_years: int = 15,
+) -> List[HardNegativeCandidate]:
+    """Mine real ONC pairs sharing a postal code AND family name, but with
+    birth years far enough apart to represent a parent/child pair rather than
+    the same person or a twin - the Doc's "multi-generational households"
+    category.
+
+    Deliberately the inverse filter from hard_negatives.py's
+    mine_shared_address_hard_negatives() (which *excludes* same-family-name
+    pairs to stay disjoint from mutation-style variants of one identity): here
+    the shared family name is exactly the signal this category is testing.
+    The min_age_gap_years requirement is what keeps this disjoint from a twin
+    or fuzzy-variant scenario (same family name + near-identical DOB would be
+    those cases instead, not this one).
+
+    A same-surname, same-ZIP pair with a 4-14 year gap (below this
+    function's default, above mine_sibling_negatives()'s default
+    max_age_gap_years=3) is a deliberate, currently-unclaimed dead zone
+    between the two miners - see mine_sibling_negatives()'s docstring.
+    """
+    return _mine_same_surname_zip_pairs(
+        patients, age_gap_ok=lambda gap: gap >= min_age_gap_years
+    )
+
+
+def mine_sibling_negatives(
+    patients: Iterable[Patient], *, max_age_gap_years: int = 3
+) -> List[HardNegativeCandidate]:
+    """Mine real ONC pairs sharing a postal code AND family name, with birth
+    years close enough together to represent siblings (or twins, which
+    ONC's per-row structure cannot distinguish from close-in-age siblings
+    without a family-relationship column) - the complementary near-DOB case
+    mine_shared_surname_household_negatives()'s min_age_gap_years=15 default
+    deliberately excludes. Addresses the gap Luke Breyer (Epic) raised in
+    the 2026-09-22 workgroup meeting: negative cases need "close relatives,
+    twins, and family members" to be hard enough to outperform cheap
+    heuristics, not just coincidental ZIP+DOB collisions between unrelated
+    people.
+
+    A same-surname, same-ZIP pair with a 4-14 year gap (above this
+    function's default max_age_gap_years=3, below
+    mine_shared_surname_household_negatives()'s default
+    min_age_gap_years=15) is claimed by neither miner - deliberately: that
+    gap is genuinely ambiguous between "siblings with a wide age gap" and
+    "parent/child with a young parent", so guessing which is worse than
+    leaving it unclaimed. Not yet resolved as a workgroup decision - see
+    session_14.md."""
+    return _mine_same_surname_zip_pairs(
+        patients, age_gap_ok=lambda gap: gap <= max_age_gap_years
+    )

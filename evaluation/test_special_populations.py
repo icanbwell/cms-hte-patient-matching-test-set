@@ -8,6 +8,7 @@ from special_populations import (
     INSTITUTIONAL_ADDRESSES,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
+    mine_sibling_negatives,
 )
 
 
@@ -132,3 +133,47 @@ class TestMineSharedSurnameHouseholdNegatives:
         b = _patient("p2", "Rivera")
         del b["birthDate"]
         assert mine_shared_surname_household_negatives([a, b]) == []
+
+
+class TestMineSiblingNegatives:
+    def test_finds_same_family_same_zip_close_in_age(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="2010-01-01"),
+            _patient("p2", "Rivera", dob="2011-06-01"),
+        ]
+        candidates = mine_sibling_negatives(patients)
+        assert len(candidates) == 1
+        assert candidates[0].shared_fields["age_gap_years"] == "1"
+
+    def test_excludes_pairs_beyond_max_age_gap_years(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="1970-01-01"),
+            _patient("p2", "Rivera", dob="2010-01-01"),
+        ]
+        assert mine_sibling_negatives(patients, max_age_gap_years=3) == []
+
+    def test_boundary_gap_equal_to_max_is_included(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="2010-01-01"),
+            _patient("p2", "Rivera", dob="2013-01-01"),
+        ]
+        candidates = mine_sibling_negatives(patients, max_age_gap_years=3)
+        assert len(candidates) == 1
+
+    def test_excludes_different_family_names(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="2010-01-01"),
+            _patient("p2", "Chen", dob="2010-06-01"),
+        ]
+        assert mine_sibling_negatives(patients) == []
+
+    def test_excludes_different_zip_codes(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", zip_code="10001", dob="2010-01-01"),
+            _patient("p2", "Rivera", zip_code="20002", dob="2010-06-01"),
+        ]
+        assert mine_sibling_negatives(patients) == []
+
+    def test_never_pairs_a_record_with_itself(self) -> None:
+        patient = _patient("p1", "Rivera", dob="2010-01-01")
+        assert mine_sibling_negatives([patient, patient]) == []

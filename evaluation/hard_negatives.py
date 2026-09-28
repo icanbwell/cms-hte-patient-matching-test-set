@@ -107,3 +107,120 @@ def mine_shared_address_hard_negatives(
                     )
                 )
     return candidates
+
+
+def _full_name(patient: Patient) -> str:
+    names = patient.get("name") or []
+    if not names:
+        return ""
+    entry = names[0]
+    given = entry.get("given") or []
+    first = str(given[0]) if given else ""
+    family = str(entry.get("family") or "")
+    return f"{first} {family}".strip().upper()
+
+
+def _levenshtein_distance(a: str, b: str, max_distance: int | None = None) -> int:
+    """Standard edit distance, stdlib-only - session 13 confirmed rapidfuzz
+    is not an actual dependency of this repo (cited only in a docstring,
+    never imported), so this avoids adding one just for this.
+
+    `max_distance`, if given, aborts as soon as every entry in the current
+    row exceeds it (the true distance can only grow from there), returning
+    `max_distance + 1` rather than the exact distance - callers that only
+    need a "<= max_distance?" answer avoid the full O(len(a)*len(b)) matrix
+    on pairs that are obviously too far apart."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return max(len(a), len(b))
+    if max_distance is not None and abs(len(a) - len(b)) > max_distance:
+        return max_distance + 1
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            cost = 0 if ca == cb else 1
+            current[j] = min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost,
+            )
+        if max_distance is not None and min(current) > max_distance:
+            return max_distance + 1
+        previous = current
+    return previous[-1]
+
+
+def mine_name_collision_negatives(
+    patients: Iterable[Patient], *, max_name_distance: int = 1
+) -> List[HardNegativeCandidate]:
+    """Pairs of distinct-ID patients whose full name (first given name +
+    family name, uppercased) is within `max_name_distance` edit distance of
+    each other, but who share NEITHER postal code NOR date of birth - the
+    inverse signal from mine_shared_address_hard_negatives() (name differs,
+    ZIP+DOB match). Targets the failure mode Luke Breyer (Epic) flagged in
+    the 2026-09-22 workgroup meeting: a matcher that over-weights name
+    similarity alone, with no corroborating field, should still reject this
+    pair.
+
+    Blocked by the family name's first letter (an O(n) bucketing pass before
+    an O(k^2) within-bucket comparison, k = bucket size) - mirrors
+    mine_shared_address_hard_negatives()'s blocking rationale. A
+    one-character edit at the very first letter of a family name (e.g.
+    "Smith" vs. "Amith") would cross buckets and be missed; accepted as the
+    same kind of blocking-key tradeoff every exact-key miner in this module
+    already makes.
+
+    Within a bucket, patients are sorted by full-name length and only
+    compared against others within `max_name_distance` of that length (an
+    edit-distance-<=max_name_distance pair can never differ in length by
+    more than that), and `_levenshtein_distance`'s own early-abort skips the
+    rest of a doomed comparison besides. This is a real constant-factor
+    speedup (~4.5x measured on the vendored ONC shard at n=8000) but NOT an
+    asymptotic-complexity fix: real surnames cluster tightly in length, so
+    the length window still holds most of a large bucket and this remains
+    effectively O(n^2) at scale (measured ~37s at n=8000, ~142s at n=16000 -
+    consistent with the SYNTHETIC_DATA_SETUP.md "Memory & scale" section's
+    warning about single-process scans over the full ~1,000,000-record
+    dataset). Read that section - and re-measure this function specifically
+    - before raising SAMPLE_SIZE past the low tens of thousands."""
+    buckets: Dict[str, List[Patient]] = defaultdict(list)
+    for patient in patients:
+        family = _primary_family_name(patient).upper()
+        if not family or not _postal_code(patient) or not patient.get("birthDate"):
+            continue
+        buckets[family[0]].append(patient)
+
+    candidates: List[HardNegativeCandidate] = []
+    for group in buckets.values():
+        entries = sorted(
+            ((patient, _full_name(patient)) for patient in group),
+            key=lambda entry: len(entry[1]),
+        )
+        n = len(entries)
+        for i in range(n):
+            a, name_a = entries[i]
+            for j in range(i + 1, n):
+                b, name_b = entries[j]
+                if len(name_b) - len(name_a) > max_name_distance:
+                    break
+                if a.get("id") == b.get("id"):
+                    continue
+                if _postal_code(a) == _postal_code(b) or a.get("birthDate") == b.get(
+                    "birthDate"
+                ):
+                    continue
+                if name_a == name_b:
+                    continue
+                distance = _levenshtein_distance(name_a, name_b, max_name_distance)
+                if distance > max_name_distance:
+                    continue
+                candidates.append(
+                    HardNegativeCandidate(
+                        query=a,
+                        candidate=b,
+                        shared_fields={"name_distance": str(distance)},
+                    )
+                )
+    return candidates

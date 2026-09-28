@@ -36,7 +36,7 @@ import copy
 import random
 import string
 from datetime import date, timedelta
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from nicknames import NickNamer
 
@@ -299,6 +299,84 @@ def substitute_nickname(
 
 
 # --------------------------------------------------------------------------------------
+# Identifier mutations
+# --------------------------------------------------------------------------------------
+
+# Matches onc_loader.py's own SSN identifier.system value exactly.
+SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
+
+
+def ssn_dropped_variant(patient: Patient) -> Patient:
+    """Return a copy of `patient` with its SSN identifier removed - models the
+    realistic case Luke Breyer (Epic) raised in the 2026-09-22 workgroup
+    meeting, where one of a person's two on-file records carries a Social
+    Security Number and the other doesn't. Matches the Epic reference doc's
+    "Missing/placeholder SSN" data-quality category. No-op if `patient` has no
+    SSN identifier to begin with."""
+    patient = _copy_patient(patient)
+    identifiers = patient.get("identifier") or []
+    patient["identifier"] = [i for i in identifiers if i.get("system") != SSN_SYSTEM]
+    return patient
+
+
+def marriage_variant(patient: Patient, donor: Patient) -> Patient:
+    """Return a copy of `patient` with its family name replaced by its second
+    `name` entry (onc_loader.py loads MOTHERS_MAIDEN_NAME as a second `name`
+    entry for household-linkage purposes; repurposed here as a pre-marriage
+    surname proxy, since ONC has no dedicated maiden-name column) and its
+    address replaced by `donor`'s address (modeling a marriage-driven move -
+    ONC carries no address history for one person to draw a second address
+    from, so an unrelated real ONC record's address stands in for it).
+    Represents the "surname + address changed together" scenario Luke Breyer
+    (Epic) raised in the 2026-09-22 workgroup meeting. No-op on the name
+    change if `patient` has fewer than two `name` entries - measured against
+    the vendored ONC shard, only ~5.3% of records carry a second `name` entry
+    (MOTHERS_MAIDEN_NAME is sparse in the source data), so this category's
+    yield is intentionally small, not a bug.
+
+    The variant collapses to a single `name` entry carrying the maiden
+    surname - keeping both entries after overwriting name[0] would leave the
+    variant with the same surname twice (e.g. "Jones" at both name[0] and
+    name[1]), a shape no real record has and one that would leak the maiden
+    surname onto both sides of the pair via name[1] as well as name[0]."""
+    patient = _copy_patient(patient)
+    names = patient.get("name") or []
+    if len(names) > 1:
+        patient["name"] = [
+            {"family": names[1]["family"], "given": names[0].get("given")}
+        ]
+    patient["address"] = copy.deepcopy(donor.get("address") or [])
+    return patient
+
+
+def phone_variant(patient: Patient) -> Patient:
+    """Return a copy of `patient` using its second phone number in place of
+    its first - models the same person having two different on-file phone
+    numbers (e.g. an old home line vs. a newer cell number), the scenario
+    Luke Breyer (Epic) named in the 2026-09-22 workgroup meeting. ONC has no
+    phone `use` code (home/mobile) to draw on, so this deliberately does not
+    fabricate a FHIR ContactPoint.use value - it only demonstrates two
+    genuinely different real phone strings for one person. No-op if
+    `patient` has fewer than two phone-system telecom entries, or if the
+    first two happen to carry the identical value (PHONE2 duplicating
+    PHONE verbatim is a common ONC data shape - swapping two identical
+    values is not a "different phone number" scenario, and dropping the
+    duplicate would shrink the telecom list without that being a
+    meaningful change) - measured against the vendored ONC shard, only
+    ~15.1% of records carry a PHONE2 value - and of those, ~70% duplicate
+    PHONE verbatim (also a no-op here), so the real usable yield is closer
+    to ~5% - this category's yield is intentionally small, not a bug."""
+    patient = _copy_patient(patient)
+    telecom = patient.get("telecom") or []
+    phones = [t for t in telecom if t.get("system") == "phone"]
+    if len(phones) < 2 or phones[0].get("value") == phones[1].get("value"):
+        return patient
+    non_phone = [t for t in telecom if t.get("system") != "phone"]
+    patient["telecom"] = [phones[1]] + non_phone
+    return patient
+
+
+# --------------------------------------------------------------------------------------
 # Composition
 # --------------------------------------------------------------------------------------
 
@@ -332,3 +410,95 @@ def generate_fuzzy_variant(
     if mutation_type not in MUTATIONS:
         raise ValueError(f"Unknown mutation_type: {mutation_type!r}")
     return MUTATIONS[mutation_type](patient, rng), mutation_type
+
+
+# Each MUTATIONS key targets exactly one of these three top-level fields.
+# generate_compound_variant() draws whole groups (not individual mutation
+# keys) so that "n_mutations" means "n distinct fields changed", not "n
+# mutator calls that might collide on the same field or no-op silently".
+_MUTATION_FIELD_GROUPS: Dict[str, Tuple[str, ...]] = {
+    "birthDate": ("dob_day", "dob_month", "dob_year", "dob_swap", "dob_typo"),
+    "family": ("family_typo", "family_transpose", "family_drop_letters"),
+    "given": ("given_nickname", "given_abbreviate"),
+}
+
+
+def count_changed_fields(original: Patient, variant: Patient) -> int:
+    """Count how many of the three fields generate_compound_variant() targets
+    (birthDate, family, given) actually differ between `original` and
+    `variant`. Ground truth for whether a compound variant met its own
+    "touches >=n_mutations distinct fields" contract - a field group whose
+    mutators all legitimately no-op (e.g. an empty given name, a missing
+    birthDate) must not be counted as changed just because a mutator was
+    tried against it."""
+    changed = 0
+    if original.get("birthDate") != variant.get("birthDate"):
+        changed += 1
+    original_names = original.get("name") or []
+    variant_names = variant.get("name") or []
+    original_family = original_names[0].get("family") if original_names else None
+    variant_family = variant_names[0].get("family") if variant_names else None
+    if original_family != variant_family:
+        changed += 1
+    original_given = original_names[0].get("given") if original_names else None
+    variant_given = variant_names[0].get("given") if variant_names else None
+    if original_given != variant_given:
+        changed += 1
+    return changed
+
+
+def generate_compound_variant(
+    patient: Patient,
+    *,
+    n_mutations: int = 2,
+    rng: random.Random | None = None,
+) -> Tuple[Patient, List[str]]:
+    """Apply mutators from `n_mutations` distinct field groups (birthDate/
+    family/given) to `patient` in sequence, each acting on the previous
+    mutator's output - models the realistic multi-field true-match pair Luke
+    Breyer (Epic) raised in the 2026-09-22 workgroup meeting ("every correct
+    match pair was an exact copy with only one field changed").
+    generate_fuzzy_variant() itself is unchanged and still applies exactly
+    one mutation - several CMS provisions specifically need that
+    single-field-diff shape to test one rule in isolation, so this is an
+    additional true-match category, not a replacement.
+
+    Within each chosen field group, every mutator in the group is tried (in
+    random order) until one actually changes that field on this patient -
+    guarding against a field group's mutators legitimately no-op'ing (e.g.
+    substitute_nickname on a name with no known nickname) and silently
+    yielding a variant that touches fewer than `n_mutations` distinct
+    fields. If every mutator in a group no-ops for this patient (e.g. no
+    birthDate to mutate at all), that field is left unchanged rather than
+    guessing - see this repo's mutators' own no-op docstrings.
+
+    Returns (mutated_patient, mutation_types_applied); the list always has
+    exactly `n_mutations` entries, one per field group, in the order the
+    groups were drawn. Raises ValueError if n_mutations < 2 (a single
+    mutation is generate_fuzzy_variant()'s job, not this function's) or if
+    n_mutations exceeds the number of distinct field groups (there are only
+    3 - birthDate, family, given - so a field can never be repeated)."""
+    if n_mutations < 2:
+        raise ValueError("generate_compound_variant requires n_mutations >= 2")
+    if n_mutations > len(_MUTATION_FIELD_GROUPS):
+        raise ValueError(
+            "generate_compound_variant supports at most "
+            f"{len(_MUTATION_FIELD_GROUPS)} distinct fields "
+            f"({', '.join(_MUTATION_FIELD_GROUPS)}), got n_mutations={n_mutations}"
+        )
+    rng = _rng(rng)
+    field_names = rng.sample(list(_MUTATION_FIELD_GROUPS), n_mutations)
+    variant = patient
+    mutation_types: List[str] = []
+    for field_name in field_names:
+        candidates = list(_MUTATION_FIELD_GROUPS[field_name])
+        rng.shuffle(candidates)
+        applied = candidates[0]
+        for mutation_type in candidates:
+            attempt = MUTATIONS[mutation_type](variant, rng)
+            if attempt != variant:
+                variant = attempt
+                applied = mutation_type
+                break
+        mutation_types.append(applied)
+    return variant, mutation_types
