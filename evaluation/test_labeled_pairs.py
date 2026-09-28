@@ -190,3 +190,39 @@ class TestGenerateRawPairs:
         )
         pair_types = {p.strata.get("pair_type") for p in pairs}
         assert pair_types <= {"fuzzy_variant", "hard_negative"}
+
+    def test_new_true_match_categories_never_emit_a_byte_identical_pair(self) -> None:
+        # No SSN, no second name entry (no maiden-name proxy), only one phone
+        # number - every one of the four new no-op-capable mutators degenerates
+        # on this record, so none of their pairs should be emitted at all.
+        patient = {
+            "resourceType": "Patient",
+            "id": "p1",
+            "name": [{"family": "Smith", "given": ["Katherine"]}],
+            "birthDate": "1980-06-15",
+            "telecom": [{"system": "phone", "value": "555-000-1111"}],
+            "address": [
+                {
+                    "line": ["1 Main St"],
+                    "city": "NY",
+                    "state": "NY",
+                    "postalCode": "10001",
+                }
+            ],
+            "identifier": [],
+        }
+        pairs = list(generate_raw_pairs([patient], seed=0))
+        degenerate_types = {
+            p.strata["pair_type"]
+            for p in pairs
+            if p.strata.get("pair_type")
+            in {"ssn_dropped", "marriage_variant", "phone_variant"}
+        }
+        assert degenerate_types == set()
+
+    def test_no_true_match_pair_has_an_identical_query_and_candidate(self) -> None:
+        patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
+        pairs = list(generate_raw_pairs(patients, seed=0))
+        for pair in pairs:
+            if pair.is_true_match:
+                assert pair.query_patient != pair.candidate_patient, pair.pair_id

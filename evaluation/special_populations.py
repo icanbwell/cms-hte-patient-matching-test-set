@@ -211,6 +211,11 @@ def mine_shared_surname_household_negatives(
     The min_age_gap_years requirement is what keeps this disjoint from a twin
     or fuzzy-variant scenario (same family name + near-identical DOB would be
     those cases instead, not this one).
+
+    A same-surname, same-ZIP pair with a 4-14 year gap (below this
+    function's default, above mine_sibling_negatives()'s default
+    max_age_gap_years=3) is a deliberate, currently-unclaimed dead zone
+    between the two miners - see mine_sibling_negatives()'s docstring.
     """
     buckets: Dict[Tuple[str, str], List[Patient]] = defaultdict(list)
     for patient in patients:
@@ -264,7 +269,16 @@ def mine_sibling_negatives(
     the 2026-09-22 workgroup meeting: negative cases need "close relatives,
     twins, and family members" to be hard enough to outperform cheap
     heuristics, not just coincidental ZIP+DOB collisions between unrelated
-    people."""
+    people.
+
+    A same-surname, same-ZIP pair with a 4-14 year gap (above this
+    function's default max_age_gap_years=3, below
+    mine_shared_surname_household_negatives()'s default
+    min_age_gap_years=15) is claimed by neither miner - deliberately: that
+    gap is genuinely ambiguous between "siblings with a wide age gap" and
+    "parent/child with a young parent", so guessing which is worse than
+    leaving it unclaimed. Not yet resolved as a workgroup decision - see
+    session_14.md."""
     buckets: Dict[Tuple[str, str], List[Patient]] = defaultdict(list)
     for patient in patients:
         zip_code = _postal_code(patient)

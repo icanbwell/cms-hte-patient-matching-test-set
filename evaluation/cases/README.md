@@ -40,7 +40,7 @@ The ONC 2017 Patient Matching Algorithm Challenge dataset: 9 alphabetically-shar
 | `SUFFIX` | `name[0].suffix` | |
 | `DOB` | `birthDate` | SAS-style day-offset from `1900-01-01` minus 2; decoded to an ISO date. Only set if the column is non-empty — the dataset's "Null" shard has intentionally-missing fields for incomplete-data testing, mirrored rather than raising |
 | `GENDER` | `gender` | `M`/`MALE`→`male`, `F`/`FEMALE`→`female`, anything else→`unknown` |
-| `PHONE`, `EMAIL` | `telecom[]` | |
+| `PHONE`, `PHONE2`, `EMAIL` | `telecom[]` | `PHONE2` (session 14) is only ~15.1% populated in the vendored shard |
 | `ADDRESS1`, `ADDRESS2`, `CITY`, `STATE`, `ZIP` | `address[0]` | `ADDRESS2` appended to `line` only if present |
 | `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn` |
 
@@ -92,10 +92,14 @@ changed":
   record where only one of two on-file copies carries a Social Security Number.
 - **`marriage_variant`** — swaps in the record's second `name` entry (ONC's `MOTHERS_MAIDEN_NAME`,
   loaded as a pre-marriage surname proxy) and replaces the address with an unrelated real ONC
-  record's address, modeling a marriage-driven surname + address change together.
+  record's address, modeling a marriage-driven surname + address change together. Only ~5.3% of
+  the vendored ONC shard carries a second `name` entry, so this category's yield is intentionally
+  small — not a bug, and no-op (skipped, not emitted) for records without one.
 - **`phone_variant`** — swaps to the record's second phone number (ONC's `PHONE2` column,
   loaded by `onc_loader.py` starting session 14), modeling two genuinely different on-file phone
-  numbers for one person. ONC has no phone `use` (home/mobile) semantic, so this does not fabricate
+  numbers for one person. Only ~15.1% of the vendored ONC shard carries a `PHONE2` value, so this
+  category's yield is also intentionally small, and no-op (skipped) records don't emit a pair.
+  ONC has no phone `use` (home/mobile) semantic, so this does not fabricate
   a FHIR `ContactPoint.use` value.
 
 ### True-non-match pairs — mined hard negatives (`hard_negatives.py`, `special_populations.py`)
@@ -118,9 +122,13 @@ reality. Always two genuinely distinct real ONC records instead:
   case can't be resolved through field matching alone, so it isn't a valid "should not match" test
   case.
 - **Sibling negatives** (session 14, `mine_sibling_negatives`) — distinct-ID pairs sharing postal
-  code + family name, with birth years ≤3 years apart (the complementary near-DOB case the
+  code + family name, with birth years ≤3 years apart (the near-DOB case the
   multi-generational-household miner's ≥15-year gap deliberately excludes) — a proxy for
-  siblings/twins, since ONC has no family-relationship column.
+  siblings/twins, since ONC has no family-relationship column. **The 4-14 year gap between these
+  two miners is a deliberate, currently-unclaimed dead zone** — a same-surname, same-ZIP pair in
+  that range is genuinely ambiguous between "siblings with a wide age gap" and "parent/child with a
+  young parent", and neither miner claims it rather than guessing. Not yet resolved as a workgroup
+  decision.
 - **Name-collision negatives** (session 14, `mine_name_collision_negatives`) — distinct-ID pairs
   with a near-identical full name (edit distance ≤1, blocked by family-name first letter) but
   **no** shared postal code or DOB — targets matchers that over-weight name similarity alone with

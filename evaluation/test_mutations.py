@@ -187,6 +187,21 @@ class TestMarriageVariant:
         result = marriage_variant(patient, donor)
         assert result["name"][0]["family"] == "Jones"
 
+    def test_collapses_to_a_single_name_entry_not_a_duplicated_surname(self) -> None:
+        # Keeping both entries after overwriting name[0] with name[1]'s family
+        # would leave the variant with the same surname twice ("Jones", "Jones")
+        # - a shape no real record has, and one that leaks the maiden surname
+        # onto both sides of the pair via name[1] as well as name[0].
+        patient = _patient(
+            name=[
+                {"family": "Smith", "given": ["Katherine"]},
+                {"family": "Jones", "given": ["Katherine"]},
+            ]
+        )
+        donor = _patient(id="donor", address=[])
+        result = marriage_variant(patient, donor)
+        assert result["name"] == [{"family": "Jones", "given": ["Katherine"]}]
+
     def test_replaces_address_with_donors_address(self) -> None:
         patient = _patient(
             address=[
@@ -302,3 +317,32 @@ class TestGenerateCompoundVariant:
         rng = random.Random(0)
         variant, _ = generate_compound_variant(patient, n_mutations=2, rng=rng)
         assert variant != patient
+
+    def test_always_changes_at_least_n_mutations_distinct_fields(self) -> None:
+        # A batch of 200 realistic, fully-mutable records (long enough family/
+        # given names, a nickname-eligible given name, a present birthDate) -
+        # every draw must change >=2 distinct top-level fields, not just make
+        # >=2 mutator calls that might no-op or collide on the same field.
+        rng = random.Random(0)
+        for i in range(200):
+            patient = _patient(
+                id=f"p{i}",
+                name=[{"family": "Montgomery", "given": ["Katherine"]}],
+            )
+            variant, mutation_types = generate_compound_variant(
+                patient, n_mutations=2, rng=rng
+            )
+            changed_fields = set()
+            if variant["birthDate"] != patient["birthDate"]:
+                changed_fields.add("birthDate")
+            if variant["name"][0]["family"] != patient["name"][0]["family"]:
+                changed_fields.add("family")
+            if variant["name"][0]["given"] != patient["name"][0]["given"]:
+                changed_fields.add("given")
+            assert len(changed_fields) >= 2, (mutation_types, patient, variant)
+
+    def test_n_mutations_above_field_group_count_raises(self) -> None:
+        # Only 3 distinct fields (birthDate/family/given) can ever be composed -
+        # asking for more must raise, not silently repeat a field.
+        with pytest.raises(ValueError):
+            generate_compound_variant(_patient(), n_mutations=4, rng=random.Random(0))

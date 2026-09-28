@@ -143,3 +143,27 @@ class TestMineNameCollisionNegatives:
             _named_patient("p2", "Pat", "Amith", "20002", "1990-05-05"),
         ]
         assert mine_name_collision_negatives(patients) == []
+
+    def test_finds_collisions_within_a_large_same_letter_bucket_without_timing_out(
+        self,
+    ) -> None:
+        # Every patient here lands in the same first-letter bucket ("S") - the
+        # length-window pruning inside the bucket must still find the one real
+        # collision (Smith/Smyth) among 300 same-letter, mostly-unrelated names,
+        # and must do so fast (this test itself is the regression guard: it
+        # would take minutes, not milliseconds, without pruning).
+        patients = [
+            _named_patient(
+                f"filler{i}",
+                "Pat",
+                f"S{'x' * (i % 12 + 3)}",
+                f"{10100 + i}",
+                "1970-01-01",
+            )
+            for i in range(300)
+        ]
+        patients.append(_named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"))
+        patients.append(_named_patient("p2", "Pat", "Smyth", "20002", "1990-05-05"))
+        candidates = mine_name_collision_negatives(patients)
+        pairs = {frozenset({c.query["id"], c.candidate["id"]}) for c in candidates}
+        assert frozenset({"p1", "p2"}) in pairs

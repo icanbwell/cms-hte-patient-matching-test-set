@@ -154,44 +154,48 @@ def generate_raw_pairs(
             compound, mutation_types = generate_compound_variant(
                 p, n_mutations=n_compound_mutations, rng=rng
             )
-            yield RawPair(
-                pair_id=f"{p['id']}::compound::{'-'.join(mutation_types)}",
-                query_patient=p,
-                candidate_patient=compound,
-                is_true_match=True,
-                strata={
-                    "pair_type": "compound_variant",
-                    "mutations": ",".join(mutation_types),
-                },
-            )
+            if compound != p:
+                yield RawPair(
+                    pair_id=f"{p['id']}::compound::{'-'.join(mutation_types)}",
+                    query_patient=p,
+                    candidate_patient=compound,
+                    is_true_match=True,
+                    strata={
+                        "pair_type": "compound_variant",
+                        "mutations": ",".join(mutation_types),
+                    },
+                )
         if include_ssn_dropped:
             dropped = ssn_dropped_variant(p)
-            yield RawPair(
-                pair_id=f"{p['id']}::ssn_dropped",
-                query_patient=p,
-                candidate_patient=dropped,
-                is_true_match=True,
-                strata={"pair_type": "ssn_dropped"},
-            )
+            if dropped != p:
+                yield RawPair(
+                    pair_id=f"{p['id']}::ssn_dropped",
+                    query_patient=p,
+                    candidate_patient=dropped,
+                    is_true_match=True,
+                    strata={"pair_type": "ssn_dropped"},
+                )
         if include_marriage_variant:
             donor = patients[(idx + 1) % len(patients)]
             married = marriage_variant(p, donor)
-            yield RawPair(
-                pair_id=f"{p['id']}::marriage_variant",
-                query_patient=p,
-                candidate_patient=married,
-                is_true_match=True,
-                strata={"pair_type": "marriage_variant"},
-            )
+            if married != p:
+                yield RawPair(
+                    pair_id=f"{p['id']}::marriage_variant",
+                    query_patient=p,
+                    candidate_patient=married,
+                    is_true_match=True,
+                    strata={"pair_type": "marriage_variant"},
+                )
         if include_phone_variant:
             phoned = phone_variant(p)
-            yield RawPair(
-                pair_id=f"{p['id']}::phone_variant",
-                query_patient=p,
-                candidate_patient=phoned,
-                is_true_match=True,
-                strata={"pair_type": "phone_variant"},
-            )
+            if phoned != p:
+                yield RawPair(
+                    pair_id=f"{p['id']}::phone_variant",
+                    query_patient=p,
+                    candidate_patient=phoned,
+                    is_true_match=True,
+                    strata={"pair_type": "phone_variant"},
+                )
 
     for candidate in mine_shared_address_hard_negatives(patients):
         yield RawPair(
