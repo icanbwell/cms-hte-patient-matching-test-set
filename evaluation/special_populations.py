@@ -250,3 +250,56 @@ def mine_shared_surname_household_negatives(
                     )
                 )
     return candidates
+
+
+def mine_sibling_negatives(
+    patients: Iterable[Patient], *, max_age_gap_years: int = 3
+) -> List[HardNegativeCandidate]:
+    """Mine real ONC pairs sharing a postal code AND family name, with birth
+    years close enough together to represent siblings (or twins, which
+    ONC's per-row structure cannot distinguish from close-in-age siblings
+    without a family-relationship column) - the complementary near-DOB case
+    mine_shared_surname_household_negatives()'s min_age_gap_years=15 default
+    deliberately excludes. Addresses the gap Luke Breyer (Epic) raised in
+    the 2026-09-22 workgroup meeting: negative cases need "close relatives,
+    twins, and family members" to be hard enough to outperform cheap
+    heuristics, not just coincidental ZIP+DOB collisions between unrelated
+    people."""
+    buckets: Dict[Tuple[str, str], List[Patient]] = defaultdict(list)
+    for patient in patients:
+        zip_code = _postal_code(patient)
+        family = _primary_family_name(patient).upper()
+        if not zip_code or not family:
+            continue
+        buckets[(zip_code, family)].append(patient)
+
+    candidates: List[HardNegativeCandidate] = []
+    for (zip_code, family), group in buckets.items():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                a, b = group[i], group[j]
+                dob_a, dob_b = a.get("birthDate"), b.get("birthDate")
+                if a.get("id") == b.get("id") or not dob_a or not dob_b:
+                    continue
+                try:
+                    gap_years = abs(
+                        date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year
+                    )
+                except ValueError:
+                    continue
+                if gap_years > max_age_gap_years:
+                    continue
+                candidates.append(
+                    HardNegativeCandidate(
+                        query=a,
+                        candidate=b,
+                        shared_fields={
+                            "postalCode": zip_code,
+                            "family_name": family,
+                            "age_gap_years": str(gap_years),
+                        },
+                    )
+                )
+    return candidates
