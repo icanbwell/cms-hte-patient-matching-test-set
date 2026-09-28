@@ -1,0 +1,8 @@
+# Default owners for everything in the repo, unless a later match takes precedence.
+# Required so an approving review actually counts once "require code-owner review" is
+# enabled on this repo's branch protection — without this file, that requirement is
+# unsatisfiable for every PR (this repo, like kill-the-clipboard-scanner, is being
+# prepared for open-source release — see NOTICE/THIRD-PARTY-NOTICES — and only b.well's
+# own engineering team should be able to approve/merge changes once external
+# contributions are possible via forks).
+* @icanbwell/engineering @icanbwell/eng-contractors
