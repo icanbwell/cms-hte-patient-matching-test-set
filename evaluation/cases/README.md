@@ -139,14 +139,20 @@ reality. Always two genuinely distinct real ONC records instead:
 - **`labeled_pairs.py`**'s `generate_raw_pairs()` combines all of the above into
   `(source, target, is_true_match)` triples — the shared generation core everything else builds
   on. It runs on **one shared `random.Random(seed)` instance** (default `seed=0`), consumed in a
-  fixed order (fuzzy variants → normalization edge cases → hard negatives → households →
-  institutional pairs per type), so a given `seed` always reproduces the same output byte-for-byte
-  given the same input patients.
+  fixed order (per patient: fuzzy variant → normalization edge cases → compound variant →
+  ssn_dropped → marriage_variant → phone_variant; then, across all patients: hard negatives →
+  name-collision negatives → households → sibling negatives → institutional pairs per type), so a
+  given `seed` always reproduces the same output byte-for-byte given the same input patients.
 - **Every case gets a stable, self-describing id**, built from the ONC `EnterpriseID`(s)
   involved: `{id}::{mutation_type}` for a fuzzy variant (e.g. `14065387::family_transpose`),
-  `{id}::diacritic` / `{id}::punctuation` for normalization edge cases, `{query_id}::{candidate_id}`
-  for a mined hard negative, `{query_id}::{candidate_id}::household` for a mined household pair,
-  and `{query_id}::{candidate_id}::{institution_type}` for a constructed institutional pair.
+  `{id}::diacritic` / `{id}::punctuation` for normalization edge cases,
+  `{id}::compound::{mutation_types}` for a compound variant, `{id}::ssn_dropped` /
+  `{id}::marriage_variant` / `{id}::phone_variant` for those session-14 scenarios,
+  `{query_id}::{candidate_id}` for a mined hard negative,
+  `{query_id}::{candidate_id}::name_collision` for a mined name-collision negative,
+  `{query_id}::{candidate_id}::household` for a mined household pair,
+  `{query_id}::{candidate_id}::sibling` for a mined sibling negative, and
+  `{query_id}::{candidate_id}::{institution_type}` for a constructed institutional pair.
 - **Every case gets a `rationale` string** built by `format_rationale()`: the pair's category plus
   its most specific subtype as `<pair_type>/<subtype>` (e.g. `fuzzy_variant/dob_day`,
   `special_population/shelter`), with any remaining context (e.g. `postalCode=...,
@@ -294,12 +300,15 @@ docstring for why.
 
 **The number of cases in each `rationale` category is an artifact of how this file was
 generated, not a signal about how often that scenario occurs in the real world.** For example,
-`normalization_edge_case` cases are 64% of this file because the generator emits exactly one
+`normalization_edge_case` cases are ~33% of this file because the generator emits exactly one
 diacritic and one punctuation variant per source patient — not because accented or hyphenated
 names are that common. Conversely, `hard_negative` has only 4 cases because that's how many
 coincidental ZIP+DOB collisions happened to occur in a 2,000-patient sample — not because that
-scenario is rare in reality. **Do not compute an aggregate "expected real-world accuracy" number
-by weighting categories according to their raw counts in this file.**
+scenario is rare in reality. Likewise, `marriage_variant`/`ssn_dropped`/`phone_variant` (session
+14) track how often `MOTHERS_MAIDEN_NAME`/SSN/`PHONE2` happen to be populated in the vendored ONC
+sample (~5.3%/~75%/~15.1% respectively — see those mutators' own docstrings), not real-world
+prevalence of a missing-SSN or two-phone-number record. **Do not compute an aggregate "expected
+real-world accuracy" number by weighting categories according to their raw counts in this file.**
 
 The draft Doc flagged this as an open, unresolved methodology question (§1: "Maintain frequency
 of use cases per real world datasets") and separately (§5) warned against the naive fix of just
