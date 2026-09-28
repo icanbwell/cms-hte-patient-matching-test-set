@@ -36,7 +36,7 @@ import copy
 import random
 import string
 from datetime import date, timedelta
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from nicknames import NickNamer
 
@@ -391,3 +391,34 @@ def generate_fuzzy_variant(
     if mutation_type not in MUTATIONS:
         raise ValueError(f"Unknown mutation_type: {mutation_type!r}")
     return MUTATIONS[mutation_type](patient, rng), mutation_type
+
+
+def generate_compound_variant(
+    patient: Patient,
+    *,
+    n_mutations: int = 2,
+    rng: random.Random | None = None,
+) -> Tuple[Patient, List[str]]:
+    """Apply `n_mutations` randomly-chosen mutators from MUTATIONS to
+    `patient` in sequence, each acting on the previous mutator's output -
+    models the realistic multi-field true-match pair Luke Breyer (Epic)
+    raised in the 2026-09-22 workgroup meeting ("every correct match pair was
+    an exact copy with only one field changed"). generate_fuzzy_variant()
+    itself is unchanged and still applies exactly one mutation - several CMS
+    provisions specifically need that single-field-diff shape to test one
+    rule in isolation, so this is an additional true-match category, not a
+    replacement.
+
+    Returns (mutated_patient, mutation_types_applied); the list always has
+    exactly `n_mutations` entries (repeats allowed - e.g. two independent
+    family-name mutators both firing is itself a realistic compound case).
+    Raises ValueError if n_mutations < 2 (a single mutation is
+    generate_fuzzy_variant()'s job, not this function's)."""
+    if n_mutations < 2:
+        raise ValueError("generate_compound_variant requires n_mutations >= 2")
+    rng = _rng(rng)
+    mutation_types = [rng.choice(list(MUTATIONS)) for _ in range(n_mutations)]
+    variant = patient
+    for mutation_type in mutation_types:
+        variant = MUTATIONS[mutation_type](variant, rng)
+    return variant, mutation_types

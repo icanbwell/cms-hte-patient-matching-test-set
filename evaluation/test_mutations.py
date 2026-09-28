@@ -17,6 +17,7 @@ from mutations import (
     SSN_SYSTEM,
     abbreviate,
     drop_letters,
+    generate_compound_variant,
     generate_fuzzy_variant,
     marriage_variant,
     mutate_dob,
@@ -271,3 +272,33 @@ class TestPhoneVariant:
         patient = _patient(telecom=[])
         result = phone_variant(patient)
         assert result["telecom"] == []
+
+
+class TestGenerateCompoundVariant:
+    def test_returns_n_mutations_applied(self) -> None:
+        patient = _patient()
+        rng = random.Random(0)
+        _, mutation_types = generate_compound_variant(patient, n_mutations=3, rng=rng)
+        assert len(mutation_types) == 3
+        assert all(m in MUTATIONS for m in mutation_types)
+
+    def test_default_n_mutations_is_two(self) -> None:
+        patient = _patient()
+        _, mutation_types = generate_compound_variant(patient, rng=random.Random(0))
+        assert len(mutation_types) == 2
+
+    def test_n_mutations_below_two_raises(self) -> None:
+        with pytest.raises(ValueError):
+            generate_compound_variant(_patient(), n_mutations=1, rng=random.Random(0))
+
+    def test_does_not_mutate_input_patient(self) -> None:
+        patient = _patient()
+        original_family = patient["name"][0]["family"]
+        generate_compound_variant(patient, n_mutations=3, rng=random.Random(0))
+        assert patient["name"][0]["family"] == original_family
+
+    def test_variant_differs_from_original(self) -> None:
+        patient = _patient()
+        rng = random.Random(0)
+        variant, _ = generate_compound_variant(patient, n_mutations=2, rng=rng)
+        assert variant != patient
