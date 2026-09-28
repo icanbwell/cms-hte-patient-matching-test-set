@@ -319,6 +319,25 @@ def ssn_dropped_variant(patient: Patient) -> Patient:
     return patient
 
 
+def marriage_variant(patient: Patient, donor: Patient) -> Patient:
+    """Return a copy of `patient` with its family name replaced by its second
+    `name` entry (onc_loader.py loads MOTHERS_MAIDEN_NAME as a second `name`
+    entry for household-linkage purposes; repurposed here as a pre-marriage
+    surname proxy, since ONC has no dedicated maiden-name column) and its
+    address replaced by `donor`'s address (modeling a marriage-driven move -
+    ONC carries no address history for one person to draw a second address
+    from, so an unrelated real ONC record's address stands in for it).
+    Represents the "surname + address changed together" scenario Luke Breyer
+    (Epic) raised in the 2026-09-22 workgroup meeting. No-op on the name
+    change if `patient` has fewer than two `name` entries."""
+    patient = _copy_patient(patient)
+    names = patient.get("name") or []
+    if len(names) > 1:
+        names[0]["family"] = names[1]["family"]
+    patient["address"] = copy.deepcopy(donor.get("address") or [])
+    return patient
+
+
 # --------------------------------------------------------------------------------------
 # Composition
 # --------------------------------------------------------------------------------------
