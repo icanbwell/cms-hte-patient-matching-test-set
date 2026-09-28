@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from hard_negatives import mine_shared_address_hard_negatives
+from hard_negatives import (
+    mine_name_collision_negatives,
+    mine_shared_address_hard_negatives,
+)
 
 
 def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01-01"):
@@ -76,3 +79,67 @@ class TestMineSharedAddressHardNegatives:
             frozenset({"p1", "p3"}),
             frozenset({"p2", "p3"}),
         }
+
+
+def _named_patient(id_: str, given: str, family: str, zip_code: str, dob: str):
+    return {
+        "resourceType": "Patient",
+        "id": id_,
+        "name": [{"family": family, "given": [given]}],
+        "birthDate": dob,
+        "telecom": [],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+        ],
+        "identifier": [],
+    }
+
+
+class TestMineNameCollisionNegatives:
+    def test_finds_near_identical_names_with_no_zip_or_dob_overlap(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Smyth", "20002", "1990-05-05"),
+        ]
+        candidates = mine_name_collision_negatives(patients)
+        assert len(candidates) == 1
+        assert candidates[0].shared_fields["name_distance"] == "1"
+
+    def test_excludes_pairs_sharing_a_zip_code(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Smyth", "10001", "1990-05-05"),
+        ]
+        assert mine_name_collision_negatives(patients) == []
+
+    def test_excludes_pairs_sharing_a_dob(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Smyth", "20002", "1980-01-01"),
+        ]
+        assert mine_name_collision_negatives(patients) == []
+
+    def test_excludes_names_beyond_max_distance(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Johnson", "20002", "1990-05-05"),
+        ]
+        assert mine_name_collision_negatives(patients, max_name_distance=1) == []
+
+    def test_excludes_identical_names(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Smith", "20002", "1990-05-05"),
+        ]
+        assert mine_name_collision_negatives(patients) == []
+
+    def test_never_pairs_a_record_with_itself(self) -> None:
+        patient = _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01")
+        assert mine_name_collision_negatives([patient, patient]) == []
+
+    def test_different_first_letter_is_not_found_due_to_blocking(self) -> None:
+        patients = [
+            _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Pat", "Amith", "20002", "1990-05-05"),
+        ]
+        assert mine_name_collision_negatives(patients) == []

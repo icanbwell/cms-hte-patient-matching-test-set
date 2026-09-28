@@ -107,3 +107,94 @@ def mine_shared_address_hard_negatives(
                     )
                 )
     return candidates
+
+
+def _full_name(patient: Patient) -> str:
+    names = patient.get("name") or []
+    if not names:
+        return ""
+    entry = names[0]
+    given = entry.get("given") or []
+    first = str(given[0]) if given else ""
+    family = str(entry.get("family") or "")
+    return f"{first} {family}".strip().upper()
+
+
+def _family_name(patient: Patient) -> str:
+    names = patient.get("name") or []
+    return str(names[0].get("family") or "").upper() if names else ""
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    """Standard edit distance, stdlib-only - session 13 confirmed rapidfuzz
+    is not an actual dependency of this repo (cited only in a docstring,
+    never imported), so this avoids adding one just for this."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return max(len(a), len(b))
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            cost = 0 if ca == cb else 1
+            current[j] = min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost,
+            )
+        previous = current
+    return previous[-1]
+
+
+def mine_name_collision_negatives(
+    patients: Iterable[Patient], *, max_name_distance: int = 1
+) -> List[HardNegativeCandidate]:
+    """Pairs of distinct-ID patients whose full name (first given name +
+    family name, uppercased) is within `max_name_distance` edit distance of
+    each other, but who share NEITHER postal code NOR date of birth - the
+    inverse signal from mine_shared_address_hard_negatives() (name differs,
+    ZIP+DOB match). Targets the failure mode Luke Breyer (Epic) flagged in
+    the 2026-09-22 workgroup meeting: a matcher that over-weights name
+    similarity alone, with no corroborating field, should still reject this
+    pair.
+
+    Blocked by the family name's first letter (an O(n) bucketing pass before
+    an O(k^2) within-bucket comparison, k = bucket size) rather than a full
+    O(n^2) scan - mirrors mine_shared_address_hard_negatives()'s blocking
+    rationale. A one-character edit at the very first letter of a family name
+    (e.g. "Smith" vs. "Amith") would cross buckets and be missed; accepted as
+    the same kind of blocking-key tradeoff every exact-key miner in this
+    module already makes."""
+    buckets: Dict[str, List[Patient]] = defaultdict(list)
+    for patient in patients:
+        family = _family_name(patient)
+        if not family or not _postal_code(patient) or not patient.get("birthDate"):
+            continue
+        buckets[family[0]].append(patient)
+
+    candidates: List[HardNegativeCandidate] = []
+    for group in buckets.values():
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                a, b = group[i], group[j]
+                if a.get("id") == b.get("id"):
+                    continue
+                if _postal_code(a) == _postal_code(b) or a.get("birthDate") == b.get(
+                    "birthDate"
+                ):
+                    continue
+                name_a, name_b = _full_name(a), _full_name(b)
+                if name_a == name_b:
+                    continue
+                distance = _levenshtein_distance(name_a, name_b)
+                if distance > max_name_distance:
+                    continue
+                candidates.append(
+                    HardNegativeCandidate(
+                        query=a,
+                        candidate=b,
+                        shared_fields={"name_distance": str(distance)},
+                    )
+                )
+    return candidates
