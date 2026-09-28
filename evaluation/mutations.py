@@ -357,13 +357,19 @@ def phone_variant(patient: Patient) -> Patient:
     phone `use` code (home/mobile) to draw on, so this deliberately does not
     fabricate a FHIR ContactPoint.use value - it only demonstrates two
     genuinely different real phone strings for one person. No-op if
-    `patient` has fewer than two phone-system telecom entries - measured
-    against the vendored ONC shard, only ~15.1% of records carry a PHONE2
-    value, so this category's yield is intentionally small, not a bug."""
+    `patient` has fewer than two phone-system telecom entries, or if the
+    first two happen to carry the identical value (PHONE2 duplicating
+    PHONE verbatim is a common ONC data shape - swapping two identical
+    values is not a "different phone number" scenario, and dropping the
+    duplicate would shrink the telecom list without that being a
+    meaningful change) - measured against the vendored ONC shard, only
+    ~15.1% of records carry a PHONE2 value - and of those, ~70% duplicate
+    PHONE verbatim (also a no-op here), so the real usable yield is closer
+    to ~5% - this category's yield is intentionally small, not a bug."""
     patient = _copy_patient(patient)
     telecom = patient.get("telecom") or []
     phones = [t for t in telecom if t.get("system") == "phone"]
-    if len(phones) < 2:
+    if len(phones) < 2 or phones[0].get("value") == phones[1].get("value"):
         return patient
     non_phone = [t for t in telecom if t.get("system") != "phone"]
     patient["telecom"] = [phones[1]] + non_phone

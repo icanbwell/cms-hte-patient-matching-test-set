@@ -97,8 +97,10 @@ changed":
   small — not a bug, and no-op (skipped, not emitted) for records without one.
 - **`phone_variant`** — swaps to the record's second phone number (ONC's `PHONE2` column,
   loaded by `onc_loader.py` starting session 14), modeling two genuinely different on-file phone
-  numbers for one person. Only ~15.1% of the vendored ONC shard carries a `PHONE2` value, so this
-  category's yield is also intentionally small, and no-op (skipped) records don't emit a pair.
+  numbers for one person. Only ~15.1% of the vendored ONC shard carries a `PHONE2` value — and of
+  those, ~70% duplicate `PHONE` verbatim (also a no-op, since swapping two identical numbers isn't
+  a "different phone number" scenario), so the real usable yield is closer to ~5%. This category's
+  yield is intentionally small, and no-op (skipped) records don't emit a pair.
   ONC has no phone `use` (home/mobile) semantic, so this does not fabricate
   a FHIR `ContactPoint.use` value.
 

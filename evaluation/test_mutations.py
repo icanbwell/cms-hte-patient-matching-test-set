@@ -289,6 +289,21 @@ class TestPhoneVariant:
         result = phone_variant(patient)
         assert result["telecom"] == []
 
+    def test_identical_second_phone_value_is_a_noop(self) -> None:
+        # A real, common ONC data shape: PHONE2 duplicates PHONE verbatim.
+        # "Swapping" to an identical value must not be treated as a change -
+        # and must not silently shrink the telecom list from 2 entries to 1
+        # while claiming nothing changed (that WOULD differ from the
+        # original by list length, defeating the wiring's no-op skip).
+        patient = _patient(
+            telecom=[
+                {"system": "phone", "value": "555-000-1111"},
+                {"system": "phone", "value": "555-000-1111"},
+            ]
+        )
+        result = phone_variant(patient)
+        assert result["telecom"] == patient["telecom"]
+
 
 class TestGenerateCompoundVariant:
     def test_returns_n_mutations_applied(self) -> None:
