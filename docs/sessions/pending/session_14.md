@@ -1,8 +1,13 @@
 # Session 14 — Compound True-Match Variants, Harder Hard-Negatives, and Population-Scale Scoping
 
-**Status:** pending — not yet started. Proposed 2026-09-28 in response to feedback from the
-2026-09-22 CMS Patient Matching - Test Dataset Workgroup meeting (Luke Breyer/Epic); not yet
-reviewed by the workgroup or the repo maintainer.
+**Status:** implemented, pending workgroup review. Proposed 2026-09-28 in response to feedback
+from the 2026-09-22 CMS Patient Matching - Test Dataset Workgroup meeting (Luke Breyer/Epic).
+Repo maintainer (Imran Qureshi) authorized proceeding with implementation on 2026-09-28, in the
+same session that authored this doc and its implementation plan. Implementation went through two
+independent review passes (a full-branch review, and a follow-up adversarial/EA review) before
+this status line was updated — see PR #10's description for both. Broader review/sign-off by the
+CMS Patient Matching Workgroup itself (Luke Breyer/Epic) — as opposed to the repo maintainer's
+authorization to implement — has not yet happened and is not claimed here.
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** M — two new generator functions in existing modules plus two new
 hard-negative miners; no new modules, no schema changes.
