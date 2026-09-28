@@ -14,10 +14,12 @@ import pytest
 from mutations import (
     DOB_ERROR_TYPES,
     MUTATIONS,
+    SSN_SYSTEM,
     abbreviate,
     drop_letters,
     generate_fuzzy_variant,
     mutate_dob,
+    ssn_dropped_variant,
     substitute_nickname,
     transpose_characters,
     typo_edit,
@@ -140,3 +142,26 @@ class TestGenerateFuzzyVariant:
     def test_unknown_mutation_type_raises(self) -> None:
         with pytest.raises(ValueError):
             generate_fuzzy_variant(_patient(), "not_a_mutation", rng=random.Random(0))
+
+
+class TestSsnDroppedVariant:
+    def test_removes_the_ssn_identifier(self) -> None:
+        patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "123-45-6789"}])
+        result = ssn_dropped_variant(patient)
+        assert result["identifier"] == []
+
+    def test_leaves_non_ssn_identifiers_untouched(self) -> None:
+        other = {"system": "http://example.org/mrn", "value": "M1"}
+        patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "1"}, other])
+        result = ssn_dropped_variant(patient)
+        assert result["identifier"] == [other]
+
+    def test_missing_ssn_is_a_noop(self) -> None:
+        patient = _patient(identifier=[])
+        result = ssn_dropped_variant(patient)
+        assert result["identifier"] == []
+
+    def test_does_not_mutate_input_patient(self) -> None:
+        patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "1"}])
+        ssn_dropped_variant(patient)
+        assert patient["identifier"] == [{"system": SSN_SYSTEM, "value": "1"}]

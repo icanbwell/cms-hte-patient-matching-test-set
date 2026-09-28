@@ -299,6 +299,27 @@ def substitute_nickname(
 
 
 # --------------------------------------------------------------------------------------
+# Identifier mutations
+# --------------------------------------------------------------------------------------
+
+# Matches onc_loader.py's own SSN identifier.system value exactly.
+SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
+
+
+def ssn_dropped_variant(patient: Patient) -> Patient:
+    """Return a copy of `patient` with its SSN identifier removed - models the
+    realistic case Luke Breyer (Epic) raised in the 2026-09-22 workgroup
+    meeting, where one of a person's two on-file records carries a Social
+    Security Number and the other doesn't. Matches the Epic reference doc's
+    "Missing/placeholder SSN" data-quality category. No-op if `patient` has no
+    SSN identifier to begin with."""
+    patient = _copy_patient(patient)
+    identifiers = patient.get("identifier") or []
+    patient["identifier"] = [i for i in identifiers if i.get("system") != SSN_SYSTEM]
+    return patient
+
+
+# --------------------------------------------------------------------------------------
 # Composition
 # --------------------------------------------------------------------------------------
 
