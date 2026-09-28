@@ -180,12 +180,12 @@ small real-ONC-fixture sample.
   (its whole design point) and only grow the population-candidates pool size, accepting ONC's ~1M
   total as the ceiling on realism; (c) something else the workgroup decides after seeing this repo's
   tier design explained. This session takes no position and makes no code change either way.
-- **Phone-type field availability.** Anticipated finding, not yet confirmed: ONC's public
-  2017 Patient Matching Algorithm Challenge CSVs are not known to carry a phone-type (home/cell)
-  column. If Task 3 confirms this, the phone-type true-match scenario Luke asked for needs a
-  decision — fabricate a type tag (deviates from this repo's "field values copied through from ONC
-  as-is" convention) or tell the workgroup this scenario isn't buildable from the current data
-  source. Flagged for the executing engineer to resolve at Task 3, not pre-decided here.
+- **Phone-type field availability — resolved.** ONC has no phone `use` (home/mobile) semantic, but
+  it does carry a second raw phone-number column, `PHONE2`, that `onc_loader.py` read from the CSV
+  header but never mapped into the output FHIR `Patient` dict. Session 14 loads it as a second
+  `telecom` phone entry (`onc_loader.py`), and `phone_variant()` (`mutations.py`) swaps to it to
+  model two distinct on-file phone numbers per person — without fabricating a `use` code, per this
+  repo's "field values copied through from ONC as-is" convention.
 - **Epic sourcing-methodology adoption** — deferred per Outcome purpose; not an open question for
   this session, just explicitly out of scope. Revisit as its own session if the workgroup wants it
   discussed.
