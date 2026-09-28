@@ -338,6 +338,25 @@ def marriage_variant(patient: Patient, donor: Patient) -> Patient:
     return patient
 
 
+def phone_variant(patient: Patient) -> Patient:
+    """Return a copy of `patient` using its second phone number in place of
+    its first - models the same person having two different on-file phone
+    numbers (e.g. an old home line vs. a newer cell number), the scenario
+    Luke Breyer (Epic) named in the 2026-09-22 workgroup meeting. ONC has no
+    phone `use` code (home/mobile) to draw on, so this deliberately does not
+    fabricate a FHIR ContactPoint.use value - it only demonstrates two
+    genuinely different real phone strings for one person. No-op if
+    `patient` has fewer than two phone-system telecom entries."""
+    patient = _copy_patient(patient)
+    telecom = patient.get("telecom") or []
+    phones = [t for t in telecom if t.get("system") == "phone"]
+    if len(phones) < 2:
+        return patient
+    non_phone = [t for t in telecom if t.get("system") != "phone"]
+    patient["telecom"] = [phones[1]] + non_phone
+    return patient
+
+
 # --------------------------------------------------------------------------------------
 # Composition
 # --------------------------------------------------------------------------------------

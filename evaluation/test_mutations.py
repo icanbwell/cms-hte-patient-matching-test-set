@@ -20,6 +20,7 @@ from mutations import (
     generate_fuzzy_variant,
     marriage_variant,
     mutate_dob,
+    phone_variant,
     ssn_dropped_variant,
     substitute_nickname,
     transpose_characters,
@@ -236,3 +237,37 @@ class TestMarriageVariant:
         marriage_variant(patient, donor)
         assert patient["address"] == original_patient_address
         assert patient["name"][0]["family"] == "Smith"
+
+
+class TestPhoneVariant:
+    def test_swaps_to_second_phone_number(self) -> None:
+        patient = _patient(
+            telecom=[
+                {"system": "phone", "value": "555-000-1111"},
+                {"system": "phone", "value": "555-222-3333"},
+            ]
+        )
+        result = phone_variant(patient)
+        phone_values = [t["value"] for t in result["telecom"] if t["system"] == "phone"]
+        assert phone_values == ["555-222-3333"]
+
+    def test_preserves_non_phone_telecom_entries(self) -> None:
+        patient = _patient(
+            telecom=[
+                {"system": "phone", "value": "555-000-1111"},
+                {"system": "phone", "value": "555-222-3333"},
+                {"system": "email", "value": "jane@example.com"},
+            ]
+        )
+        result = phone_variant(patient)
+        assert {"system": "email", "value": "jane@example.com"} in result["telecom"]
+
+    def test_single_phone_number_is_a_noop(self) -> None:
+        patient = _patient(telecom=[{"system": "phone", "value": "555-000-1111"}])
+        result = phone_variant(patient)
+        assert result["telecom"] == patient["telecom"]
+
+    def test_no_phone_number_is_a_noop(self) -> None:
+        patient = _patient(telecom=[])
+        result = phone_variant(patient)
+        assert result["telecom"] == []
