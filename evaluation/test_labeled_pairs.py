@@ -9,6 +9,7 @@ special_populations.py, none of which need numpy), so these always run.
 from __future__ import annotations
 
 from labeled_pairs import generate_raw_pairs
+from mutations import SSN_SYSTEM
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -58,6 +59,10 @@ class TestGenerateRawPairs:
                 n_fuzzy_variants_per_patient=3,
                 include_normalization_edge_cases=False,
                 include_special_populations=False,
+                include_compound_variants=False,
+                include_ssn_dropped=False,
+                include_marriage_variant=False,
+                include_phone_variant=False,
                 seed=0,
             )
         )
@@ -104,21 +109,84 @@ class TestGenerateRawPairs:
         assert len(institutional) > 0
         assert all(p.is_true_match is False for p in institutional)
 
-    def test_can_disable_session_10_categories(self) -> None:
+    def test_is_deterministic_given_a_seed(self) -> None:
+        patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
+        first = list(generate_raw_pairs(patients, seed=42))
+        second = list(generate_raw_pairs(patients, seed=42))
+        assert [p.pair_id for p in first] == [p.pair_id for p in second]
+
+    def test_generate_raw_pairs_includes_all_new_pair_types(self) -> None:
+        patients = [
+            {
+                "resourceType": "Patient",
+                "id": "p1",
+                "name": [
+                    {"family": "Smith", "given": ["Katherine"]},
+                    {"family": "Jones", "given": ["Katherine"]},  # maiden-name proxy
+                ],
+                "birthDate": "1980-06-15",
+                "telecom": [
+                    {"system": "phone", "value": "555-000-1111"},
+                    {"system": "phone", "value": "555-222-3333"},
+                ],
+                "address": [
+                    {
+                        "line": ["1 Main St"],
+                        "city": "NY",
+                        "state": "NY",
+                        "postalCode": "10001",
+                    }
+                ],
+                "identifier": [{"system": SSN_SYSTEM, "value": "123-45-6789"}],
+            },
+            _patient(
+                "p2", family="Rivera", given="Ana"
+            ),  # default zip 10001, dob 1980-06-15
+            {
+                **_patient("p3", family="Rivera", given="Luis"),
+                "birthDate": "1981-01-01",  # 1-year gap from p2 -> sibling_negative, not household
+            },
+            {
+                **_patient("p4", family="Smyth", given="Katherine"),
+                "birthDate": "2001-02-02",
+                "address": [
+                    {
+                        "line": ["9 Elm St"],
+                        "city": "LA",
+                        "state": "CA",
+                        "postalCode": "70007",
+                    }
+                ],
+                # "Katherine Smith" (p1) vs "Katherine Smyth" (p4): edit distance 1,
+                # no shared ZIP or DOB -> name_collision_negative.
+            },
+        ]
+        pairs = list(generate_raw_pairs(patients, seed=0))
+        pair_types = {p.strata["pair_type"] for p in pairs}
+        assert {
+            "compound_variant",
+            "ssn_dropped",
+            "marriage_variant",
+            "phone_variant",
+            "sibling_negative",
+            "name_collision_negative",
+        }.issubset(pair_types)
+
+    def test_can_disable_all_new_pair_types(self) -> None:
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
         pairs = list(
             generate_raw_pairs(
                 patients,
                 include_normalization_edge_cases=False,
                 include_special_populations=False,
+                include_compound_variants=False,
+                include_ssn_dropped=False,
+                include_marriage_variant=False,
+                include_phone_variant=False,
+                include_sibling_negatives=False,
+                include_name_collision_negatives=False,
                 seed=0,
             )
         )
         pair_types = {p.strata.get("pair_type") for p in pairs}
         assert pair_types <= {"fuzzy_variant", "hard_negative"}
-
-    def test_is_deterministic_given_a_seed(self) -> None:
-        patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
-        first = list(generate_raw_pairs(patients, seed=42))
-        second = list(generate_raw_pairs(patients, seed=42))
-        assert [p.pair_id for p in first] == [p.pair_id for p in second]

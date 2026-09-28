@@ -48,14 +48,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping
 
-from hard_negatives import mine_shared_address_hard_negatives
-from mutations import generate_fuzzy_variant
+from hard_negatives import (
+    mine_name_collision_negatives,
+    mine_shared_address_hard_negatives,
+)
+from mutations import (
+    generate_compound_variant,
+    generate_fuzzy_variant,
+    marriage_variant,
+    phone_variant,
+    ssn_dropped_variant,
+)
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
 from special_populations import (
     INSTITUTION_TYPES,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
+    mine_sibling_negatives,
 )
 
 Patient = Dict[str, Any]
@@ -90,6 +100,15 @@ def generate_raw_pairs(
     n_fuzzy_variants_per_patient: int = 1,
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
+    include_compound_variants: bool = True,
+    n_compound_mutations: int = 2,
+    include_ssn_dropped: bool = True,
+    include_marriage_variant: bool = True,
+    include_phone_variant: bool = True,
+    include_sibling_negatives: bool = True,
+    include_name_collision_negatives: bool = True,
+    sibling_max_age_gap_years: int = 3,
+    name_collision_max_distance: int = 1,
     institutional_group_size: int = 3,
     seed: int = 0,
 ) -> Iterator[RawPair]:
@@ -97,11 +116,14 @@ def generate_raw_pairs(
     mined-hard-negative true-non-matches (session 9), plus (session 10)
     normalization-edge-case true-matches and special-population
     true-non-matches (mined multi-generational-household pairs and
-    constructed institutional pairs).
+    constructed institutional pairs). Session 14 further extends this with
+    compound (multi-field) true-match variants, SSN-dropped/marriage/phone-
+    number true-match scenarios, and sibling/name-collision hard negatives -
+    all additive, default-on, appended alongside every prior category.
     """
     rng = random.Random(seed)
 
-    for p in patients:
+    for idx, p in enumerate(patients):
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(p, rng=rng)
             yield RawPair(
@@ -128,6 +150,48 @@ def generate_raw_pairs(
                 is_true_match=True,
                 strata={"pair_type": "normalization_edge_case", "case": "punctuation"},
             )
+        if include_compound_variants:
+            compound, mutation_types = generate_compound_variant(
+                p, n_mutations=n_compound_mutations, rng=rng
+            )
+            yield RawPair(
+                pair_id=f"{p['id']}::compound::{'-'.join(mutation_types)}",
+                query_patient=p,
+                candidate_patient=compound,
+                is_true_match=True,
+                strata={
+                    "pair_type": "compound_variant",
+                    "mutations": ",".join(mutation_types),
+                },
+            )
+        if include_ssn_dropped:
+            dropped = ssn_dropped_variant(p)
+            yield RawPair(
+                pair_id=f"{p['id']}::ssn_dropped",
+                query_patient=p,
+                candidate_patient=dropped,
+                is_true_match=True,
+                strata={"pair_type": "ssn_dropped"},
+            )
+        if include_marriage_variant:
+            donor = patients[(idx + 1) % len(patients)]
+            married = marriage_variant(p, donor)
+            yield RawPair(
+                pair_id=f"{p['id']}::marriage_variant",
+                query_patient=p,
+                candidate_patient=married,
+                is_true_match=True,
+                strata={"pair_type": "marriage_variant"},
+            )
+        if include_phone_variant:
+            phoned = phone_variant(p)
+            yield RawPair(
+                pair_id=f"{p['id']}::phone_variant",
+                query_patient=p,
+                candidate_patient=phoned,
+                is_true_match=True,
+                strata={"pair_type": "phone_variant"},
+            )
 
     for candidate in mine_shared_address_hard_negatives(patients):
         yield RawPair(
@@ -137,6 +201,24 @@ def generate_raw_pairs(
             is_true_match=False,
             strata={"pair_type": "hard_negative", **candidate.shared_fields},
         )
+
+    if include_name_collision_negatives:
+        for name_candidate in mine_name_collision_negatives(
+            patients, max_name_distance=name_collision_max_distance
+        ):
+            yield RawPair(
+                pair_id=(
+                    f"{name_candidate.query['id']}::"
+                    f"{name_candidate.candidate['id']}::name_collision"
+                ),
+                query_patient=name_candidate.query,
+                candidate_patient=name_candidate.candidate,
+                is_true_match=False,
+                strata={
+                    "pair_type": "name_collision_negative",
+                    **name_candidate.shared_fields,
+                },
+            )
 
     if not include_special_populations:
         return
@@ -156,6 +238,23 @@ def generate_raw_pairs(
                 **household_candidate.shared_fields,
             },
         )
+    if include_sibling_negatives:
+        for sibling_candidate in mine_sibling_negatives(
+            patients, max_age_gap_years=sibling_max_age_gap_years
+        ):
+            yield RawPair(
+                pair_id=(
+                    f"{sibling_candidate.query['id']}::"
+                    f"{sibling_candidate.candidate['id']}::sibling"
+                ),
+                query_patient=sibling_candidate.query,
+                candidate_patient=sibling_candidate.candidate,
+                is_true_match=False,
+                strata={
+                    "pair_type": "sibling_negative",
+                    **sibling_candidate.shared_fields,
+                },
+            )
     for institution_type in INSTITUTION_TYPES:
         for institutional_candidate in construct_institutional_negatives(
             patients, institution_type, group_size=institutional_group_size, rng=rng
@@ -188,7 +287,8 @@ if __name__ == "__main__":
             p.strata.get("pair_type"),
             p.strata.get("mutation")
             or p.strata.get("case")
-            or p.strata.get("category"),
+            or p.strata.get("category")
+            or p.strata.get("mutations"),
         )
         for p in pairs
     )
