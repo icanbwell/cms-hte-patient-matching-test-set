@@ -4,8 +4,8 @@ Patient dicts, for use as this repo's test-case generation input
 
 Column mapping mirrors the legacy production matching engine's own
 create_patient_resource() transform (confirmed via direct inspection of its CMS
-test suite), extended to also populate MOTHERS_MAIDEN_NAME and ALIAS, which
-that transform reads from the CSV but never maps into the output FHIR
+test suite), extended to also populate MOTHERS_MAIDEN_NAME, ALIAS, and PHONE2,
+which that transform reads from the CSV but never maps into the output FHIR
 resource.
 
 Values are copied through as-is (raw CSV case/punctuation) - this repo's own
@@ -93,6 +93,8 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
         patient["birthDate"] = _decode_sas_date(row["DOB"])
     if row.get("PHONE"):
         patient["telecom"].append({"system": "phone", "value": row["PHONE"]})
+    if row.get("PHONE2"):
+        patient["telecom"].append({"system": "phone", "value": row["PHONE2"]})
     if row.get("EMAIL"):
         patient["telecom"].append({"system": "email", "value": row["EMAIL"]})
     if row.get("ADDRESS1"):
