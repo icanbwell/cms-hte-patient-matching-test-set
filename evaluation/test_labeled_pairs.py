@@ -9,7 +9,7 @@ special_populations.py, none of which need numpy), so these always run.
 from __future__ import annotations
 
 from labeled_pairs import generate_raw_pairs
-from mutations import SSN_SYSTEM
+from mutations import SSN_SYSTEM, count_changed_fields
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -226,3 +226,42 @@ class TestGenerateRawPairs:
         for pair in pairs:
             if pair.is_true_match:
                 assert pair.query_patient != pair.candidate_patient, pair.pair_id
+
+    def test_compound_variant_is_never_emitted_with_fewer_changed_fields_than_requested(
+        self,
+    ) -> None:
+        # An empty given name (a real, common ONC shape) makes the "given"
+        # field group a total no-op for every one of its mutators - the
+        # compound variant must not be emitted labeled as a 2-field change
+        # when only birthDate or family actually changed.
+        patient = {
+            "resourceType": "Patient",
+            "id": "p1",
+            "name": [{"family": "Smith", "given": [""]}],
+            "birthDate": "1980-06-15",
+            "telecom": [],
+            "address": [
+                {
+                    "line": ["1 Main St"],
+                    "city": "NY",
+                    "state": "NY",
+                    "postalCode": "10001",
+                }
+            ],
+            "identifier": [],
+        }
+        pairs = list(
+            generate_raw_pairs(
+                [patient],
+                include_normalization_edge_cases=False,
+                include_ssn_dropped=False,
+                include_marriage_variant=False,
+                include_phone_variant=False,
+                n_compound_mutations=3,  # forces the "given" group to be drawn
+                seed=0,
+            )
+        )
+        compound = [p for p in pairs if p.strata.get("pair_type") == "compound_variant"]
+        for pair in compound:
+            changed = count_changed_fields(pair.query_patient, pair.candidate_patient)
+            assert changed >= 3, (pair.pair_id, changed)

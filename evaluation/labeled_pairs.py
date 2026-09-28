@@ -53,6 +53,7 @@ from hard_negatives import (
     mine_shared_address_hard_negatives,
 )
 from mutations import (
+    count_changed_fields,
     generate_compound_variant,
     generate_fuzzy_variant,
     marriage_variant,
@@ -154,7 +155,12 @@ def generate_raw_pairs(
             compound, mutation_types = generate_compound_variant(
                 p, n_mutations=n_compound_mutations, rng=rng
             )
-            if compound != p:
+            # A field group can legitimately no-op entirely (e.g. an empty
+            # given name, a missing birthDate) even though a different group
+            # in the same draw succeeds - compound != p alone isn't enough to
+            # guarantee the emitted pair actually touches n_compound_mutations
+            # distinct fields, only that it touches at least one.
+            if count_changed_fields(p, compound) >= n_compound_mutations:
                 yield RawPair(
                     pair_id=f"{p['id']}::compound::{'-'.join(mutation_types)}",
                     query_patient=p,

@@ -417,6 +417,30 @@ _MUTATION_FIELD_GROUPS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+def count_changed_fields(original: Patient, variant: Patient) -> int:
+    """Count how many of the three fields generate_compound_variant() targets
+    (birthDate, family, given) actually differ between `original` and
+    `variant`. Ground truth for whether a compound variant met its own
+    "touches >=n_mutations distinct fields" contract - a field group whose
+    mutators all legitimately no-op (e.g. an empty given name, a missing
+    birthDate) must not be counted as changed just because a mutator was
+    tried against it."""
+    changed = 0
+    if original.get("birthDate") != variant.get("birthDate"):
+        changed += 1
+    original_names = original.get("name") or []
+    variant_names = variant.get("name") or []
+    original_family = original_names[0].get("family") if original_names else None
+    variant_family = variant_names[0].get("family") if variant_names else None
+    if original_family != variant_family:
+        changed += 1
+    original_given = original_names[0].get("given") if original_names else None
+    variant_given = variant_names[0].get("given") if variant_names else None
+    if original_given != variant_given:
+        changed += 1
+    return changed
+
+
 def generate_compound_variant(
     patient: Patient,
     *,

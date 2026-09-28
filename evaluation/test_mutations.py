@@ -16,6 +16,7 @@ from mutations import (
     MUTATIONS,
     SSN_SYSTEM,
     abbreviate,
+    count_changed_fields,
     drop_letters,
     generate_compound_variant,
     generate_fuzzy_variant,
@@ -332,17 +333,37 @@ class TestGenerateCompoundVariant:
             variant, mutation_types = generate_compound_variant(
                 patient, n_mutations=2, rng=rng
             )
-            changed_fields = set()
-            if variant["birthDate"] != patient["birthDate"]:
-                changed_fields.add("birthDate")
-            if variant["name"][0]["family"] != patient["name"][0]["family"]:
-                changed_fields.add("family")
-            if variant["name"][0]["given"] != patient["name"][0]["given"]:
-                changed_fields.add("given")
-            assert len(changed_fields) >= 2, (mutation_types, patient, variant)
+            assert count_changed_fields(patient, variant) >= 2, (
+                mutation_types,
+                patient,
+                variant,
+            )
 
     def test_n_mutations_above_field_group_count_raises(self) -> None:
         # Only 3 distinct fields (birthDate/family/given) can ever be composed -
         # asking for more must raise, not silently repeat a field.
         with pytest.raises(ValueError):
             generate_compound_variant(_patient(), n_mutations=4, rng=random.Random(0))
+
+
+class TestCountChangedFields:
+    def test_counts_each_changed_top_level_field_once(self) -> None:
+        original = _patient(
+            name=[{"family": "Smith", "given": ["Katherine"]}], birthDate="1980-06-15"
+        )
+        variant = _patient(
+            name=[{"family": "Smyth", "given": ["Kate"]}], birthDate="1980-06-16"
+        )
+        assert count_changed_fields(original, variant) == 3
+
+    def test_identical_patients_count_zero(self) -> None:
+        patient = _patient()
+        assert count_changed_fields(patient, patient) == 0
+
+    def test_missing_given_name_on_both_sides_does_not_count_as_changed(self) -> None:
+        # Empty-string given names on both sides (a common real-ONC shape) must
+        # not be counted as "changed" just because a mutator was tried and
+        # no-op'd - the field genuinely didn't change.
+        original = _patient(name=[{"family": "Smith", "given": [""]}])
+        variant = _patient(name=[{"family": "Smyth", "given": [""]}])
+        assert count_changed_fields(original, variant) == 1
