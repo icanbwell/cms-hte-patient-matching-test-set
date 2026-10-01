@@ -6,3 +6,7 @@
 # own engineering team should be able to approve/merge changes once external
 # contributions are possible via forks).
 * @icanbwell/engineering @icanbwell/eng-contractors
+
+# Architecture instruction files owned by Enterprise Architecture
+/AGENTS.md @icanbwell/enterprise-architecture
+/CLAUDE.md @icanbwell/enterprise-architecture
