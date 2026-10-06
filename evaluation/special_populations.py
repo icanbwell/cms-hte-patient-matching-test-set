@@ -184,13 +184,17 @@ def construct_institutional_negatives(
     rng.shuffle(pool)
 
     group: List[Patient] = []
+    chosen: List[Patient] = []  # originals, before the synthetic address
     seen_family_names: set[str] = set()
     for patient in pool:
         family = _primary_family_name(patient).upper()
         if not family or family in seen_family_names:
             continue
+        if any(is_possible_same_person(patient, g) for g in chosen):
+            continue
         seen_family_names.add(family)
         group.append(_with_synthetic_address(patient, institution_type))
+        chosen.append(patient)
         if len(group) == group_size:
             break
 
@@ -342,20 +346,30 @@ def construct_household_negatives(
     mine_shared_surname_household_negatives() finds almost none (session 15,
     finding F2).
 
-    For each family name (in shuffled order, up to `max_pairs`), pair that
-    family's oldest and youngest real ONC records when they are at least
-    `min_age_gap_years` apart and could not be the same person, then give the
-    younger record the older one's real address. Only the address is
-    overwritten - the underlying identities stay real and distinct, the same
-    discipline construct_institutional_negatives() follows. Pairs that already
-    share a street are skipped (the miner finds those). Each candidate is
-    tagged shared_fields["address_source"] = "constructed"."""
+    For each family name (in shuffled order, up to `max_pairs`), consider every
+    (elder, younger) pair of that family's real ONC records and choose the
+    eligible pair with the SMALLEST birth-year gap that is at least
+    `min_age_gap_years` - the closest available approximation of a
+    parent/child household rather than the oldest/youngest extremes. A pair is
+    eligible when the records have different ids, could not be the same person
+    (is_possible_same_person) and do not already share a street. Equal gaps
+    break ties on the smallest (elder id, younger id) as strings. Records with
+    an unparseable birthDate are dropped individually, not the whole family.
+    The younger record then gets the older one's real address. Only the
+    address is overwritten - the underlying identities stay real and distinct,
+    the same discipline construct_institutional_negatives() follows. Each
+    candidate is tagged shared_fields["address_source"] = "constructed"."""
     rng = _rng(rng)
-    by_family: Dict[str, List[Patient]] = defaultdict(list)
+    by_family: Dict[str, List[Tuple[int, Patient]]] = defaultdict(list)
     for patient in patients:
         family = _primary_family_name(patient).upper()
-        if family and patient.get("birthDate") and _street_key(patient):
-            by_family[family].append(patient)
+        if not (family and patient.get("birthDate") and _street_key(patient)):
+            continue
+        try:
+            birth_year = date.fromisoformat(patient["birthDate"]).year
+        except ValueError:
+            continue
+        by_family[family].append((birth_year, patient))
 
     families = sorted(by_family)
     rng.shuffle(families)
@@ -363,22 +377,25 @@ def construct_household_negatives(
     for family in families:
         if len(candidates) >= max_pairs:
             break
-        group = sorted(by_family[family], key=lambda p: str(p["birthDate"]))
-        elder, younger = group[0], group[-1]
-        try:
-            gap_years = (
-                date.fromisoformat(younger["birthDate"]).year
-                - date.fromisoformat(elder["birthDate"]).year
-            )
-        except ValueError:
+        best: Tuple[int, str, str] | None = None
+        best_pair: Tuple[Patient, Patient] | None = None
+        for elder_year, elder in by_family[family]:
+            for younger_year, younger in by_family[family]:
+                gap_years = younger_year - elder_year
+                if (
+                    elder.get("id") == younger.get("id")
+                    or gap_years < min_age_gap_years
+                    or _street_key(elder) == _street_key(younger)
+                    or is_possible_same_person(elder, younger)
+                ):
+                    continue
+                key = (gap_years, str(elder.get("id")), str(younger.get("id")))
+                if best is None or key < best:
+                    best, best_pair = key, (elder, younger)
+        if best is None or best_pair is None:
             continue
-        if (
-            elder.get("id") == younger.get("id")
-            or gap_years < min_age_gap_years
-            or is_possible_same_person(elder, younger)
-            or _street_key(elder) == _street_key(younger)
-        ):
-            continue
+        elder, younger = best_pair
+        gap_years = best[0]
         moved = copy.deepcopy(younger)
         moved["address"] = copy.deepcopy(elder["address"])
         candidates.append(

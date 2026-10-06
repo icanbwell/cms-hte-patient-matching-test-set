@@ -65,6 +65,21 @@ class TestConstructInstitutionalNegatives:
         # Only 2 distinct family names available (Smith deduped) - group caps at 2, 1 pair.
         assert len(candidates) == 1
 
+    def test_never_groups_two_possible_same_person_records(self):
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+        for seed in range(20):
+            p1, p2 = _patient("p1", "Smith"), _patient("p2", "Jones")
+            p1["identifier"] = [ssn]
+            p2["identifier"] = [ssn]
+            candidates = construct_institutional_negatives(
+                [p1, p2, _patient("p3", "Lee")],
+                "shelter",
+                group_size=3,
+                rng=random.Random(seed),
+            )
+            for c in candidates:
+                assert {c.query["id"], c.candidate["id"]} != {"p1", "p2"}
+
     def test_rejects_unknown_institution_type(self):
         with pytest.raises(ValueError):
             construct_institutional_negatives(
@@ -321,3 +336,40 @@ class TestConstructHouseholdNegatives:
 
     def test_max_pairs_zero_returns_nothing(self) -> None:
         assert construct_household_negatives(self._family(), max_pairs=0) == []
+
+    def _three_generations(self):
+        return [
+            _patient("g1", "Rivera", given="Rosa", dob="1950-03-01", street="1 A St"),
+            _patient("g2", "Rivera", given="Luis", dob="1990-07-14", street="2 B St"),
+            _patient("g3", "Rivera", given="Ana", dob="2005-02-02", street="3 C St"),
+        ]
+
+    def test_picks_the_smallest_eligible_age_gap_in_a_family(self) -> None:
+        (candidate,) = construct_household_negatives(self._three_generations())
+        assert candidate.query["id"] == "g2"
+        assert candidate.candidate["id"] == "g3"
+        assert candidate.shared_fields["age_gap_years"] == "15"
+
+    def test_malformed_birth_date_drops_only_that_record(self) -> None:
+        patients = self._family()
+        patients.append(
+            _patient("bad", "Rivera", given="Zed", dob="unknown", street="5 E St")
+        )
+        (candidate,) = construct_household_negatives(patients)
+        assert {candidate.query["id"], candidate.candidate["id"]} == {"p1", "p2"}
+
+    def test_equal_gap_tie_break_is_independent_of_input_order(self) -> None:
+        def members():
+            return [
+                _patient("a", "Rivera", given="A", dob="1950-01-01", street="1 A St"),
+                _patient("b", "Rivera", given="B", dob="1950-01-01", street="2 B St"),
+                _patient("c", "Rivera", given="C", dob="1980-01-01", street="3 C St"),
+                _patient("d", "Rivera", given="D", dob="1980-01-01", street="4 D St"),
+            ]
+
+        chosen = set()
+        for order in ([0, 1, 2, 3], [3, 2, 1, 0], [2, 0, 3, 1]):
+            patients = members()
+            (c,) = construct_household_negatives([patients[i] for i in order])
+            chosen.add((c.query["id"], c.candidate["id"]))
+        assert chosen == {("a", "c")}
