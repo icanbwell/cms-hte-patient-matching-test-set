@@ -64,6 +64,7 @@ from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
 from special_populations import (
     INSTITUTION_TYPES,
+    construct_household_negatives,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
@@ -109,6 +110,7 @@ def generate_raw_pairs(
     include_sibling_negatives: bool = True,
     include_name_collision_negatives: bool = True,
     sibling_max_age_gap_years: int = 3,
+    household_constructed_max: int = 250,
     name_collision_max_distance: int = 1,
     institutional_group_size: int = 3,
     seed: int = 0,
@@ -246,6 +248,25 @@ def generate_raw_pairs(
                 "pair_type": "special_population",
                 "category": "multi_generational_household",
                 **household_candidate.shared_fields,
+            },
+        )
+    for constructed_household in construct_household_negatives(
+        patients,
+        max_pairs=household_constructed_max,
+        rng=random.Random(f"{seed}:household"),
+    ):
+        yield RawPair(
+            pair_id=(
+                f"{constructed_household.query['id']}::"
+                f"{constructed_household.candidate['id']}::household_constructed"
+            ),
+            query_patient=constructed_household.query,
+            candidate_patient=constructed_household.candidate,
+            is_true_match=False,
+            strata={
+                "pair_type": "special_population",
+                "category": "multi_generational_household",
+                **constructed_household.shared_fields,
             },
         )
     if include_sibling_negatives:

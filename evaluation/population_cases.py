@@ -55,10 +55,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
 from hard_negatives import mine_shared_address_hard_negatives
+from identity_guard import SamePersonIndex
 from mutations import generate_fuzzy_variant
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from special_populations import (
     INSTITUTION_TYPES,
+    construct_household_negatives,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
 )
@@ -117,6 +119,7 @@ def build_population_dataset(
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
     institutional_group_size: int = 3,
+    household_constructed_max: int = 250,
     seed: int = 0,
 ) -> PopulationDataset:
     """Build the population-query tier from ONC patients - see module
@@ -182,6 +185,20 @@ def build_population_dataset(
                 False,
                 "special_population",
             )
+        for constructed in construct_household_negatives(
+            patients,
+            max_pairs=household_constructed_max,
+            rng=random.Random(f"{seed}:household"),
+        ):
+            # Namespaced for the same reason as the institutional ids below:
+            # the candidate body carries an overwritten address.
+            add_candidate(
+                constructed.query["id"],
+                f"{constructed.candidate['id']}::household::constructed",
+                constructed.candidate,
+                False,
+                "special_population",
+            )
         for institution_type in INSTITUTION_TYPES:
             for institutional in construct_institutional_negatives(
                 patients,
@@ -205,13 +222,19 @@ def build_population_dataset(
                 )
 
     all_ids = list(by_id)
+    same_person = SamePersonIndex(patients)
     cases: List[PopulationCase] = []
     for pid, patient in by_id.items():
         pool = list(pool_members[pid])
         true_matches = list(match_members[pid])
 
         if len(pool) < pool_size:
-            distractors = [x for x in all_ids if x != pid and x not in pool_seen[pid]]
+            excluded = same_person.matching_ids(patient)
+            distractors = [
+                x
+                for x in all_ids
+                if x != pid and x not in pool_seen[pid] and x not in excluded
+            ]
             topup_rng.shuffle(distractors)
             pool.extend(distractors[: pool_size - len(pool)])
         elif len(pool) > pool_size:
