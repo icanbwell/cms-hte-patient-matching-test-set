@@ -79,10 +79,19 @@ def same_person_negatives(pair_rows: Sequence[Row]) -> List[str]:
     ]
 
 
+# Both sides of a placeholder collision must carry the shared dummy value, but a
+# population query is a real record other pools also use, so this category
+# exists in the pairwise tier only (session 15, Workstream B).
+PAIRWISE_ONLY_CATEGORIES = frozenset({"placeholder_collision_negative"})
+
+
 def tier_parity_gap(pair_rows: Sequence[Row], query_rows: Sequence[Row]) -> List[str]:
-    """Per-provision categories that never appear in the population tier."""
+    """Per-provision categories that never appear in the population tier
+    (except the documented pairwise-only ones)."""
     pair_categories = {category_of(r["rationale"]) for r in pair_rows}
-    return sorted(pair_categories - population_categories(query_rows))
+    return sorted(
+        pair_categories - population_categories(query_rows) - PAIRWISE_ONLY_CATEGORIES
+    )
 
 
 def _phones(p: Patient) -> frozenset[str]:
@@ -214,6 +223,7 @@ def build_report(
     patients = unique_source_patients(pair_rows)
     # A matcher that never predicts a match has an undefined (NaN) F1; score it 0
     # so max()/subtraction below cannot drop it or poison the gate.
+    disagreement = positive_field_disagreement(pair_rows)
     f1s = {
         name: 0.0 if math.isnan(value) else value
         for name, value in baseline_f1s(query_rows, candidates).items()
@@ -222,7 +232,8 @@ def build_report(
     return {
         "same_person_negatives": same_person_negatives(pair_rows),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),
-        "positive_field_disagreement": positive_field_disagreement(pair_rows),
+        "positive_field_disagreement": disagreement,
+        "positive_phone_drift_rate": disagreement["phone"],
         "people_per_address": people_per_address(patients),
         "shared_phone_rate": shared_contact_rate(patients, "phone"),
         "shared_email_rate": shared_contact_rate(patients, "email"),

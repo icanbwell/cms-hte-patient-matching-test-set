@@ -90,6 +90,22 @@ class TestTierParity:
         assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
 
 
+class TestTierParityExemption:
+    def test_pairwise_only_categories_are_not_a_parity_gap(self):
+        pair_rows = [
+            _row(
+                "1",
+                _patient("a"),
+                _patient("b"),
+                False,
+                "placeholder_collision_negative/ssn",
+            ),
+            _row("2", _patient("a"), _patient("a"), True, "marriage_variant"),
+        ]
+        query_rows = [{"rationale": "population/fuzzy_variant"}]
+        assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
+
+
 class TestPositiveFieldDisagreement:
     def test_reports_the_share_of_positives_where_each_field_differs(self):
         same = _row(
@@ -240,3 +256,4 @@ class TestBuildReportGuards:
         assert all(v == 0.0 for v in report["baseline_f1"].values())
         assert report["best_single_field_f1"] == 0.0
         assert report["multi_field_margin"] == 0.0
+        assert report["positive_phone_drift_rate"] == 0.0
