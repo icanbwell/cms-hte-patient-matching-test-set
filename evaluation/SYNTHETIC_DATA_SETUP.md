@@ -50,9 +50,11 @@ from mutations import generate_fuzzy_variant
 from hard_negatives import mine_shared_address_hard_negatives
 from labeled_pairs import generate_raw_pairs
 
-variant, mutation_type = generate_fuzzy_variant(patient)          # one mutated copy
-candidates = mine_shared_address_hard_negatives(patients)          # List[HardNegativeCandidate]
-pairs = list(generate_raw_pairs(patients, n_fuzzy_variants_per_patient=1, seed=0))  # List[RawPair]
+variant, mutation_type = generate_fuzzy_variant(patient)  # one mutated copy
+candidates = mine_shared_address_hard_negatives(patients)  # List[HardNegativeCandidate]
+pairs = list(
+    generate_raw_pairs(patients, n_fuzzy_variants_per_patient=1, seed=0)
+)  # List[RawPair]
 ```
 
 ## Materializing a portable test-case file
@@ -80,7 +82,7 @@ To build the manifest programmatically instead of via the file:
 ```python
 from export_test_dataset import build_test_case_records, write_jsonl
 
-records = build_test_case_records(patients, seed=0)   # List[LabeledCaseRecord]
+records = build_test_case_records(patients, seed=0)  # List[LabeledCaseRecord]
 write_jsonl(records, Path("my_output.jsonl"))
 ```
 

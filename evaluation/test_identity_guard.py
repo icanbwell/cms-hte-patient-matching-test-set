@@ -132,3 +132,20 @@ class TestBarePatient:
         assert ssn_of(bare) is None
         assert identity_key(bare) is None
         assert not is_possible_same_person(bare, dict(bare, id="y"))
+
+
+def test_is_placeholder_ssn_rejects_unissuable_values():
+    from identity_guard import is_placeholder_ssn
+
+    for bad in (
+        "222222222",
+        "000123456",
+        "666123456",
+        "912345678",
+        "123004567",
+        "123450000",
+        "078051120",
+        "12345",
+    ):
+        assert is_placeholder_ssn(bad), bad
+    assert not is_placeholder_ssn("123456780")

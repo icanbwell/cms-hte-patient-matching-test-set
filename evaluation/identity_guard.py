@@ -16,6 +16,7 @@ PLACEHOLDER_SSNS: FrozenSet[str] = frozenset(
         "111111111",
         "123456789",
         "999999999",
+        "078051120",  # the Woolworth wallet-card SSN
     }
 )
 
@@ -35,12 +36,28 @@ def normalize_phone(value: object) -> str:
     return digits
 
 
+def is_placeholder_ssn(digits: str) -> bool:
+    """True for known fake SSNs and any value the SSA never issues.
+
+    Not 9 digits, one repeated digit, area 000/666/9xx, group 00, or serial 0000.
+    """
+    return (
+        digits in PLACEHOLDER_SSNS
+        or len(digits) != 9
+        or len(set(digits)) == 1
+        or digits[:3] in ("000", "666")
+        or digits[0] == "9"
+        or digits[3:5] == "00"
+        or digits[5:] == "0000"
+    )
+
+
 def ssn_of(patient: Patient) -> str | None:
-    """Digits-only SSN, or None if absent or a known placeholder."""
+    """Digits-only SSN, or None if absent or a placeholder/invalid value."""
     for identifier in patient.get("identifier") or []:
         if identifier.get("system") == SSN_SYSTEM:
             digits = re.sub(r"\D", "", str(identifier.get("value") or ""))
-            if digits and digits not in PLACEHOLDER_SSNS:
+            if digits and not is_placeholder_ssn(digits):
                 return digits
     return None
 

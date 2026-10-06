@@ -240,3 +240,27 @@ class TestBuildReportGuards:
         assert all(v == 0.0 for v in report["baseline_f1"].values())
         assert report["best_single_field_f1"] == 0.0
         assert report["multi_field_margin"] == 0.0
+
+
+def test_dataset_paths_rejects_unknown_dataset():
+    import pytest
+    from audit import dataset_paths
+
+    with pytest.raises(ValueError, match="unknown dataset"):
+        dataset_paths("nope")
+
+
+def test_population_pairs_rejects_dangling_candidate():
+    import pytest
+    from audit import population_pairs
+
+    queries = [
+        {
+            "query_id": "q1",
+            "query": {},
+            "candidate_ids": ["x"],
+            "expected_match_ids": [],
+        }
+    ]
+    with pytest.raises(ValueError, match="unknown candidate"):
+        list(population_pairs(queries, {}))
