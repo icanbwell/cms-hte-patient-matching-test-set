@@ -482,3 +482,12 @@ while `export_population_dataset.py` takes its own `POOL_SIZE` (default 40), `CA
 `evaluation/cases/population_queries.jsonl`) — it does not read `OUTPUT_PATH`. Read
 `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE`/`POOL_SIZE` or
 passing more than one ONC shard's worth of patients.
+
+## Release gate
+
+`make audit` evaluates `evaluation/release_thresholds.json` against `evaluation/audit.py`'s report
+(label validity, tier parity, naive-baseline F1). A metric marked `"tracked"` is reported but does
+not fail; `"enforced"` fails CI. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
+JSON report (per-field positive drift rates, people per address, shared-phone rate, age bands).
+The naive baselines (phone-only, SSN-only, ...) are deliberately weak matchers: a test set where
+one of them scores near the multi-field baseline is not discriminating between algorithms.
