@@ -596,3 +596,52 @@ do not count), so no SSN-based rule can match them:
 
 Run these rows FIRST through the reference algorithm. A conformant algorithm failing them may
 indicate a label defect, not an algorithm defect.
+
+## Age- and household-realistic dataset (session 15)
+
+The committed samples take the first 2,000 rows of one alphabetically sorted ONC shard. Measured as of
+ONC's own vintage (2017-01-01) they are already 21.5% under 18, so the earlier "8% under 18" finding was
+an artifact of measuring ages as of 2026 (ONC's latest birth year is 2016, so nobody is under 10 that
+year); the skew that persists is the elderly (12.8% aged 85+ against about 2%). The committed samples also
+have almost no shared addresses (1.03 patients per address) or shared phones (6%). `make
+generate-realistic-dataset` builds a **parallel release candidate** (`realistic_labeled_pairs.jsonl`,
+`realistic_population_candidates.jsonl`, `realistic_population_queries.jsonl`, `realistic_manifest.json`;
+git-ignored, commit deliberately with `git add -f`) from all nine ONC shards, one at a time:
+
+| Stage | What it does | Source of the target |
+|---|---|---|
+| Age-stratified sample | 2,000 patients with exact band counts: 21.5% under 18 (430, including infants and toddlers), 61.2% 18-64, 15.35% 65-84, 1.95% 85+ (39) | Census Vintage 2024 (under 18); ACL 2023 Profile of Older Americans citing Census 2022 (65+ 17.3%, 85+ 6.5 million) |
+| Households | sizes with 29% one-person and mean 2.5; members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
+| Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
+
+Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
+60% of patients share a phone and 53% an email (committed: 6% and 32%); 769 households, 49 of the 430
+children placed with a same-surname adult. Against the committed set the phone-only baseline's F1 on
+the population tier drops from 0.953 to 0.882 and the address-only baseline's from 0.862 to 0.749; the
+multi-field margin over the best single field rises from 0.032 to 0.054 (only just above the provisional
+0.05). Date-of-birth-only is still the strongest single field (F1 0.919), so `best_single_field_f1`
+stays `tracked`.
+
+The committed audit (`make audit`) now reports age shares as of 2017-01-01, so its JSON age bands read
+21.5% under 18 and 12.8% aged 85+ for the committed files; the earlier 8.0% / 21.1% figures are the same
+data measured as of 2026.
+
+A custom `DRIFT_PROFILE_PATH` JSON REPLACES the whole rates dict. A profile that omits
+`household_shared_phone`, `household_shared_email` or `minor_ssn_absent` silently gets 0.0 for them (no
+sharing, no SSN drops), so list those keys when supplying a profile.
+
+What this is not:
+
+- **Not the committed set.** These files are unfiltered for CMS rule 29 (BAI-1061 removed such positives
+  from the committed files by hand; no code reproduces that filter) and the new drift positives are not
+  yet verified against the CMS reference algorithm. Treat them as a release candidate.
+- **Most households are unrelated real records at one address** (roommates, blended families whose
+  surnames differ). The sample is too small to mine family structure; the report counts how many children
+  were placed with a same-surname adult.
+- **The shape of the multi-person household size distribution is an assumption** (sizes 2-6, geometric
+  weights solved to hit the mean); the cited sources fix only the one-person share and the mean. The
+  sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`.
+- Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5); as of 2026 the same committed sample reads 8.0% under 18 and 21.1% aged 85+.
+
+`make audit-realistic` evaluates `release_thresholds_realistic.json` against the generated files;
+`test_realistic_dataset.py` does the same on a 300-patient version in CI.

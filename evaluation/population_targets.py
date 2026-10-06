@@ -31,7 +31,7 @@ Households:
   Bureau, "Nearly Two-Thirds of U.S. Households are Family Households"
   (America's Families and Living Arrangements, 2024).
 - Mean household size 2.5: the workgroup reviewer's "roughly 2.5 nationally",
-  consistent with the Census persons-per-household figure. The shape of the
+  an approximation not independently verified against a Census table. The shape of the
   multi-person size distribution is NOT given by these sources; see
   household_assignment.py.
 """
@@ -80,7 +80,8 @@ SINGLE_PERSON_HOUSEHOLD_SHARE = Target(
     0.29, "U.S. Census Bureau, America's Families and Living Arrangements: 2024"
 )
 MEAN_HOUSEHOLD_SIZE = Target(
-    2.5, "Workgroup reviewer ('roughly 2.5 nationally'); Census persons per household"
+    2.5,
+    "Workgroup reviewer ('roughly 2.5 nationally'); not independently verified against a Census table",
 )
 
 
