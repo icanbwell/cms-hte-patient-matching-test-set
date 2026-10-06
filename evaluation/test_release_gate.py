@@ -54,3 +54,27 @@ class TestCommittedDataset:
     def test_enforced_thresholds_hold_on_the_committed_files(self):
         results = check(build_report(), load_thresholds())
         assert failures(results) == []
+
+
+def test_check_rejects_rule_without_bounds():
+    import pytest
+    from release_gate import check
+
+    with pytest.raises(ValueError, match="min or max"):
+        check({"m": 1.0}, {"m": {"status": "enforced"}})
+
+
+def test_check_rejects_unknown_rule_key():
+    import pytest
+    from release_gate import check
+
+    with pytest.raises(ValueError, match="unknown rule keys"):
+        check({"m": 1.0}, {"m": {"mx": 1, "status": "tracked"}})
+
+
+def test_check_rejects_non_scalar_metric():
+    import pytest
+    from release_gate import check
+
+    with pytest.raises(TypeError, match="not a scalar"):
+        check({"m": {"a": 1}}, {"m": {"max": 1, "status": "tracked"}})

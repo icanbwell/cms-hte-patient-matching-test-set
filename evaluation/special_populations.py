@@ -113,6 +113,14 @@ INSTITUTIONAL_ADDRESSES: Dict[str, Dict[str, str]] = {
 }
 
 
+DEFAULT_HOUSEHOLD_MAX_PAIRS = 250
+
+
+def household_rng(seed: int | str) -> random.Random:
+    """RNG stream for constructed households; shared so both tiers pick the same pairs."""
+    return random.Random(f"{seed}:household")
+
+
 def _primary_family_name(patient: Patient) -> str:
     names = patient.get("name") or []
     return str(names[0].get("family") or "") if names else ""
@@ -338,7 +346,7 @@ def construct_household_negatives(
     patients: Iterable[Patient],
     *,
     min_age_gap_years: int = 15,
-    max_pairs: int = 250,
+    max_pairs: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     rng: random.Random | None = None,
 ) -> List[HardNegativeCandidate]:
     """Construct multi-generational-household non-matches that really share a
@@ -360,16 +368,17 @@ def construct_household_negatives(
     the same discipline construct_institutional_negatives() follows. Each
     candidate is tagged shared_fields["address_source"] = "constructed"."""
     rng = _rng(rng)
-    by_family: Dict[str, List[Tuple[int, Patient]]] = defaultdict(list)
+    by_family: Dict[str, List[Tuple[int, Patient, Tuple[str, str]]]] = defaultdict(list)
     for patient in patients:
         family = _primary_family_name(patient).upper()
-        if not (family and patient.get("birthDate") and _street_key(patient)):
+        street = _street_key(patient)
+        if not (family and patient.get("birthDate") and street):
             continue
         try:
             birth_year = date.fromisoformat(patient["birthDate"]).year
         except ValueError:
             continue
-        by_family[family].append((birth_year, patient))
+        by_family[family].append((birth_year, patient, street))
 
     families = sorted(by_family)
     rng.shuffle(families)
@@ -379,13 +388,13 @@ def construct_household_negatives(
             break
         best: Tuple[int, str, str] | None = None
         best_pair: Tuple[Patient, Patient] | None = None
-        for elder_year, elder in by_family[family]:
-            for younger_year, younger in by_family[family]:
+        for elder_year, elder, elder_street in by_family[family]:
+            for younger_year, younger, younger_street in by_family[family]:
                 gap_years = younger_year - elder_year
                 if (
                     elder.get("id") == younger.get("id")
                     or gap_years < min_age_gap_years
-                    or _street_key(elder) == _street_key(younger)
+                    or elder_street == younger_street
                     or is_possible_same_person(elder, younger)
                 ):
                     continue

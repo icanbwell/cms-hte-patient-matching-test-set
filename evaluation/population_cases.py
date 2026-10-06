@@ -59,9 +59,11 @@ from identity_guard import SamePersonIndex
 from mutations import generate_fuzzy_variant
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from special_populations import (
+    DEFAULT_HOUSEHOLD_MAX_PAIRS,
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
+    household_rng,
     mine_shared_surname_household_negatives,
 )
 
@@ -119,7 +121,7 @@ def build_population_dataset(
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
     institutional_group_size: int = 3,
-    household_constructed_max: int = 250,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     seed: int = 0,
 ) -> PopulationDataset:
     """Build the population-query tier from ONC patients - see module
@@ -188,7 +190,7 @@ def build_population_dataset(
         for constructed in construct_household_negatives(
             patients,
             max_pairs=household_constructed_max,
-            rng=random.Random(f"{seed}:household"),
+            rng=household_rng(seed),
         ):
             # Namespaced for the same reason as the institutional ids below:
             # the candidate body carries an overwritten address.
