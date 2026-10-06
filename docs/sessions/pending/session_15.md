@@ -27,11 +27,11 @@ I re-ran each claim against the committed `evaluation/cases/sample_labeled_pairs
 |---|---|---|---|
 | F1 | 39/81 sibling non-matches share first+last+DOB; 19 share SSN | **39/81, 19/81** | `mine_sibling_negatives` → `_mine_same_surname_zip_pairs` (`special_populations.py`) buckets on (ZIP, surname) and a birth-year gap ≤3. It never checks given name, full DOB or SSN, so a duplicate record of one person under two EnterpriseIDs passes. |
 | F2 | 262/262 "multi-generational" non-matches have different street | **262/262** | Same miner bucketed on ZIP, not street. The category as built never shares an address. |
-| F3 | 96% of addresses hold one person (1.06/address) | 1.11 people/address on the 2,000 source patients | ONC addresses are near-unique per record; nothing in the pipeline creates co-residents except the institutional constructor. (Gap vs. 1.06 is counting method; the audit module will pin the definition.) |
+| F3 | 96% of addresses hold one person (1.06/address) | 1.03 people/address on the 2,000 source patients (normalized street+city+state+ZIP) | ONC addresses are near-unique per record; nothing in the pipeline creates co-residents except the institutional constructor. (Gap vs. 1.06 is counting method; the audit module will pin the definition.) |
 | F4 | marriage_variant: surname changes in 117/1,980; 117/117 recoverable from name[1] | **117/1,980; 117/117** | `marriage_variant` (`mutations.py`) only changes surname when `name[1]` (MOTHERS_MAIDEN_NAME, ~5.3% of ONC) exists, and the new surname *is* `name[1]` on the source. In the other 94% only the address changes, which is why address drift is all labeled "marriage". |
-| F5 | Phone changes in 104/11.5k positives | **104/11,222 positives (0.93%)** | `phone_variant` needs a distinct PHONE2 (~5% of records). Reviewer's positive count (11,539) differs from the file (11,222); the working tree has uncommitted export changes, so their snapshot may differ. |
-| F6 | Age: 8% <18, 21% 85+ | **8.0%, 21.1%** (as of 2026) | Not a generator choice. `labeled_pairs.py`/`export_*` take `load_onc_patients([shard])[:SAMPLE_SIZE]`, i.e. the first N rows of one alphabetically sorted shard, inheriting ONC's age skew and a surname skew (first record is `AABERG`). |
-| F7 | Phones near-unique (1,889 distinct / 1,947 records) | 1,993 distinct / 1,947 records with a phone (counts PHONE2) | Same as F3. |
+| F5 | Phone changes in 104/11.5k positives | **104/11,222 positives (0.93%)** | `phone_variant` needs a distinct PHONE2 (~5% of records). Reviewer's positive count (11,539) differs from the committed file (11,222): 11,539 is what the generators emit today, and `cf5aaa1` (BAI-1061) hand-removed 317 rule-29-only positives from the committed files, so they reviewed a regeneration. |
+| F6 | Age: 8% <18, 21% 85+ | **8.0%, 21.1%** as of 2026; **21.5%, 12.8%** as of 2017 (ONC's own vintage) | The under-18 gap is a reference-date artifact: ONC's latest birth year is 2016, so as of 2026 nobody is under 10 and ONC reads 8.7% under 18, while as of 2017 it is 20.1% under 18 and the committed sample 21.5%. The elderly skew is real (12.6% of ONC and 12.8% of the committed sample aged 85+ as of 2017, against about 2% nationally). The sample is `load_onc_patients([shard])[:SAMPLE_SIZE]`, the first N rows of one alphabetically sorted shard, which adds a surname skew (first record is `AABERG`) but no meaningful age skew. |
+| F7 | Phones near-unique (1,889 distinct / 1,947 records) | 1,993 distinct / 1,947 records with a phone (counts PHONE2) | Same as F3 (1,993 distinct counts PHONE2 values). |
 | F8 | Gender differs in 0 positive pairs | **0/11,222** | No mutator touches `gender`. |
 | F9 | Phone-only matcher: 98.6% F1 | Not reproducible here (no engine since session 13) | **Population tier never contains session-14 scenarios.** `population_cases.build_population_dataset` builds positives only from `fuzzy_variant` and diacritic/punctuation, none of which touch phone, and negatives never share one. Phone-only gets perfect recall by construction. |
 
@@ -139,8 +139,8 @@ registry scenarios into the population tier, fixing F9's structural cause.
    draw across shards (one shard at a time, per Memory & scale; reservoir per band). Target
    bands come from a cited Census ACS age table added to `prevalence_estimates.py`. `as_of` is a
    fixed constant (not `date.today()`) so output is deterministic. Fixes F6 and the surname skew.
-   **Feasibility caveat:** if ONC is ~8% minors overall, the full ~1M export can hold at most
-   ~380k records at 21% minors. For `make generate-full-dataset` we cap N by the scarcest band
+   **Feasibility caveat:** ONC supplies 197,270 records under 18 as of 2017 (85,077 as of 2026), so at
+   21.5% minors the full ~1M export can hold at most ~917k records as of 2017 (~396k as of 2026). For `make generate-full-dataset` we cap N by the scarcest band
    and say so in the manifest; Option C weights are the fallback. Step 1 is to measure band
    supply across all 9 shards.
 2. **Household assignment (`household_assignment.py`).** Post-process the sampled population into
@@ -247,7 +247,7 @@ changed.
 | 2 | Gate thresholds: max single-field baseline F1, required margin for multi-field baseline | Workgroup | Defines "ready to release" in D |
 | 3 | The ~39 native same-person pairs found in F1: drop them, or keep them as a `native_duplicate` positive category? | Workgroup | A yields extra real positives; avoid hand-adjudicating |
 | 4 | Does gender participate in any CMS Table 2 rule, so does gender drift change any expected label? | Spec reading / workgroup | Whether `gender_drift` is expected-match or an "algorithm should ignore it" case |
-| 5 | Age as-of date and target table (ACS vintage) | Workgroup | Determinism of C; reviewer's figures reproduce at 2026 |
+| 5 | Age as-of date and target table (ACS vintage) | Workgroup | Determinism of C; the reviewer's 8% / 21% reproduce only as of 2026 (2017, ONC's vintage, gives 21.5% / 12.8%: see F6) |
 | 6 | Versioning/changelog policy for case_id changes | Maintainer | PR 2 release mechanics |
 | 7 | Can the reviewer share their phone-only/CMS-algorithm harness? | Reviewer | Lets us reproduce F9's 98.6% and 3.5x numbers as a before/after |
 
