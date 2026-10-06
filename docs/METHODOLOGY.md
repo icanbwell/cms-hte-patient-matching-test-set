@@ -47,8 +47,9 @@ this is (and isn't) valid for.
 ### Assembly and export
 
 - `labeled_pairs.py`'s `generate_raw_pairs()` combines all of the above into `(source, target,
-  is_true_match)` triples on one seeded RNG, so a given seed reproduces the same output
-  byte-for-byte.
+  is_true_match)` triples on one seeded RNG, so a given seed reproduces the same generator output
+  byte-for-byte. The committed files under `evaluation/cases/` are curated snapshots of that output
+  (see `evaluation/cases/README.md`), not guaranteed regenerations.
 - `population_cases.py` regroups the same generation logic into the second test shape: one query
   patient against a candidate pool (default 40), using an independent RNG so topping up a pool
   with random distractors never perturbs the variant-generation stream.
