@@ -196,6 +196,7 @@ _NEW_DRIFT_CATEGORIES = frozenset(
         "email_churn",
         "placeholder",
         "placeholder_collision_negative",
+        "household_member_negative",
     }
 )
 
@@ -205,8 +206,13 @@ class TestDriftScenarioEntries:
         everything = DriftProfile(rates={n: 1.0 for n in REGISTRY})
         seen = set()
         for seed in range(5):
+            people = drift_population()
             for pair in generate_raw_pairs(
-                drift_population(), donors=drift_donors(), profile=everything, seed=seed
+                people,
+                donors=drift_donors(),
+                profile=everything,
+                households=[[p["id"] for p in people[:3]]],
+                seed=seed,
             ):
                 if pair.strata["pair_type"] in _NEW_DRIFT_CATEGORIES:
                     key = format_rationale(dict(pair.strata)).split(" (")[0]

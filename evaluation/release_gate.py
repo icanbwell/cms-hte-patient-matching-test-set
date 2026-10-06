@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Mapping
 from audit import build_report, dataset_paths
 
 THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds.json"
+REALISTIC_THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds_realistic.json"
 VALID_STATUSES = ("tracked", "enforced")
 VALID_RULE_KEYS = frozenset({"min", "max", "status"})
 
@@ -78,9 +79,28 @@ def failures(results: List[GateResult]) -> List[GateResult]:
     return [r for r in results if r.enforced and not r.passed]
 
 
+def run(dataset: str = "committed") -> List[GateResult]:
+    """Evaluate one dataset: "committed" (the checked-in case files), "realistic"
+    (generated age/household-realistic files, own thresholds) or "full"."""
+    paths = dataset_paths(dataset)
+    missing = [p.name for p in paths if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{dataset!r} dataset files not found ({', '.join(missing)}); "
+            "generate them first (see evaluation/cases/README.md)"
+        )
+    thresholds = (
+        REALISTIC_THRESHOLDS_PATH if dataset == "realistic" else THRESHOLDS_PATH
+    )
+    return check(build_report(*paths), load_thresholds(thresholds))
+
+
 if __name__ == "__main__":
-    dataset = os.environ.get("AUDIT_DATASET", "sample")
-    gate_results = check(build_report(*dataset_paths(dataset)), load_thresholds())
+    gate_results = run(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.environ.get("AUDIT_DATASET", "committed")
+    )
     for r in gate_results:
         state = "ok" if r.passed else ("FAIL" if r.enforced else "tracked-fail")
         print(f"{state:13} {r.name} = {r.value:.4g}")

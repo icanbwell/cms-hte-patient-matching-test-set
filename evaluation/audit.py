@@ -23,6 +23,7 @@ from naive_baselines import (
     SINGLE_FIELD_BASELINES,
     pair_features,
 )
+from population_targets import AGE_BANDS, AS_OF, age_band_targets
 from rule_eval import LabeledPair, evaluate
 
 Patient = Dict[str, Any]
@@ -33,13 +34,19 @@ PAIRS_PATH = CASES_DIR / "sample_labeled_pairs.jsonl"
 QUERIES_PATH = CASES_DIR / "population_queries.jsonl"
 CANDIDATES_PATH = CASES_DIR / "population_candidates.jsonl"
 
-# AUDIT_DATASET selects which exported file set to audit; "full" is the output
-# of export_full_onc_dataset.py.
+# AUDIT_DATASET / release_gate.py's argument selects which exported file set to
+# audit. "realistic" is generated on demand (export_realistic_dataset.py), "full"
+# is the output of export_full_onc_dataset.py; "committed" is the checked-in sample.
 DATASET_FILES: Dict[str, Tuple[str, str, str]] = {
-    "sample": (
+    "committed": (
         "sample_labeled_pairs.jsonl",
         "population_queries.jsonl",
         "population_candidates.jsonl",
+    ),
+    "realistic": (
+        "realistic_labeled_pairs.jsonl",
+        "realistic_population_queries.jsonl",
+        "realistic_population_candidates.jsonl",
     ),
     "full": (
         "full_labeled_pairs.jsonl",
@@ -49,7 +56,7 @@ DATASET_FILES: Dict[str, Tuple[str, str, str]] = {
 }
 
 
-def dataset_paths(dataset: str = "sample") -> Tuple[Path, Path, Path]:
+def dataset_paths(dataset: str = "committed") -> Tuple[Path, Path, Path]:
     """(pairs, queries, candidates) paths for a named dataset."""
     if dataset not in DATASET_FILES:
         raise ValueError(
@@ -59,15 +66,7 @@ def dataset_paths(dataset: str = "sample") -> Tuple[Path, Path, Path]:
     return CASES_DIR / pairs, CASES_DIR / queries, CASES_DIR / candidates
 
 
-# Fixed (not date.today()) so the report is deterministic. See Open Question 5.
-AS_OF = date(2026, 1, 1)
-
-AGE_BANDS: Tuple[Tuple[str, int, int], ...] = (
-    ("0-17", 0, 18),
-    ("18-64", 18, 65),
-    ("65-84", 65, 85),
-    ("85+", 85, 200),
-)
+REALISTIC_PATHS = dataset_paths("realistic")
 
 
 def read_jsonl(path: Path) -> List[Row]:
@@ -218,6 +217,14 @@ def age_band_shares(
     }
 
 
+def age_band_max_error(patients: Sequence[Patient], as_of: date = AS_OF) -> float:
+    """Largest absolute gap between a band's share and its population target
+    (population_targets.py); NaN without any dated patient."""
+    shares = age_band_shares(patients, as_of)
+    targets = age_band_targets()
+    return max(abs(shares[band] - targets[band]) for band in targets)
+
+
 def population_pairs(
     query_rows: Sequence[Row], candidates: Dict[str, Patient]
 ) -> Iterator[LabeledPair]:
@@ -269,6 +276,7 @@ def build_report(
         "shared_phone_rate": shared_contact_rate(patients, "phone"),
         "shared_email_rate": shared_contact_rate(patients, "email"),
         "age_band_shares": age_band_shares(patients),
+        "age_band_max_error": age_band_max_error(patients),
         "baseline_f1": f1s,
         "best_single_field_f1": best_single,
         "multi_field_margin": f1s[MULTI_FIELD_BASELINE_NAME] - best_single,
@@ -281,7 +289,7 @@ def build_report(
 if __name__ == "__main__":
     print(
         json.dumps(
-            build_report(*dataset_paths(os.environ.get("AUDIT_DATASET", "sample"))),
+            build_report(*dataset_paths(os.environ.get("AUDIT_DATASET", "committed"))),
             indent=2,
             default=list,
         )

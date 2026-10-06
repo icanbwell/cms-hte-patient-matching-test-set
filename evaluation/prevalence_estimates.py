@@ -361,6 +361,7 @@ PREVALENCE_ESTIMATES: Dict[str, PrevalenceEstimate] = {
             "email_churn": ("replaced", "dropped", "added"),
             "placeholder": ("ssn", "phone", "given", "address"),
             "placeholder_collision_negative": ("ssn", "phone", "dob"),
+            "household_member_negative": ("shared_contact", "same_address"),
         }.items()
         for case in cases
     },

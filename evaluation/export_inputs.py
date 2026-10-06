@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 from drift_profile import DriftProfile
 from onc_loader import load_onc_patients
@@ -36,6 +36,13 @@ def load_sample_and_donors(
             stacklevel=2,
         )
     return loaded[:sample_size], donors
+
+
+def iter_shard_batches(limit: int | None = None) -> Iterator[List[Patient]]:
+    """Every ONC shard as its own list, one at a time (never all ~1M rows at
+    once). `limit` stops after that many shards (used by fast tests)."""
+    for shard in sorted(ONC_DIR.glob("*.csv"))[:limit]:
+        yield load_onc_patients([shard])
 
 
 def load_profile() -> DriftProfile:

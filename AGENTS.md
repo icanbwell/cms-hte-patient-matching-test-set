@@ -201,6 +201,11 @@ step (ONC's data is already public/synthetic).
   change, address move, phone/email churn, placeholder values, optional gender drift), its
   placeholder emission rates, the donor-backed mutators, and the placeholder catalog (also the
   pairwise-only placeholder-collision non-matches). `audit.py` / `release_gate.py` gate the result.
+- **`population_targets.py` / `population_sampling.py` / `household_assignment.py` / `export_realistic_dataset.py`** —
+  cited age-band and household targets, the age-stratified sampler (all ONC shards, one at a time),
+  household assignment with shared addresses and contacts, and the generator for the parallel
+  `realistic_*` release-candidate files (git-ignored; the committed files are never overwritten).
+  `make generate-realistic-dataset` / `make audit-realistic`.
 - **`prevalence_estimates.py`** — real, cited public-source prevalence estimates (Census/CDC/Pew/
   peer-reviewed) per test-case category, for optional real-world-weighted aggregation. Every entry
   is either a cited estimate or an explicit `has_public_estimate=False` placeholder — never a

@@ -61,6 +61,7 @@ from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
 )
+from household_assignment import iter_household_pairs
 from identity_guard import SamePersonIndex
 from mutations import (
     count_changed_fields,
@@ -137,6 +138,7 @@ def build_population_dataset(
     household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
+    households: Sequence[Sequence[str]] = (),
     seed: int = 0,
 ) -> PopulationDataset:
     """Build the population-query tier from ONC patients - see module
@@ -160,13 +162,16 @@ def build_population_dataset(
         category: str,
     ) -> None:
         candidates.setdefault(candidate_id, patient)
+        # A decoy that qualifies under several categories (e.g. a sibling who is
+        # also a household co-resident) is added once but credited to all of
+        # them, so tier parity sees every category it belongs to.
+        categories[query_id].add(category)
         if candidate_id in pool_seen[query_id]:
             return
         pool_seen[query_id].add(candidate_id)
         pool_members[query_id].append(candidate_id)
         if is_true_match:
             match_members[query_id].append(candidate_id)
-        categories[query_id].add(category)
 
     profile = profile or DriftProfile()
     for idx, (pid, patient) in enumerate(by_id.items()):
@@ -231,6 +236,15 @@ def build_population_dataset(
         )
 
     if include_special_populations:
+        for a, b in iter_household_pairs(by_id, households):
+            for query, member in ((a, b), (b, a)):
+                add_candidate(
+                    query["id"],
+                    member["id"],
+                    member,
+                    False,
+                    "household_member_negative",
+                )
         for sibling in mine_sibling_negatives(patients):
             add_candidate(
                 sibling.query["id"],

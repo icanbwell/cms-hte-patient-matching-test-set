@@ -416,3 +416,59 @@ class TestDriftScenariosPerProvisionTier:
                 if t["system"] == "phone"
             }
             assert not new & in_set_phones
+
+
+class TestHouseholdMemberNegatives:
+    def _people(self):
+        a, b, c = drift_population()[:3]
+        b["telecom"] = [dict(t) for t in a["telecom"]]
+        return [a, b, c]
+
+    def test_every_pair_in_a_household_is_a_non_match_tagged_by_shared_contact(self):
+        a, b, c = self._people()
+        pairs = [
+            p
+            for p in generate_raw_pairs(
+                [a, b, c], households=[[a["id"], b["id"], c["id"]]], seed=0
+            )
+            if p.strata["pair_type"] == "household_member_negative"
+        ]
+        assert {p.pair_id for p in pairs} == {
+            f"{a['id']}::{b['id']}::household_member",
+            f"{a['id']}::{c['id']}::household_member",
+            f"{b['id']}::{c['id']}::household_member",
+        }
+        assert all(p.is_true_match is False for p in pairs)
+        cases = {
+            p.pair_id.split("::")[1] + p.pair_id.split("::")[0]: p.strata["case"]
+            for p in pairs
+        }
+        assert cases[f"{b['id']}{a['id']}"] == "shared_contact"
+        assert cases[f"{c['id']}{a['id']}"] == "same_address"
+
+    def test_a_pair_that_could_be_the_same_person_is_skipped(self):
+        a, b, _ = self._people()
+        b["name"], b["birthDate"] = a["name"], a["birthDate"]
+        pairs = [
+            p
+            for p in generate_raw_pairs([a, b], households=[[a["id"], b["id"]]], seed=0)
+            if p.strata["pair_type"] == "household_member_negative"
+        ]
+        assert pairs == []
+
+    def test_unknown_ids_and_the_special_populations_switch(self):
+        a, b, _ = self._people()
+        household = [[a["id"], "missing", b["id"]]]
+        on = [
+            p
+            for p in generate_raw_pairs([a, b], households=household, seed=0)
+            if p.strata["pair_type"] == "household_member_negative"
+        ]
+        off = [
+            p
+            for p in generate_raw_pairs(
+                [a, b], households=household, include_special_populations=False, seed=0
+            )
+            if p.strata["pair_type"] == "household_member_negative"
+        ]
+        assert len(on) == 1 and off == []

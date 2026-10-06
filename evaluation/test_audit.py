@@ -259,6 +259,30 @@ class TestBuildReportGuards:
         assert report["positive_phone_drift_rate"] == 0.0
 
 
+class TestAgeBandMaxError:
+    def test_zero_when_the_shares_equal_the_targets(self):
+        from audit import age_band_max_error
+        from population_targets import age_band_targets
+
+        years = {"0-17": 2015, "18-64": 1980, "65-84": 1950, "85+": 1930}
+        patients = []
+        for band, share in age_band_targets().items():
+            patients += [
+                _patient(f"{band}-{i}", dob=f"{years[band]}-06-15")
+                for i in range(round(share * 10000))
+            ]
+        assert age_band_max_error(patients, as_of=date(2026, 1, 1)) < 0.001
+
+    def test_reports_the_largest_band_gap_and_nan_without_dates(self):
+        from audit import age_band_max_error
+
+        elderly = [_patient(f"e{i}", dob="1930-06-15") for i in range(10)]
+        assert age_band_max_error(elderly, as_of=date(2026, 1, 1)) == pytest.approx(
+            1.0 - 0.0195
+        )
+        assert math.isnan(age_band_max_error([], as_of=date(2026, 1, 1)))
+
+
 def test_dataset_paths_rejects_unknown_dataset():
     import pytest
     from audit import dataset_paths
