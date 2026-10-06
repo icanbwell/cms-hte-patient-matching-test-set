@@ -570,7 +570,7 @@ donated surnames start almost entirely with "A" (303 of 303 `surname_change` row
 starting with "A") and donated addresses are almost all NY (364 of 366 `address_move` targets, 99.5%).
 This limits what the `surname_change` and `address_move` categories stress in the committed files. The
 realistic set draws its donors with the age-stratified sampler across all shards, so its 297
-`surname_change` targets are spread over many initials (largest: S 33, H 26, B 25, M 23, R 22; 24 distinct initials); its
+`surname_change` targets are spread over many initials (initials are counted on the DONATED surname; for hyphenated prior-name targets, the part after the hyphen; largest: S 33, H 26, B 25, M 23, R 22; 24 distinct initials); its
 `address_move` targets are still almost all NY (396 of 397), because ONC itself is New York data.
 
 **Phone churn can leave a shared phone.** ONC patients can hold two phones and the scenarios drop or
@@ -613,11 +613,11 @@ git-ignored, commit deliberately with `git add -f`) from all nine ONC shards, on
 | Stage | What it does | Source of the target |
 |---|---|---|
 | Age-stratified sample | 2,000 patients with exact band counts: 21.5% under 18 (430, including infants and toddlers), 61.2% 18-64, 15.35% 65-84, 1.95% 85+ (39) | Census Vintage 2024 (under 18); ACL 2023 Profile of Older Americans citing Census 2022 (65+ 17.3%, 85+ 6.5 million) |
-| Households | sizes with 29% one-person and target mean 2.5 (realized 2.60 patients per household and 2.48 patients per address at seed 0); members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
+| Households | sizes with 29% one-person and target mean 2.5 (realized 2.60 patients per household and 2.48 patients per address at seed 0); members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email (or have none when the anchor has none) and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
 | Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
 
 Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
-60% of patients share a phone and 53% an email (committed: 6% and 32%); 769 households, 49 of the 430
+60% of patients share a phone and 58% an email (committed: 6% and 32%); 769 households, 49 of the 430
 children placed with a same-surname adult. Against the committed set the phone-only baseline's F1 on
 the population tier drops from 0.953 to 0.882 and the address-only baseline's from 0.862 to 0.749; the
 multi-field margin over the best single field rises from 0.032 to 0.054 (only just above the provisional
@@ -642,7 +642,16 @@ What this is not:
   were placed with a same-surname adult.
 - **The shape of the multi-person household size distribution is an assumption** (sizes 2-6, geometric
   weights solved to hit the mean); the cited sources fix only the one-person share and the mean. The
-  sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`.
+  sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`. The realistic gate floors
+  (`shared_phone_rate` >= 0.30, `people_per_address` >= 2.0) are provisional and tied to the placeholder
+  0.5 sharing rate: a measured profile with `household_shared_phone` below roughly 0.2 will fail
+  `make audit-realistic` until the floor is re-set.
+- **The mined negative categories collapse.** A random 2,000-of-1M draw across all shards removes the
+  alphabetical clustering that the sibling, name-collision and shared-ZIP+DOB miners relied on. Pairwise
+  rows per category, committed -> realistic: `sibling_negative` 36 -> 3, `name_collision_negative` 75 -> 1,
+  `hard_negative` 4 -> 1. The realistic set therefore does NOT meaningfully exercise those provisions, and
+  the pairwise tier's purpose of deliberately over-sampling rare categories is not met for them. Mining
+  them per shard, or constructing them, is a follow-up.
 - Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
 
 `make audit-realistic` evaluates `release_thresholds_realistic.json` against the generated files;
