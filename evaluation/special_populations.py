@@ -41,6 +41,7 @@ from datetime import date
 from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from hard_negatives import HardNegativeCandidate
+from identity_guard import is_possible_same_person, normalize_token
 
 Patient = Dict[str, Any]
 
@@ -122,6 +123,23 @@ def _postal_code(patient: Patient) -> str:
     return str(addresses[0].get("postalCode") or "") if addresses else ""
 
 
+def _street_key(patient: Patient) -> Tuple[str, str] | None:
+    """(normalized first address line, postal code), or None if either is missing."""
+    addresses = patient.get("address") or []
+    if not addresses:
+        return None
+    lines = addresses[0].get("line") or []
+    street = normalize_token(lines[0]) if lines else ""
+    zip_code = normalize_token(addresses[0].get("postalCode"))
+    return (street, zip_code) if street and zip_code else None
+
+
+def _first_given(patient: Patient) -> str:
+    names = patient.get("name") or []
+    given = (names[0].get("given") or []) if names else []
+    return normalize_token(given[0]) if given else ""
+
+
 def _rng(rng: random.Random | None) -> random.Random:
     return rng if rng is not None else random.Random()
 
@@ -195,7 +213,11 @@ def construct_institutional_negatives(
 
 
 def _mine_same_surname_zip_pairs(
-    patients: Iterable[Patient], *, age_gap_ok: Callable[[int], bool]
+    patients: Iterable[Patient],
+    *,
+    age_gap_ok: Callable[[int], bool],
+    same_street: bool = False,
+    require_distinct_given: bool = False,
 ) -> List[HardNegativeCandidate]:
     """Shared bucketing/pairing core for mine_shared_surname_household_negatives()
     and mine_sibling_negatives() - both mine real ONC pairs sharing a postal
@@ -220,6 +242,12 @@ def _mine_same_surname_zip_pairs(
                 a, b = group[i], group[j]
                 dob_a, dob_b = a.get("birthDate"), b.get("birthDate")
                 if a.get("id") == b.get("id") or not dob_a or not dob_b:
+                    continue
+                if is_possible_same_person(a, b):
+                    continue
+                if same_street and _street_key(a) != _street_key(b):
+                    continue
+                if require_distinct_given and _first_given(a) == _first_given(b):
                     continue
                 try:
                     gap_years = abs(
@@ -267,7 +295,7 @@ def mine_shared_surname_household_negatives(
     between the two miners - see mine_sibling_negatives()'s docstring.
     """
     return _mine_same_surname_zip_pairs(
-        patients, age_gap_ok=lambda gap: gap >= min_age_gap_years
+        patients, age_gap_ok=lambda gap: gap >= min_age_gap_years, same_street=True
     )
 
 
@@ -294,5 +322,73 @@ def mine_sibling_negatives(
     leaving it unclaimed. Not yet resolved as a workgroup decision - see
     session_14.md."""
     return _mine_same_surname_zip_pairs(
-        patients, age_gap_ok=lambda gap: gap <= max_age_gap_years
+        patients,
+        age_gap_ok=lambda gap: gap <= max_age_gap_years,
+        require_distinct_given=True,
     )
+
+
+def construct_household_negatives(
+    patients: Iterable[Patient],
+    *,
+    min_age_gap_years: int = 15,
+    max_pairs: int = 250,
+    rng: random.Random | None = None,
+) -> List[HardNegativeCandidate]:
+    """Construct multi-generational-household non-matches that really share a
+    street address. ONC addresses are near-unique per record, so
+    mine_shared_surname_household_negatives() finds almost none (session 15,
+    finding F2).
+
+    For each family name (in shuffled order, up to `max_pairs`), pair that
+    family's oldest and youngest real ONC records when they are at least
+    `min_age_gap_years` apart and could not be the same person, then give the
+    younger record the older one's real address. Only the address is
+    overwritten - the underlying identities stay real and distinct, the same
+    discipline construct_institutional_negatives() follows. Pairs that already
+    share a street are skipped (the miner finds those). Each candidate is
+    tagged shared_fields["address_source"] = "constructed"."""
+    rng = _rng(rng)
+    by_family: Dict[str, List[Patient]] = defaultdict(list)
+    for patient in patients:
+        family = _primary_family_name(patient).upper()
+        if family and patient.get("birthDate") and _street_key(patient):
+            by_family[family].append(patient)
+
+    families = sorted(by_family)
+    rng.shuffle(families)
+    candidates: List[HardNegativeCandidate] = []
+    for family in families:
+        if len(candidates) >= max_pairs:
+            break
+        group = sorted(by_family[family], key=lambda p: str(p["birthDate"]))
+        elder, younger = group[0], group[-1]
+        try:
+            gap_years = (
+                date.fromisoformat(younger["birthDate"]).year
+                - date.fromisoformat(elder["birthDate"]).year
+            )
+        except ValueError:
+            continue
+        if (
+            elder.get("id") == younger.get("id")
+            or gap_years < min_age_gap_years
+            or is_possible_same_person(elder, younger)
+            or _street_key(elder) == _street_key(younger)
+        ):
+            continue
+        moved = copy.deepcopy(younger)
+        moved["address"] = copy.deepcopy(elder["address"])
+        candidates.append(
+            HardNegativeCandidate(
+                query=elder,
+                candidate=moved,
+                shared_fields={
+                    "postalCode": str(elder["address"][0].get("postalCode") or ""),
+                    "family_name": family,
+                    "age_gap_years": str(gap_years),
+                    "address_source": "constructed",
+                },
+            )
+        )
+    return candidates

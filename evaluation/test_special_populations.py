@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import random
+
 import pytest
 from special_populations import (
     INSTITUTION_TYPES,
     INSTITUTIONAL_ADDRESSES,
+    construct_household_negatives,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
 )
 
 
-def _patient(id_, family, given="Pat", zip_code="10001", dob="1980-01-01"):
+def _patient(
+    id_, family, given="Pat", zip_code="10001", dob="1980-01-01", street="1 Main St"
+):
     return {
         "resourceType": "Patient",
         "id": id_,
@@ -20,7 +25,7 @@ def _patient(id_, family, given="Pat", zip_code="10001", dob="1980-01-01"):
         "birthDate": dob,
         "telecom": [],
         "address": [
-            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+            {"line": [street], "city": "NY", "state": "NY", "postalCode": zip_code}
         ],
         "identifier": [],
     }
@@ -138,8 +143,8 @@ class TestMineSharedSurnameHouseholdNegatives:
 class TestMineSiblingNegatives:
     def test_finds_same_family_same_zip_close_in_age(self) -> None:
         patients = [
-            _patient("p1", "Rivera", dob="2010-01-01"),
-            _patient("p2", "Rivera", dob="2011-06-01"),
+            _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
+            _patient("p2", "Rivera", given="Luis", dob="2011-06-01"),
         ]
         candidates = mine_sibling_negatives(patients)
         assert len(candidates) == 1
@@ -154,8 +159,8 @@ class TestMineSiblingNegatives:
 
     def test_boundary_gap_equal_to_max_is_included(self) -> None:
         patients = [
-            _patient("p1", "Rivera", dob="2010-01-01"),
-            _patient("p2", "Rivera", dob="2013-01-01"),
+            _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
+            _patient("p2", "Rivera", given="Luis", dob="2013-01-01"),
         ]
         candidates = mine_sibling_negatives(patients, max_age_gap_years=3)
         assert len(candidates) == 1
@@ -177,3 +182,126 @@ class TestMineSiblingNegatives:
     def test_never_pairs_a_record_with_itself(self) -> None:
         patient = _patient("p1", "Rivera", dob="2010-01-01")
         assert mine_sibling_negatives([patient, patient]) == []
+
+    def test_excludes_same_first_name_even_with_a_different_dob(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
+            _patient("p2", "Rivera", given="ANA", dob="2011-06-01"),
+        ]
+        assert mine_sibling_negatives(patients) == []
+
+    def test_excludes_records_that_could_be_the_same_person(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
+            _patient("p2", "RIVERA", given="ana", dob="2010-01-01"),
+        ]
+        assert mine_sibling_negatives(patients) == []
+
+    def test_excludes_pairs_sharing_a_real_ssn(self) -> None:
+        a = _patient("p1", "Rivera", given="Ana", dob="2010-01-01")
+        b = _patient("p2", "Rivera", given="Luis", dob="2011-06-01")
+        for patient in (a, b):
+            patient["identifier"] = [
+                {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+            ]
+        assert mine_sibling_negatives([a, b]) == []
+
+
+class TestHouseholdSameStreet:
+    def test_mined_household_pairs_must_share_a_street(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="1955-03-01", street="1 Main St"),
+            _patient("p2", "Rivera", dob="1988-07-14", street="9 Elm St"),
+        ]
+        assert mine_shared_surname_household_negatives(patients) == []
+
+    def test_street_comparison_ignores_case_and_punctuation(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", dob="1955-03-01", street="1 Main St."),
+            _patient("p2", "Rivera", dob="1988-07-14", street="1 MAIN ST"),
+        ]
+        assert len(mine_shared_surname_household_negatives(patients)) == 1
+
+
+class TestConstructHouseholdNegatives:
+    def _family(self):
+        return [
+            _patient(
+                "p1",
+                "Rivera",
+                given="Rosa",
+                dob="1950-03-01",
+                zip_code="10001",
+                street="1 Main St",
+            ),
+            _patient(
+                "p2",
+                "Rivera",
+                given="Luis",
+                dob="1988-07-14",
+                zip_code="20002",
+                street="9 Elm St",
+            ),
+        ]
+
+    def test_gives_the_younger_record_the_elders_address(self) -> None:
+        (candidate,) = construct_household_negatives(self._family())
+        assert candidate.query["id"] == "p1"
+        assert candidate.candidate["id"] == "p2"
+        assert candidate.candidate["address"] == candidate.query["address"]
+        assert candidate.shared_fields["address_source"] == "constructed"
+        assert candidate.shared_fields["age_gap_years"] == "38"
+
+    def test_does_not_mutate_the_input_patients(self) -> None:
+        patients = self._family()
+        construct_household_negatives(patients)
+        assert patients[1]["address"][0]["postalCode"] == "20002"
+
+    def test_skips_pairs_that_already_share_a_street(self) -> None:
+        patients = [
+            _patient("p1", "Rivera", given="Rosa", dob="1950-03-01"),
+            _patient("p2", "Rivera", given="Luis", dob="1988-07-14"),
+        ]
+        assert construct_household_negatives(patients) == []
+
+    def test_skips_gaps_below_the_minimum(self) -> None:
+        patients = self._family()
+        patients[1]["birthDate"] = "1960-01-01"
+        assert construct_household_negatives(patients) == []
+
+    def test_skips_records_that_could_be_the_same_person(self) -> None:
+        patients = self._family()
+        patients[1]["birthDate"] = patients[0]["birthDate"]
+        patients[1]["name"][0]["given"] = ["ROSA"]
+        patients[1]["name"][0]["family"] = "RIVERA"
+        assert construct_household_negatives(patients) == []
+
+    def test_respects_max_pairs_and_is_deterministic_for_a_seed(self) -> None:
+        patients = []
+        for i, family in enumerate(["Rivera", "Chen", "Okafor"]):
+            elder, younger = self._family()
+            elder["id"], younger["id"] = f"e{i}", f"y{i}"
+            for p in (elder, younger):
+                p["name"][0]["family"] = family
+            patients += [elder, younger]
+        first = construct_household_negatives(
+            patients, max_pairs=2, rng=random.Random(1)
+        )
+        again = construct_household_negatives(
+            patients, max_pairs=2, rng=random.Random(1)
+        )
+        assert len(first) == 2
+        assert [c.query["id"] for c in first] == [c.query["id"] for c in again]
+
+    def test_ignores_patients_without_an_address_or_birth_date(self) -> None:
+        bare = {"resourceType": "Patient", "id": "x", "name": [{"family": "Rivera"}]}
+        patients = [bare, dict(bare, id="y")]
+        assert construct_household_negatives(patients) == []
+
+    def test_unparseable_birth_dates_are_skipped_not_fatal(self) -> None:
+        patients = self._family()
+        patients[1]["birthDate"] = "unknown"
+        assert construct_household_negatives(patients) == []
+
+    def test_max_pairs_zero_returns_nothing(self) -> None:
+        assert construct_household_negatives(self._family(), max_pairs=0) == []
