@@ -512,3 +512,36 @@ not fail; `"enforced"` fails CI. Run `PYTHONPATH=. uv run python evaluation/audi
 JSON report (per-field positive drift rates, people per address, shared-phone rate, age bands).
 The naive baselines (phone-only, SSN-only, ...) are deliberately weak matchers: a test set where
 one of them scores near the multi-field baseline is not discriminating between algorithms.
+
+## Drift scenarios (session 15)
+
+True-match pairs where the same person differs between two systems. Every scenario is in **both**
+tiers (`phone_churn` etc. use the same variant body in the pairwise file and in the population
+pools); `placeholder_collision_negative` is pairwise-only (both sides must carry the shared dummy).
+
+| Scenario | What differs | Subtypes (`rationale` = `scenario/subtype`) |
+|---|---|---|
+| `surname_change` | surname not present anywhere on the other record | `no_history`, `prior_name_on_target` (old surname kept as `use: maiden`), `hyphenated` |
+| `address_move` | a different real address | `current_vs_prior`, `history_on_one_side` (new `use: home`, old `use: old`; no dates invented) |
+| `phone_churn`, `email_churn` | contact value replaced, dropped or added | `replaced`, `dropped`, `added` |
+| `placeholder` | one field holds a well-known dummy (SSN `999-99-9999`, phone `000-000-0000`, given name `UNKNOWN`, address `HOMELESS`) | the field name; DOB is never used (a placeholder DOB leaves only rules CMS removed) |
+| `gender_drift` | administrative sex differs, composed with one fuzzy edit | `<from>_to_<to>`; **off by default** until the workgroup confirms the label |
+| `placeholder_collision_negative` | two distinct people share a placeholder SSN, phone or DOB | the field name |
+
+New phones, emails, addresses and surnames come from a held-out donor pool (the ONC rows right
+after the sample), so a donated value normally cannot match an in-set record (a coincidental equal value is possible; see the migration notes). Emission rates come from
+`drift_profile.py` and are **placeholders, not measured real-world rates**; supply measured ones
+with `DRIFT_PROFILE_PATH=profile.json` (`{"source": "...", "rates": {"phone_churn": 0.4}}`).
+`marriage_variant` and `phone_variant` (session 14) are kept unchanged for `case_id` stability;
+`surname_change` + `address_move` and `phone_churn` are the replacements, and removing the old ids
+awaits the workgroup's versioning decision.
+
+The committed files were extended **append-only** by a one-off migration: every row that was
+committed before is unchanged, and population pools grew by the new candidates (39-48 candidates
+per query). Regenerating the files will not reproduce them exactly (see "Assembly, export, and
+reproducibility"). Of the appended `email_churn/replaced` rows, 2 carry a replacement email equal to an email held by another in-set patient (no `phone_churn/replaced` row does).
+
+**Not yet verified against the CMS reference algorithm.** This repo has no matching engine. BAI-1061
+removed positives that only a removed rule could match; a new positive that no Table 2 rule can
+match is a label defect. Run the new categories through the reference algorithm and report any
+such rows.
