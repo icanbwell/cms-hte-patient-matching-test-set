@@ -7,21 +7,25 @@ metric flips it from "tracked" to "enforced" in the same change.
 Run from the repo root:
 
     PYTHONPATH=. uv run python evaluation/release_gate.py
+
+Set AUDIT_DATASET=full to gate the full-ONC export instead of the committed sample.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
-from audit import REALISTIC_PATHS, build_report
+from audit import build_report, dataset_paths
 
 THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds.json"
 REALISTIC_THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds_realistic.json"
 VALID_STATUSES = ("tracked", "enforced")
+VALID_RULE_KEYS = frozenset({"min", "max", "status"})
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,11 @@ def metric_value(report: Mapping[str, Any], name: str) -> float:
     if name not in report:
         raise ValueError(f"release_thresholds.json names unknown metric: {name!r}")
     value = report[name]
-    return float(len(value)) if isinstance(value, list) else float(value)
+    if isinstance(value, list):
+        return float(len(value))
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{name!r} is not a scalar metric and cannot be gated")
+    return float(value)
 
 
 def check(
@@ -45,8 +53,13 @@ def check(
 ) -> List[GateResult]:
     results: List[GateResult] = []
     for name, rule in thresholds.items():
-        if rule["status"] not in VALID_STATUSES:
+        if rule.get("status") not in VALID_STATUSES:
             raise ValueError(f"{name}: status must be one of {VALID_STATUSES}")
+        unknown = set(rule) - VALID_RULE_KEYS
+        if unknown:
+            raise ValueError(f"{name}: unknown rule keys {sorted(unknown)}")
+        if "min" not in rule and "max" not in rule:
+            raise ValueError(f"{name}: rule needs at least one of min or max")
         value = metric_value(report, name)
         passed = ("max" not in rule or value <= rule["max"]) and (
             "min" not in rule or value >= rule["min"]
@@ -67,19 +80,27 @@ def failures(results: List[GateResult]) -> List[GateResult]:
 
 
 def run(dataset: str = "committed") -> List[GateResult]:
-    """Evaluate one dataset's thresholds: "committed" (the checked-in case
-    files) or "realistic" (the generated age/household-realistic files)."""
-    if dataset == "committed":
-        return check(build_report(), load_thresholds())
-    if dataset == "realistic":
-        pairs, queries, candidates = REALISTIC_PATHS
-        report = build_report(pairs, queries, candidates)
-        return check(report, load_thresholds(REALISTIC_THRESHOLDS_PATH))
-    raise ValueError(f"dataset must be 'committed' or 'realistic', got {dataset!r}")
+    """Evaluate one dataset: "committed" (the checked-in case files), "realistic"
+    (generated age/household-realistic files, own thresholds) or "full"."""
+    paths = dataset_paths(dataset)
+    missing = [p.name for p in paths if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{dataset!r} dataset files not found ({', '.join(missing)}); "
+            "generate them first (see evaluation/cases/README.md)"
+        )
+    thresholds = (
+        REALISTIC_THRESHOLDS_PATH if dataset == "realistic" else THRESHOLDS_PATH
+    )
+    return check(build_report(*paths), load_thresholds(thresholds))
 
 
 if __name__ == "__main__":
-    gate_results = run(sys.argv[1] if len(sys.argv) > 1 else "committed")
+    gate_results = run(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.environ.get("AUDIT_DATASET", "committed")
+    )
     for r in gate_results:
         state = "ok" if r.passed else ("FAIL" if r.enforced else "tracked-fail")
         print(f"{state:13} {r.name} = {r.value:.4g}")

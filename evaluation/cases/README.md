@@ -413,7 +413,9 @@ tp = fp = tn = fn = 0
 with open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
     for line in f:
         case = json.loads(line)
-        predicted_match = my_algorithm(case["source"], case["target"])  # <- your code here
+        predicted_match = my_algorithm(
+            case["source"], case["target"]
+        )  # <- your code here
         actual_match = case["expected_match"]
         if predicted_match and actual_match:
             tp += 1
@@ -426,7 +428,7 @@ with open("evaluation/cases/sample_labeled_pairs.jsonl") as f:
 
 recall = tp / (tp + fn) if (tp + fn) else float("nan")
 fpr = fp / (fp + tn) if (fp + tn) else float("nan")
-print(f"recall={recall:.4f} fpr={fpr:.4f}  (n={tp+fp+tn+fn})")
+print(f"recall={recall:.4f} fpr={fpr:.4f}  (n={tp + fp + tn + fn})")
 ```
 
 Three rules for reporting results from this tier:
@@ -461,7 +463,9 @@ with open("evaluation/cases/population_queries.jsonl") as f:
         query_case = json.loads(line)
         expected = set(query_case["expected_match_ids"])
         for candidate_id in query_case["candidate_ids"]:
-            predicted_match = my_algorithm(query_case["query"], candidates[candidate_id])
+            predicted_match = my_algorithm(
+                query_case["query"], candidates[candidate_id]
+            )
             actual_match = candidate_id in expected
             if predicted_match and actual_match:
                 tp += 1
@@ -477,7 +481,9 @@ recall = tp / (tp + fn) if (tp + fn) else float("nan")
 fpr = fp / (fp + tn) if (fp + tn) else float("nan")
 fdr = fp / (fp + tp) if (fp + tp) else float("nan")
 accuracy = (tp + tn) / (tp + fp + tn + fn) if (tp + fp + tn + fn) else float("nan")
-print(f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f} accuracy={accuracy:.4f}")
+print(
+    f"precision={precision:.4f} recall={recall:.4f} fpr={fpr:.4f} fdr={fdr:.4f} accuracy={accuracy:.4f}"
+)
 ```
 
 Every (query, candidate) pair in every pool flattens into the same four buckets as Option A — the
@@ -511,6 +517,16 @@ while `export_population_dataset.py` takes its own `POOL_SIZE` (default 40), `CA
 `evaluation/cases/population_queries.jsonl`) — it does not read `OUTPUT_PATH`. Read
 `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE`/`POOL_SIZE` or
 passing more than one ONC shard's worth of patients.
+
+## Dataset changelog
+
+- **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match
+  pairs that could be the same person (shared real SSN, or identical first name + family + DOB) were
+  removed. `::sibling` case ids changed, and a new `::household_constructed` id class was added
+  (a real younger record given a real elder's address; the pair-tier target keeps the younger
+  record's id). Positives are unchanged. `population_*.jsonl` no longer contains such pairs but does
+  not yet contain constructed households (a follow-up regenerates the population tier). Consumers
+  that pin row counts or case ids should re-pin.
 
 ## Release gate
 

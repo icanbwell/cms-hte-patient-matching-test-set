@@ -48,6 +48,8 @@ def band_quotas(n: int, targets: Mapping[str, float]) -> Dict[str, int]:
     if n < 0:
         raise ValueError("n must be >= 0")
     total = sum(targets.values())
+    if total <= 0:
+        raise ValueError("band targets must sum to a positive number")
     exact = {band: n * share / total for band, share in targets.items()}
     quotas = {band: int(value) for band, value in exact.items()}
     leftover = n - sum(quotas.values())
@@ -76,12 +78,12 @@ def stratified_sample(
     """A band-stratified sample of `n` patients and a disjoint `donor_n` donors.
 
     `batches` is consumed once, one batch (e.g. one ONC shard) at a time."""
-    targets = dict(targets or age_band_targets())
-    sample_quota = band_quotas(n, targets)
-    donor_quota = band_quotas(donor_n, targets)
+    band_targets = dict(targets or age_band_targets())
+    sample_quota = band_quotas(n, band_targets)
+    donor_quota = band_quotas(donor_n, band_targets)
     rng = random.Random(f"{seed}:stratified_sample")
-    reservoirs: Dict[str, List[Patient]] = {band: [] for band in targets}
-    supply: Dict[str, int] = {band: 0 for band in targets}
+    reservoirs: Dict[str, List[Patient]] = {band: [] for band in band_targets}
+    supply: Dict[str, int] = {band: 0 for band in band_targets}
     for batch in batches:
         for patient in batch:
             band = band_of(age_of(patient, as_of))
@@ -103,7 +105,7 @@ def stratified_sample(
             )
     sample: List[Patient] = []
     donors: List[Patient] = []
-    for band in targets:
+    for band in band_targets:
         reservoir = reservoirs[band]
         rng.shuffle(reservoir)
         sample.extend(reservoir[: sample_quota[band]])

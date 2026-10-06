@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Sequence
+from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
 
 from identity_guard import is_possible_same_person, normalize_phone, normalize_token
 from naive_baselines import (
@@ -33,13 +34,39 @@ PAIRS_PATH = CASES_DIR / "sample_labeled_pairs.jsonl"
 QUERIES_PATH = CASES_DIR / "population_queries.jsonl"
 CANDIDATES_PATH = CASES_DIR / "population_candidates.jsonl"
 
-# The age/household-realistic dataset is generated on demand, not committed
-# (export_realistic_dataset.py); same layout, different file names.
-REALISTIC_PATHS = (
-    CASES_DIR / "realistic_labeled_pairs.jsonl",
-    CASES_DIR / "realistic_population_queries.jsonl",
-    CASES_DIR / "realistic_population_candidates.jsonl",
-)
+# AUDIT_DATASET / release_gate.py's argument selects which exported file set to
+# audit. "realistic" is generated on demand (export_realistic_dataset.py), "full"
+# is the output of export_full_onc_dataset.py; "committed" is the checked-in sample.
+DATASET_FILES: Dict[str, Tuple[str, str, str]] = {
+    "committed": (
+        "sample_labeled_pairs.jsonl",
+        "population_queries.jsonl",
+        "population_candidates.jsonl",
+    ),
+    "realistic": (
+        "realistic_labeled_pairs.jsonl",
+        "realistic_population_queries.jsonl",
+        "realistic_population_candidates.jsonl",
+    ),
+    "full": (
+        "full_labeled_pairs.jsonl",
+        "full_population_queries.jsonl",
+        "full_population_candidates.jsonl",
+    ),
+}
+
+
+def dataset_paths(dataset: str = "committed") -> Tuple[Path, Path, Path]:
+    """(pairs, queries, candidates) paths for a named dataset."""
+    if dataset not in DATASET_FILES:
+        raise ValueError(
+            f"unknown dataset {dataset!r}; expected one of {sorted(DATASET_FILES)}"
+        )
+    pairs, queries, candidates = DATASET_FILES[dataset]
+    return CASES_DIR / pairs, CASES_DIR / queries, CASES_DIR / candidates
+
+
+REALISTIC_PATHS = dataset_paths("realistic")
 
 
 def read_jsonl(path: Path) -> List[Row]:
@@ -205,6 +232,10 @@ def population_pairs(
     for q in query_rows:
         expected = set(q["expected_match_ids"])
         for candidate_id in q["candidate_ids"]:
+            if candidate_id not in candidates:
+                raise ValueError(
+                    f"{q['query_id']} references unknown candidate {candidate_id!r}"
+                )
             yield LabeledPair(
                 features=pair_features(q["query"], candidates[candidate_id]),
                 is_true_match=candidate_id in expected,
@@ -256,4 +287,10 @@ def build_report(
 
 
 if __name__ == "__main__":
-    print(json.dumps(build_report(), indent=2, default=list))
+    print(
+        json.dumps(
+            build_report(*dataset_paths(os.environ.get("AUDIT_DATASET", "committed"))),
+            indent=2,
+            default=list,
+        )
+    )

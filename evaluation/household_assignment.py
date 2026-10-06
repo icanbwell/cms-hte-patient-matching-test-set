@@ -30,10 +30,15 @@ import copy
 import random
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple
 
 from drift_profile import DriftProfile
-from identity_guard import SSN_SYSTEM, normalize_phone, normalize_token
+from identity_guard import (
+    SSN_SYSTEM,
+    is_possible_same_person,
+    normalize_phone,
+    normalize_token,
+)
 from population_sampling import age_of
 from population_targets import (
     AS_OF,
@@ -100,6 +105,8 @@ def household_sizes(
     """Household sizes summing to exactly `n_patients`, shuffled."""
     if n_patients < 0:
         raise ValueError("n_patients must be >= 0")
+    if not 0.0 <= single_share < 1.0:
+        raise ValueError(f"single_share must be in [0, 1), got {single_share}")
     mean_multi = (mean_size - single_share) / (1.0 - single_share)
     multi_weights = _multi_person_weights(mean_multi)
     multi_sizes = list(range(2, MAX_HOUSEHOLD_SIZE + 1))
@@ -163,6 +170,18 @@ def shared_contact_case(a: Patient, b: Patient) -> str:
     return "shared_contact" if contacts(a) & contacts(b) else "same_address"
 
 
+def iter_household_pairs(
+    by_id: Mapping[str, Patient], households: Sequence[Sequence[str]]
+) -> Iterator[Tuple[Patient, Patient]]:
+    """Every unordered co-resident pair, skipping pairs that could be the same person."""
+    for household in households:
+        members = [by_id[pid] for pid in household if pid in by_id]
+        for position, a in enumerate(members):
+            for b in members[position + 1 :]:
+                if not is_possible_same_person(a, b):
+                    yield a, b
+
+
 def assign_households(
     patients: List[Patient],
     *,
@@ -207,7 +226,12 @@ def assign_households(
             and _family(people[anchors[h]]) == family
             and (ages[anchors[h]] or 0) - (ages[minor] or 0) >= MIN_PARENT_AGE_GAP
         ]
-        household = rng.choice(matched or candidates)
+        old_enough = [
+            h
+            for h in candidates
+            if (ages[anchors[h]] or 0) - (ages[minor] or 0) >= MIN_PARENT_AGE_GAP
+        ]
+        household = rng.choice(matched or old_enough or candidates)
         same_surname += bool(matched)
         members[household].append(minor)
         free[household] -= 1

@@ -3,7 +3,7 @@
   "tier_parity_gap": {"max": 0, "status": "enforced"},
   "age_band_max_error": {"max": 0.01, "status": "enforced"},
   "people_per_address": {"min": 2.0, "status": "enforced"},
-  "shared_phone_rate": {"min": 0.3, "status": "enforced"},
+  "shared_phone_rate": {"min": 0.4, "status": "enforced"},
   "best_single_field_f1": {"max": 0.9, "status": "tracked"},
   "multi_field_margin": {"min": 0.05, "status": "tracked"}
 }

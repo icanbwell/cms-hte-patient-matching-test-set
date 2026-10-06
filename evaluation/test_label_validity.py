@@ -3,6 +3,7 @@ same person, in either output tier, for any generation category."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -59,3 +60,37 @@ def test_every_multi_generational_household_pair_shares_a_street(patients):
         _street_key(p.query_patient) == _street_key(p.candidate_patient)
         for p in household
     )
+
+
+CASES_DIR = Path(__file__).parent / "cases"
+
+
+def _read_jsonl(name):
+    with (CASES_DIR / name).open() as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def test_committed_sample_has_no_same_person_non_matches():
+    offenders = [
+        row["case_id"]
+        for row in _read_jsonl("sample_labeled_pairs.jsonl")
+        if not row["expected_match"]
+        and is_possible_same_person(row["source"], row["target"])
+    ]
+    assert offenders == []
+
+
+def test_committed_population_has_no_same_person_non_matches():
+    candidates = {
+        r["id"]: r["patient"] for r in _read_jsonl("population_candidates.jsonl")
+    }
+    offenders = []
+    for q in _read_jsonl("population_queries.jsonl"):
+        expected = set(q["expected_match_ids"])
+        offenders += [
+            f"{q['query_id']}::{cid}"
+            for cid in q["candidate_ids"]
+            if cid not in expected
+            and is_possible_same_person(q["query"], candidates[cid])
+        ]
+    assert offenders == []

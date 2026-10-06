@@ -61,7 +61,8 @@ from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
 )
-from identity_guard import SamePersonIndex, is_possible_same_person
+from household_assignment import iter_household_pairs
+from identity_guard import SamePersonIndex
 from mutations import (
     count_changed_fields,
     generate_compound_variant,
@@ -70,9 +71,11 @@ from mutations import (
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from scenarios import generate_scenario_variants
 from special_populations import (
+    DEFAULT_HOUSEHOLD_MAX_PAIRS,
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
+    household_rng,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
 )
@@ -132,7 +135,7 @@ def build_population_dataset(
     include_special_populations: bool = True,
     include_compound_variants: bool = True,
     institutional_group_size: int = 3,
-    household_constructed_max: int = 250,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
@@ -233,21 +236,15 @@ def build_population_dataset(
         )
 
     if include_special_populations:
-        for group in households:
-            members = [by_id[pid] for pid in group if pid in by_id]
-            for query in members:
-                for member in members:
-                    if member["id"] == query["id"]:
-                        continue
-                    if is_possible_same_person(query, member):
-                        continue
-                    add_candidate(
-                        query["id"],
-                        member["id"],
-                        member,
-                        False,
-                        "household_member_negative",
-                    )
+        for a, b in iter_household_pairs(by_id, households):
+            for query, member in ((a, b), (b, a)):
+                add_candidate(
+                    query["id"],
+                    member["id"],
+                    member,
+                    False,
+                    "household_member_negative",
+                )
         for sibling in mine_sibling_negatives(patients):
             add_candidate(
                 sibling.query["id"],
@@ -267,7 +264,7 @@ def build_population_dataset(
         for constructed in construct_household_negatives(
             patients,
             max_pairs=household_constructed_max,
-            rng=random.Random(f"{seed}:household"),
+            rng=household_rng(seed),
         ):
             # Namespaced for the same reason as the institutional ids below:
             # the candidate body carries an overwritten address.

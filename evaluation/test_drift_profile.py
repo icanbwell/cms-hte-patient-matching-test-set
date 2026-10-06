@@ -39,5 +39,18 @@ class TestDriftProfile:
         )
         profile = DriftProfile.from_json(path)
         assert profile.rate("phone_churn") == 0.4
-        assert profile.rate("surname_change") == 0.0
+        assert profile.rate("surname_change") == 0.15
+        assert profile.rate("ssn_dropped") == 1.0
         assert profile.source == "workgroup 2026-10"
+
+    def test_from_json_rejects_unknown_rate_key(self, tmp_path):
+        path = tmp_path / "profile.json"
+        path.write_text(json.dumps({"rates": {"phone_chrn": 0.4}}))
+        with pytest.raises(ValueError, match="unknown scenario rates"):
+            DriftProfile.from_json(path)
+
+    def test_from_json_requires_rates_object(self, tmp_path):
+        path = tmp_path / "profile.json"
+        path.write_text(json.dumps({"source": "x"}))
+        with pytest.raises(ValueError, match="needs a 'rates'"):
+            DriftProfile.from_json(path)

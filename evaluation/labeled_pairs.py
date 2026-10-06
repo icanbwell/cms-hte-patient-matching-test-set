@@ -53,8 +53,7 @@ from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
 )
-from household_assignment import shared_contact_case
-from identity_guard import is_possible_same_person
+from household_assignment import iter_household_pairs, shared_contact_case
 from mutations import (
     count_changed_fields,
     generate_compound_variant,
@@ -65,9 +64,11 @@ from onc_loader import load_onc_patients
 from placeholders import COLLISION_FIELDS, construct_placeholder_collision_negatives
 from scenarios import generate_scenario_variants
 from special_populations import (
+    DEFAULT_HOUSEHOLD_MAX_PAIRS,
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
+    household_rng,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
 )
@@ -133,7 +134,7 @@ def generate_raw_pairs(
     include_sibling_negatives: bool = True,
     include_name_collision_negatives: bool = True,
     sibling_max_age_gap_years: int = 3,
-    household_constructed_max: int = 250,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     placeholder_collision_max: int = 100,
     name_collision_max_distance: int = 1,
     institutional_group_size: int = 3,
@@ -152,7 +153,7 @@ def generate_raw_pairs(
     all additive, default-on, appended alongside every prior category.
     """
     rng = random.Random(seed)
-    profile = _effective_profile(
+    effective_profile = _effective_profile(
         profile,
         include_ssn_dropped=include_ssn_dropped,
         include_marriage_variant=include_marriage_variant,
@@ -210,7 +211,7 @@ def generate_raw_pairs(
             p,
             next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
-            profile=profile,
+            profile=effective_profile,
             seed=seed,
         ):
             yield RawPair(
@@ -269,7 +270,7 @@ def generate_raw_pairs(
     for constructed_household in construct_household_negatives(
         patients,
         max_pairs=household_constructed_max,
-        rng=random.Random(f"{seed}:household"),
+        rng=household_rng(seed),
     ):
         yield RawPair(
             pair_id=(
@@ -306,22 +307,17 @@ def generate_raw_pairs(
                 },
             )
     by_id = {p["id"]: p for p in patients}
-    for household in households:
-        members = [by_id[pid] for pid in household if pid in by_id]
-        for position, a in enumerate(members):
-            for b in members[position + 1 :]:
-                if is_possible_same_person(a, b):
-                    continue
-                yield RawPair(
-                    pair_id=f"{a['id']}::{b['id']}::household_member",
-                    query_patient=a,
-                    candidate_patient=b,
-                    is_true_match=False,
-                    strata={
-                        "pair_type": "household_member_negative",
-                        "case": shared_contact_case(a, b),
-                    },
-                )
+    for a, b in iter_household_pairs(by_id, households):
+        yield RawPair(
+            pair_id=f"{a['id']}::{b['id']}::household_member",
+            query_patient=a,
+            candidate_patient=b,
+            is_true_match=False,
+            strata={
+                "pair_type": "household_member_negative",
+                "case": shared_contact_case(a, b),
+            },
+        )
     if include_sibling_negatives:
         for sibling_candidate in mine_sibling_negatives(
             patients, max_age_gap_years=sibling_max_age_gap_years

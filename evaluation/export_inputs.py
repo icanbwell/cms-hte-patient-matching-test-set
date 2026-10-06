@@ -10,6 +10,7 @@ usual memory caution applies (one shard only, see SYNTHETIC_DATA_SETUP.md "Memor
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple
 
@@ -27,7 +28,14 @@ def load_sample_and_donors(
 ) -> Tuple[List[Patient], List[Patient]]:
     shard = sorted(ONC_DIR.glob("*.csv"))[shard_index]
     loaded = load_onc_patients([shard])
-    return loaded[:sample_size], loaded[sample_size : sample_size + donor_size]
+    donors = loaded[sample_size : sample_size + donor_size]
+    if len(donors) < donor_size:
+        warnings.warn(
+            f"only {len(donors)} of {donor_size} donor records available; "
+            "donor-dependent drift scenarios will emit fewer cases",
+            stacklevel=2,
+        )
+    return loaded[:sample_size], donors
 
 
 def iter_shard_batches(limit: int | None = None) -> Iterator[List[Patient]]:
