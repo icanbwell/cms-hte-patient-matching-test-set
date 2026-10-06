@@ -1,8 +1,9 @@
 """Age-stratified sampling of ONC patients (session 15, Workstream C).
 
 The committed samples take the first N rows of one alphabetically sorted ONC
-shard, which inherits ONC's age skew (8% under 18, 21% aged 85+) and a surname
-skew. `stratified_sample` instead draws, across ALL shards and one shard at a
+shard. Measured as of ONC's own vintage (2017) that sample is 21.5% under 18; the
+skew that persists is the elderly (12.8% aged 85+; the 8% under-18 figure is the
+same data as of 2026), plus a surname skew. `stratified_sample` instead draws, across ALL shards and one shard at a
 time (no 1M-row list), a seeded random sample whose age-band counts match the
 quotas for a target distribution (population_targets.py), plus a disjoint donor
 pool drawn from the same bands.

@@ -565,11 +565,13 @@ but not on the source; "in-set" means held by a different patient in the committ
 HOMELESS or UNKNOWN, or ZIP 99999/00000), so `address_move` can move a record to a placeholder-like
 address in those rows.
 
-**Donor skew.** Donors are the rows immediately after the sample in one alphabetically sorted shard, so
+**Donor skew (committed files).** Donors are the rows immediately after the sample in one alphabetically sorted shard, so
 donated surnames start almost entirely with "A" (303 of 303 `surname_change` rows have a new surname
 starting with "A") and donated addresses are almost all NY (364 of 366 `address_move` targets, 99.5%).
-This limits what the `surname_change` and `address_move` categories stress until the stratified
-sampler (a later plan) lands.
+This limits what the `surname_change` and `address_move` categories stress in the committed files. The
+realistic set draws its donors with the age-stratified sampler across all shards, so its 297
+`surname_change` targets are spread over many initials (largest: H 25, M 24, S 23, L 23, B 21); its
+`address_move` targets are still almost all NY (396 of 397), because ONC itself is New York data.
 
 **Phone churn can leave a shared phone.** ONC patients can hold two phones and the scenarios drop or
 replace only the first, so some `phone_churn` rows still share a phone with the source: 63 of 474
@@ -611,7 +613,7 @@ git-ignored, commit deliberately with `git add -f`) from all nine ONC shards, on
 | Stage | What it does | Source of the target |
 |---|---|---|
 | Age-stratified sample | 2,000 patients with exact band counts: 21.5% under 18 (430, including infants and toddlers), 61.2% 18-64, 15.35% 65-84, 1.95% 85+ (39) | Census Vintage 2024 (under 18); ACL 2023 Profile of Older Americans citing Census 2022 (65+ 17.3%, 85+ 6.5 million) |
-| Households | sizes with 29% one-person and mean 2.5; members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
+| Households | sizes with 29% one-person and target mean 2.5 (realized 2.60 patients per household and 2.48 patients per address at seed 0); members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
 | Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
 
 Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
@@ -619,8 +621,8 @@ Measured on the generated set (seed 0): exact age bands; 2.48 patients per addre
 children placed with a same-surname adult. Against the committed set the phone-only baseline's F1 on
 the population tier drops from 0.953 to 0.882 and the address-only baseline's from 0.862 to 0.749; the
 multi-field margin over the best single field rises from 0.032 to 0.054 (only just above the provisional
-0.05). Date-of-birth-only is still the strongest single field (F1 0.919), so `best_single_field_f1`
-stays `tracked`.
+0.05). Date-of-birth-only is now the strongest single field in the realistic set (F1 0.919; phone-only was
+strongest in the committed set at 0.953), so `best_single_field_f1` stays `tracked`.
 
 The committed audit (`make audit`) now reports age shares as of 2017-01-01, so its JSON age bands read
 21.5% under 18 and 12.8% aged 85+ for the committed files; the earlier 8.0% / 21.1% figures are the same
@@ -641,7 +643,7 @@ What this is not:
 - **The shape of the multi-person household size distribution is an assumption** (sizes 2-6, geometric
   weights solved to hit the mean); the cited sources fix only the one-person share and the mean. The
   sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`.
-- Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5); as of 2026 the same committed sample reads 8.0% under 18 and 21.1% aged 85+.
+- Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
 
 `make audit-realistic` evaluates `release_thresholds_realistic.json` against the generated files;
 `test_realistic_dataset.py` does the same on a 300-patient version in CI.
