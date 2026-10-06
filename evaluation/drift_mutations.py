@@ -137,6 +137,8 @@ def _contact_churn(
         }
     )
     subtype = rng.choice(["replaced", "dropped"]) if own else "added"
+    if subtype == "replaced" and not donated:
+        subtype = "dropped"
     variant = copy.deepcopy(patient)
     new_telecom = variant.setdefault("telecom", [])
     if subtype == "dropped":

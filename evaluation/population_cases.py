@@ -70,9 +70,11 @@ from mutations import (
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from scenarios import generate_scenario_variants
 from special_populations import (
+    DEFAULT_HOUSEHOLD_MAX_PAIRS,
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
+    household_rng,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
 )
@@ -132,7 +134,7 @@ def build_population_dataset(
     include_special_populations: bool = True,
     include_compound_variants: bool = True,
     institutional_group_size: int = 3,
-    household_constructed_max: int = 250,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     seed: int = 0,
@@ -248,7 +250,7 @@ def build_population_dataset(
         for constructed in construct_household_negatives(
             patients,
             max_pairs=household_constructed_max,
-            rng=random.Random(f"{seed}:household"),
+            rng=household_rng(seed),
         ):
             # Namespaced for the same reason as the institutional ids below:
             # the candidate body carries an overwritten address.

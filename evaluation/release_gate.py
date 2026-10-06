@@ -7,20 +7,24 @@ metric flips it from "tracked" to "enforced" in the same change.
 Run from the repo root:
 
     PYTHONPATH=. uv run python evaluation/release_gate.py
+
+Set AUDIT_DATASET=full to gate the full-ONC export instead of the committed sample.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
-from audit import build_report
+from audit import build_report, dataset_paths
 
 THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds.json"
 VALID_STATUSES = ("tracked", "enforced")
+VALID_RULE_KEYS = frozenset({"min", "max", "status"})
 
 
 @dataclass(frozen=True)
@@ -36,7 +40,11 @@ def metric_value(report: Mapping[str, Any], name: str) -> float:
     if name not in report:
         raise ValueError(f"release_thresholds.json names unknown metric: {name!r}")
     value = report[name]
-    return float(len(value)) if isinstance(value, list) else float(value)
+    if isinstance(value, list):
+        return float(len(value))
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{name!r} is not a scalar metric and cannot be gated")
+    return float(value)
 
 
 def check(
@@ -44,8 +52,13 @@ def check(
 ) -> List[GateResult]:
     results: List[GateResult] = []
     for name, rule in thresholds.items():
-        if rule["status"] not in VALID_STATUSES:
+        if rule.get("status") not in VALID_STATUSES:
             raise ValueError(f"{name}: status must be one of {VALID_STATUSES}")
+        unknown = set(rule) - VALID_RULE_KEYS
+        if unknown:
+            raise ValueError(f"{name}: unknown rule keys {sorted(unknown)}")
+        if "min" not in rule and "max" not in rule:
+            raise ValueError(f"{name}: rule needs at least one of min or max")
         value = metric_value(report, name)
         passed = ("max" not in rule or value <= rule["max"]) and (
             "min" not in rule or value >= rule["min"]
@@ -66,7 +79,8 @@ def failures(results: List[GateResult]) -> List[GateResult]:
 
 
 if __name__ == "__main__":
-    gate_results = check(build_report(), load_thresholds())
+    dataset = os.environ.get("AUDIT_DATASET", "sample")
+    gate_results = check(build_report(*dataset_paths(dataset)), load_thresholds())
     for r in gate_results:
         state = "ok" if r.passed else ("FAIL" if r.enforced else "tracked-fail")
         print(f"{state:13} {r.name} = {r.value:.4g}")

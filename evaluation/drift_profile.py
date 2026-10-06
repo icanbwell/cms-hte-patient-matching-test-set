@@ -68,4 +68,16 @@ class DriftProfile:
     def from_json(cls, path: Path) -> DriftProfile:
         with path.open() as f:
             data = json.load(f)
-        return cls(rates=dict(data["rates"]), source=str(data.get("source", "")))
+        if "rates" not in data:
+            raise ValueError(f"{path}: profile JSON needs a 'rates' object")
+        defaults = {**LEGACY_RATES, **PLACEHOLDER_RATES}
+        unknown = set(data["rates"]) - set(defaults)
+        if unknown:
+            raise ValueError(
+                f"{path}: unknown scenario rates {sorted(unknown)}; "
+                f"expected a subset of {sorted(defaults)}"
+            )
+        # Rates the file omits keep their defaults rather than silently turning off.
+        return cls(
+            rates={**defaults, **data["rates"]}, source=str(data.get("source", ""))
+        )

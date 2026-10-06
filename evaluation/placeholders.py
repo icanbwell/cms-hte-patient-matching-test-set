@@ -60,41 +60,41 @@ def apply_placeholder(
     unchanged (callers treat "unchanged" as "scenario does not apply");
     with True the field is added (used for collisions, where both sides must
     carry the shared dummy)."""
-    patient = copy.deepcopy(patient)
+    modified = copy.deepcopy(patient)
     if field == "dob":
-        if patient.get("birthDate") or create_missing:
-            patient["birthDate"] = value
+        if modified.get("birthDate") or create_missing:
+            modified["birthDate"] = value
     elif field == "ssn":
-        for identifier in patient.get("identifier") or []:
+        for identifier in modified.get("identifier") or []:
             if identifier.get("system") == SSN_SYSTEM:
                 identifier["value"] = value
                 break
         else:
             if create_missing:
-                patient.setdefault("identifier", []).append(
+                modified.setdefault("identifier", []).append(
                     {"system": SSN_SYSTEM, "value": value}
                 )
     elif field == "phone":
-        for entry in patient.get("telecom") or []:
+        for entry in modified.get("telecom") or []:
             if entry.get("system") == "phone":
                 entry["value"] = value
                 break
         else:
             if create_missing:
-                patient.setdefault("telecom", []).append(
+                modified.setdefault("telecom", []).append(
                     {"system": "phone", "value": value}
                 )
     elif field == "given":
-        names = patient.get("name") or []
+        names = modified.get("name") or []
         if names and names[0].get("given"):
             names[0]["given"][0] = value
     elif field == "address":
-        addresses = patient.get("address") or []
+        addresses = modified.get("address") or []
         if addresses and addresses[0].get("line"):
             addresses[0]["line"] = [value]
     else:
         raise ValueError(f"Unknown placeholder field: {field!r}")
-    return patient
+    return modified
 
 
 def placeholder_variant(

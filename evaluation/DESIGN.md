@@ -202,8 +202,13 @@ Paired recall (true matches): both=942 lost=0 gained=87 missed_by_both=372
 3. Call:
    ```python
    dev, holdout = stratified_split(pairs, strata_keys=["dob_present", "name_commonality"])
-   report = compare(baseline, candidate, holdout,
-                    candidate_name="my-rule", primary_metric="TPR (recall/sensitivity)")
+   report = compare(
+       baseline,
+       candidate,
+       holdout,
+       candidate_name="my-rule",
+       primary_metric="TPR (recall/sensitivity)",
+   )
    print(format_report(report))
    ```
    Set `primary_metric` to whatever the change is *meant* to improve.

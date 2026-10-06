@@ -63,9 +63,11 @@ from onc_loader import load_onc_patients
 from placeholders import COLLISION_FIELDS, construct_placeholder_collision_negatives
 from scenarios import generate_scenario_variants
 from special_populations import (
+    DEFAULT_HOUSEHOLD_MAX_PAIRS,
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
+    household_rng,
     mine_shared_surname_household_negatives,
     mine_sibling_negatives,
 )
@@ -131,7 +133,7 @@ def generate_raw_pairs(
     include_sibling_negatives: bool = True,
     include_name_collision_negatives: bool = True,
     sibling_max_age_gap_years: int = 3,
-    household_constructed_max: int = 250,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
     placeholder_collision_max: int = 100,
     name_collision_max_distance: int = 1,
     institutional_group_size: int = 3,
@@ -149,7 +151,7 @@ def generate_raw_pairs(
     all additive, default-on, appended alongside every prior category.
     """
     rng = random.Random(seed)
-    profile = _effective_profile(
+    effective_profile = _effective_profile(
         profile,
         include_ssn_dropped=include_ssn_dropped,
         include_marriage_variant=include_marriage_variant,
@@ -207,7 +209,7 @@ def generate_raw_pairs(
             p,
             next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
-            profile=profile,
+            profile=effective_profile,
             seed=seed,
         ):
             yield RawPair(
@@ -266,7 +268,7 @@ def generate_raw_pairs(
     for constructed_household in construct_household_negatives(
         patients,
         max_pairs=household_constructed_max,
-        rng=random.Random(f"{seed}:household"),
+        rng=household_rng(seed),
     ):
         yield RawPair(
             pair_id=(

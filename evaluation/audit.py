@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections import Counter, defaultdict
 from datetime import date
@@ -31,6 +32,32 @@ CASES_DIR = Path(__file__).parent / "cases"
 PAIRS_PATH = CASES_DIR / "sample_labeled_pairs.jsonl"
 QUERIES_PATH = CASES_DIR / "population_queries.jsonl"
 CANDIDATES_PATH = CASES_DIR / "population_candidates.jsonl"
+
+# AUDIT_DATASET selects which exported file set to audit; "full" is the output
+# of export_full_onc_dataset.py.
+DATASET_FILES: Dict[str, Tuple[str, str, str]] = {
+    "sample": (
+        "sample_labeled_pairs.jsonl",
+        "population_queries.jsonl",
+        "population_candidates.jsonl",
+    ),
+    "full": (
+        "full_labeled_pairs.jsonl",
+        "full_population_queries.jsonl",
+        "full_population_candidates.jsonl",
+    ),
+}
+
+
+def dataset_paths(dataset: str = "sample") -> Tuple[Path, Path, Path]:
+    """(pairs, queries, candidates) paths for a named dataset."""
+    if dataset not in DATASET_FILES:
+        raise ValueError(
+            f"unknown dataset {dataset!r}; expected one of {sorted(DATASET_FILES)}"
+        )
+    pairs, queries, candidates = DATASET_FILES[dataset]
+    return CASES_DIR / pairs, CASES_DIR / queries, CASES_DIR / candidates
+
 
 # Fixed (not date.today()) so the report is deterministic. See Open Question 5.
 AS_OF = date(2026, 1, 1)
@@ -198,6 +225,10 @@ def population_pairs(
     for q in query_rows:
         expected = set(q["expected_match_ids"])
         for candidate_id in q["candidate_ids"]:
+            if candidate_id not in candidates:
+                raise ValueError(
+                    f"{q['query_id']} references unknown candidate {candidate_id!r}"
+                )
             yield LabeledPair(
                 features=pair_features(q["query"], candidates[candidate_id]),
                 is_true_match=candidate_id in expected,
@@ -248,4 +279,10 @@ def build_report(
 
 
 if __name__ == "__main__":
-    print(json.dumps(build_report(), indent=2, default=list))
+    print(
+        json.dumps(
+            build_report(*dataset_paths(os.environ.get("AUDIT_DATASET", "sample"))),
+            indent=2,
+            default=list,
+        )
+    )

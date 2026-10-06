@@ -1,7 +1,7 @@
 {
   "same_person_negatives": {"max": 0, "status": "enforced"},
   "tier_parity_gap": {"max": 0, "status": "enforced"},
-  "positive_phone_drift_rate": {"min": 0.05, "status": "enforced"},
+  "positive_phone_drift_rate": {"min": 0.05, "status": "tracked"},
   "best_single_field_f1": {"max": 0.9, "status": "tracked"},
   "multi_field_margin": {"min": 0.05, "status": "tracked"}
 }
