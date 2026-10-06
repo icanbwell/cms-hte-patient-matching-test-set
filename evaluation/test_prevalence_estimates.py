@@ -9,6 +9,8 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
+from drift_profile import DriftProfile
+from export_test_dataset import format_rationale
 from labeled_pairs import generate_raw_pairs
 from mutations import MUTATIONS
 from prevalence_estimates import (
@@ -17,7 +19,9 @@ from prevalence_estimates import (
     PrevalenceEstimate,
     researched_frequency,
 )
+from scenarios import REGISTRY
 from special_populations import INSTITUTION_TYPES
+from support_patients import drift_donors, drift_population
 
 
 def _patient(
@@ -182,3 +186,32 @@ class TestPrevalenceEstimateDataclass:
         assert estimate.value == 0.5
         with pytest.raises(dataclasses.FrozenInstanceError):
             estimate.value = 0.9  # type: ignore[misc]
+
+
+_NEW_DRIFT_CATEGORIES = frozenset(
+    {
+        "surname_change",
+        "address_move",
+        "phone_churn",
+        "email_churn",
+        "placeholder",
+        "placeholder_collision_negative",
+    }
+)
+
+
+class TestDriftScenarioEntries:
+    def test_every_generated_drift_category_has_an_explicit_placeholder_entry(self):
+        everything = DriftProfile(rates={n: 1.0 for n in REGISTRY})
+        seen = set()
+        for seed in range(5):
+            for pair in generate_raw_pairs(
+                drift_population(), donors=drift_donors(), profile=everything, seed=seed
+            ):
+                if pair.strata["pair_type"] in _NEW_DRIFT_CATEGORIES:
+                    key = format_rationale(dict(pair.strata)).split(" (")[0]
+                    estimate = PREVALENCE_ESTIMATES[key]
+                    assert estimate.has_public_estimate is False
+                    assert estimate.value == NEUTRAL_FREQUENCY
+                    seen.add(pair.strata["pair_type"])
+        assert seen == _NEW_DRIFT_CATEGORIES

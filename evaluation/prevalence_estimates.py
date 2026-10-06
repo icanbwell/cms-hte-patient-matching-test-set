@@ -323,6 +323,22 @@ _HARD_NEGATIVE = PrevalenceEstimate(
     ),
 )
 
+_DRIFT_PLACEHOLDER = PrevalenceEstimate(
+    value=NEUTRAL_FREQUENCY,
+    has_public_estimate=False,
+    is_direct_measurement=False,
+    source="N/A",
+    notes=(
+        "Cross-organization contact, address, name and administrative-sex "
+        "disagreement rates for the SAME person are not published at the "
+        "granularity these scenarios need. The workgroup's own measured "
+        "disagreement rates (session 15, Open Question 1) are the intended "
+        "source; until supplied, this category stays at NEUTRAL_FREQUENCY and "
+        "its emission rate is a PLACEHOLDER in drift_profile.py, not a "
+        "real-world prevalence."
+    ),
+)
+
 PREVALENCE_ESTIMATES: Dict[str, PrevalenceEstimate] = {
     "special_population/shelter": _SHELTER,
     "special_population/nursing_facility": _NURSING_FACILITY,
@@ -336,6 +352,18 @@ PREVALENCE_ESTIMATES: Dict[str, PrevalenceEstimate] = {
     "normalization_edge_case/diacritic": _DIACRITIC,
     "normalization_edge_case/punctuation": _PUNCTUATION,
     "hard_negative": _HARD_NEGATIVE,
+    **{
+        f"{scenario}/{case}": _DRIFT_PLACEHOLDER
+        for scenario, cases in {
+            "surname_change": ("no_history", "prior_name_on_target", "hyphenated"),
+            "address_move": ("current_vs_prior", "history_on_one_side"),
+            "phone_churn": ("replaced", "dropped", "added"),
+            "email_churn": ("replaced", "dropped", "added"),
+            "placeholder": ("ssn", "phone", "given", "address"),
+            "placeholder_collision_negative": ("ssn", "phone", "dob"),
+        }.items()
+        for case in cases
+    },
     "fuzzy_variant/dob_day": _FUZZY_VARIANT_PLACEHOLDER,
     "fuzzy_variant/dob_month": _FUZZY_VARIANT_PLACEHOLDER,
     "fuzzy_variant/dob_year": _FUZZY_VARIANT_PLACEHOLDER,
