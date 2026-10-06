@@ -132,3 +132,24 @@ class TestBarePatient:
         assert ssn_of(bare) is None
         assert identity_key(bare) is None
         assert not is_possible_same_person(bare, dict(bare, id="y"))
+
+
+class TestSamePersonIndex:
+    def test_returns_ids_sharing_identity_key_or_real_ssn(self):
+        from identity_guard import SamePersonIndex
+
+        dup = _patient("dup", given="KATHERINE", family="SMITH")
+        ssn_twin = _patient("ssn", given="Ana", family="Lee", ssn="892-39-5115")
+        other = _patient("other", given="Robert", family="Jones")
+        index = SamePersonIndex([dup, ssn_twin, other])
+
+        query = _patient("q", ssn="892-39-5115")
+        assert index.matching_ids(query) == {"dup", "ssn"}
+
+    def test_unrelated_patient_matches_nothing(self):
+        from identity_guard import SamePersonIndex
+
+        index = SamePersonIndex([_patient("a")])
+        assert (
+            index.matching_ids(_patient("z", given="Robert", family="Jones")) == set()
+        )

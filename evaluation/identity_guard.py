@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Dict, FrozenSet, Tuple
+from collections import defaultdict
+from typing import Any, Dict, FrozenSet, Iterable, List, Set, Tuple
 
 Patient = Dict[str, Any]
 
@@ -66,3 +67,31 @@ def is_possible_same_person(a: Patient, b: Patient) -> bool:
         return True
     key_a, key_b = identity_key(a), identity_key(b)
     return key_a is not None and key_a == key_b
+
+
+class SamePersonIndex:
+    """O(1) lookup of every indexed patient id that could be the same person as
+    a given record - the indexed equivalent of calling is_possible_same_person()
+    against every patient."""
+
+    def __init__(self, patients: Iterable[Patient]) -> None:
+        self._by_ssn: Dict[str, List[str]] = defaultdict(list)
+        self._by_key: Dict[Tuple[str, str, str], List[str]] = defaultdict(list)
+        for patient in patients:
+            ssn = ssn_of(patient)
+            if ssn is not None:
+                self._by_ssn[ssn].append(patient["id"])
+            key = identity_key(patient)
+            if key is not None:
+                self._by_key[key].append(patient["id"])
+
+    def matching_ids(self, patient: Patient) -> Set[str]:
+        """Ids of indexed patients that could be `patient` (including its own id)."""
+        found: Set[str] = set()
+        ssn = ssn_of(patient)
+        if ssn is not None:
+            found.update(self._by_ssn.get(ssn, ()))
+        key = identity_key(patient)
+        if key is not None:
+            found.update(self._by_key.get(key, ()))
+        return found
