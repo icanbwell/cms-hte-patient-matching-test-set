@@ -15,7 +15,8 @@ What this does and does not model:
   (roommates, blended families whose surnames differ). A child is attached to
   an adult with the same surname when one is available, otherwise to any
   household with a free slot. The report counts the same-surname placements.
-- Children under 13 ALWAYS carry the anchor adult's phone and email.
+- Children under 13 ALWAYS take the anchor adult's phone and email, or have
+  none when the anchor has none.
 - The shape of the multi-person size distribution is an assumption: sizes 2-6
   with geometrically decaying weights, solved so the overall mean equals the
   target. The cited sources fix only the one-person share and the mean.
@@ -127,9 +128,13 @@ def _entries(patient: Patient, system: str) -> List[Dict[str, Any]]:
 def _share_contact(
     member: Patient, anchor: Patient, system: str, *, replace_all: bool
 ) -> None:
-    """Give `member` the anchor's `system` contact (first entry, or all of them)."""
+    """Give `member` the anchor's `system` contact (first entry, or all of them).
+
+    With `replace_all`, an anchor that has none leaves the member with none (a
+    young child's contact is the guardian's). Otherwise the member keeps its own.
+    """
     shared = _entries(anchor, system)
-    if not shared:
+    if not shared and not replace_all:
         return
     kept = [t for t in member.get("telecom") or [] if t.get("system") != system]
     taken = shared if replace_all else shared[:1]

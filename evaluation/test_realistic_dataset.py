@@ -19,7 +19,10 @@ from audit import (
 from drift_profile import DriftProfile
 from export_inputs import iter_shard_batches
 from export_realistic_dataset import generate_realistic, write_realistic_dataset
-from population_targets import age_band_targets
+from population_targets import (
+    AGE_BANDS,
+    age_band_targets,
+)
 from release_gate import (
     REALISTIC_THRESHOLDS_PATH,
     check,
@@ -99,6 +102,20 @@ def test_manifest_records_how_the_dataset_was_built(realistic):
     assert manifest["as_of"] == "2017-01-01"
     assert manifest["age_band_targets"] == age_band_targets()
     assert "PLACEHOLDER" in manifest["profile_source"]
+
+
+def test_manifest_states_its_caveats_and_target_sources(realistic):
+    _, out = realistic
+    manifest = json.loads((out / "realistic_manifest.json").read_text())
+    caveats = " ".join(manifest["caveats"])
+    assert manifest["caveats"]
+    assert "rule 29" in caveats
+    assert "reference algorithm" in caveats
+    sources = manifest["target_sources"]
+    for name, _, _ in AGE_BANDS:
+        assert sources[name]
+    assert sources["single_person_household_share"]
+    assert sources["mean_household_size"]
 
 
 def test_an_unknown_dataset_name_is_rejected():

@@ -21,6 +21,10 @@ Run from the repo root (reads all 9 shards, about a minute):
 
     PYTHONPATH=. uv run python evaluation/export_realistic_dataset.py
 
+A custom DRIFT_PROFILE_PATH JSON REPLACES the whole rates dict, so a profile that
+omits household_shared_phone, household_shared_email or minor_ssn_absent
+silently gets 0.0 for them.
+
 Environment: SAMPLE_SIZE (2000), DONOR_SIZE (2000), SEED (0), OUTPUT_DIR
 (evaluation/cases), DRIFT_PROFILE_PATH (placeholder default profile).
 """
@@ -45,11 +49,34 @@ from household_assignment import assign_households
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
 from population_cases import PopulationDataset, build_population_dataset
 from population_sampling import age_of, band_of, stratified_sample
-from population_targets import AS_OF, age_band_targets
+from population_targets import (
+    AGE_BAND_TARGETS,
+    AGE_BANDS,
+    AS_OF,
+    MEAN_HOUSEHOLD_SIZE,
+    SINGLE_PERSON_HOUSEHOLD_SHARE,
+    age_band_targets,
+)
 from prevalence_estimates import researched_frequency
 
 Patient = Dict[str, Any]
 CASES_DIR = Path(__file__).parent / "cases"
+
+
+CAVEATS: List[str] = [
+    "not filtered for CMS Table 2 rule 29 (BAI-1061)",
+    "drift positives not verified against the CMS reference algorithm",
+    "drift and household sharing rates are placeholders, not measured",
+    "households are mostly unrelated real records placed at one address",
+    "mined sibling, name-collision and hard-negative categories are scarce",
+]
+
+
+def _target_sources() -> Dict[str, str]:
+    sources = {name: AGE_BAND_TARGETS[name].source for name, _, _ in AGE_BANDS}
+    sources["single_person_household_share"] = SINGLE_PERSON_HOUSEHOLD_SHARE.source
+    sources["mean_household_size"] = MEAN_HOUSEHOLD_SIZE.source
+    return sources
 
 
 @dataclass(frozen=True)
@@ -94,7 +121,9 @@ def generate_realistic(
         "sample_size": sample_size,
         "donor_size": donor_size,
         "as_of": AS_OF.isoformat(),
+        "caveats": list(CAVEATS),
         "age_band_targets": age_band_targets(),
+        "target_sources": _target_sources(),
         "sample_band_counts": counts,
         "onc_band_supply": sample.supply,
         "households": asdict(housed.report),

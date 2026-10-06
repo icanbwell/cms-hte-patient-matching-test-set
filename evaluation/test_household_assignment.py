@@ -132,6 +132,67 @@ class TestAssignHouseholds:
                     checked += 1
         assert checked > 0
 
+    @staticmethod
+    def _contactless_adults(keep_phone: bool = False, keep_email: bool = False):
+        people = _population()
+        for person in people:
+            if (age_of(person, AS_OF) or 0) >= 18:
+                person["telecom"] = [
+                    t
+                    for t in person["telecom"]
+                    if (t["system"] == "phone" and keep_phone)
+                    or (t["system"] == "email" and keep_email)
+                ]
+        return people
+
+    @staticmethod
+    def _members(result, predicate):
+        people = _by_id(result.patients)
+        for household in result.households:
+            anchor = people[household[0]]
+            for pid in household[1:]:
+                if predicate(age_of(people[pid], AS_OF) or 99):
+                    yield anchor, people[pid]
+
+    def test_children_under_13_have_no_contacts_when_the_anchor_has_none(self):
+        result = assign_households(self._contactless_adults(), seed=0, as_of=AS_OF)
+        pairs = list(self._members(result, lambda a: a < 13))
+        assert pairs
+        for _, child in pairs:
+            assert child["telecom"] == []
+
+    def test_children_under_13_take_the_anchors_phone_and_drop_their_own_email(self):
+        result = assign_households(
+            self._contactless_adults(keep_phone=True), seed=0, as_of=AS_OF
+        )
+        pairs = list(self._members(result, lambda a: a < 13))
+        assert pairs
+        for anchor, child in pairs:
+            assert child["telecom"] == anchor["telecom"]
+            assert not [t for t in child["telecom"] if t["system"] == "email"]
+
+    def test_members_aged_13_and_over_keep_their_contacts_when_the_anchor_has_none(
+        self,
+    ):
+        population = self._contactless_adults()
+        before = _by_id(population)
+        result = assign_households(
+            population,
+            profile=DriftProfile(
+                rates={
+                    **DriftProfile().rates,
+                    "household_shared_phone": 1.0,
+                    "household_shared_email": 1.0,
+                }
+            ),
+            seed=0,
+            as_of=AS_OF,
+        )
+        pairs = list(self._members(result, lambda a: a >= 13))
+        assert pairs
+        for _, member in pairs:
+            assert member["telecom"] == before[member["id"]]["telecom"]
+
     def test_identities_are_never_changed(self):
         original = _population()
         result = assign_households(original, seed=0, as_of=AS_OF)

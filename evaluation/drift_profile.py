@@ -36,7 +36,8 @@ PLACEHOLDER_RATES: Dict[str, float] = {
     "placeholder": 0.15,
     # Workstream C (household_assignment.py): probability that a household
     # member shares the anchor adult's phone / email, and that a child under 13
-    # has no SSN on file. Children under 13 ALWAYS take the anchor's contacts.
+    # has no SSN on file. Children under 13 ALWAYS take the anchor's
+    # phone and email, or have none when the anchor has none.
     "household_shared_phone": 0.50,
     "household_shared_email": 0.50,
     "minor_ssn_absent": 0.70,
