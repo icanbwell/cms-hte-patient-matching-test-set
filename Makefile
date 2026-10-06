@@ -1,4 +1,4 @@
-.PHONY: setup tests lint typecheck run-pre-commit audit third-party-notices
+.PHONY: setup tests lint typecheck run-pre-commit audit audit-realistic generate-realistic-dataset third-party-notices
 
 setup:
 	uv sync
@@ -28,3 +28,9 @@ third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the current depen
 
 audit: ## Print the dataset audit and evaluate the release gate (see evaluation/release_thresholds.json)
 	PYTHONPATH=. uv run python evaluation/release_gate.py
+
+generate-realistic-dataset: ## Generate the age/household-realistic release candidate (realistic_*.jsonl) from all 9 ONC shards, one at a time
+	PYTHONPATH=. uv run python evaluation/export_realistic_dataset.py
+
+audit-realistic: ## Evaluate release_thresholds_realistic.json against the generated realistic_*.jsonl files
+	PYTHONPATH=. uv run python evaluation/release_gate.py realistic
