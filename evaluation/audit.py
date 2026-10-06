@@ -13,7 +13,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Sequence
 
 from identity_guard import is_possible_same_person, normalize_phone, normalize_token
 from naive_baselines import (
@@ -22,6 +22,7 @@ from naive_baselines import (
     SINGLE_FIELD_BASELINES,
     pair_features,
 )
+from population_targets import AGE_BANDS, AS_OF, age_band_targets
 from rule_eval import LabeledPair, evaluate
 
 Patient = Dict[str, Any]
@@ -32,14 +33,12 @@ PAIRS_PATH = CASES_DIR / "sample_labeled_pairs.jsonl"
 QUERIES_PATH = CASES_DIR / "population_queries.jsonl"
 CANDIDATES_PATH = CASES_DIR / "population_candidates.jsonl"
 
-# Fixed (not date.today()) so the report is deterministic. See Open Question 5.
-AS_OF = date(2026, 1, 1)
-
-AGE_BANDS: Tuple[Tuple[str, int, int], ...] = (
-    ("0-17", 0, 18),
-    ("18-64", 18, 65),
-    ("65-84", 65, 85),
-    ("85+", 85, 200),
+# The age/household-realistic dataset is generated on demand, not committed
+# (export_realistic_dataset.py); same layout, different file names.
+REALISTIC_PATHS = (
+    CASES_DIR / "realistic_labeled_pairs.jsonl",
+    CASES_DIR / "realistic_population_queries.jsonl",
+    CASES_DIR / "realistic_population_candidates.jsonl",
 )
 
 
@@ -191,6 +190,14 @@ def age_band_shares(
     }
 
 
+def age_band_max_error(patients: Sequence[Patient], as_of: date = AS_OF) -> float:
+    """Largest absolute gap between a band's share and its population target
+    (population_targets.py); NaN without any dated patient."""
+    shares = age_band_shares(patients, as_of)
+    targets = age_band_targets()
+    return max(abs(shares[band] - targets[band]) for band in targets)
+
+
 def population_pairs(
     query_rows: Sequence[Row], candidates: Dict[str, Patient]
 ) -> Iterator[LabeledPair]:
@@ -238,6 +245,7 @@ def build_report(
         "shared_phone_rate": shared_contact_rate(patients, "phone"),
         "shared_email_rate": shared_contact_rate(patients, "email"),
         "age_band_shares": age_band_shares(patients),
+        "age_band_max_error": age_band_max_error(patients),
         "baseline_f1": f1s,
         "best_single_field_f1": best_single,
         "multi_field_margin": f1s[MULTI_FIELD_BASELINE_NAME] - best_single,
