@@ -196,6 +196,11 @@ step (ONC's data is already public/synthetic).
   already-distinct real identities with a fabricated, clearly-synthetic address
   (`"SYNTHETIC TEST ADDRESS"`, reserved `000xx` ZIP block) — the underlying identities are never
   fabricated.
+- **`scenarios.py` / `drift_profile.py` / `drift_mutations.py` / `placeholders.py`** — the
+  per-patient true-match scenario registry shared by both tiers (session-14 scenarios plus surname
+  change, address move, phone/email churn, placeholder values, optional gender drift), its
+  placeholder emission rates, the donor-backed mutators, and the placeholder catalog (also the
+  pairwise-only placeholder-collision non-matches). `audit.py` / `release_gate.py` gate the result.
 - **`prevalence_estimates.py`** — real, cited public-source prevalence estimates (Census/CDC/Pew/
   peer-reviewed) per test-case category, for optional real-world-weighted aggregation. Every entry
   is either a cited estimate or an explicit `has_public_estimate=False` placeholder — never a

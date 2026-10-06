@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from drift_profile import DriftProfile
+from labeled_pairs import generate_raw_pairs
 from population_cases import build_population_dataset
+from scenarios import REGISTRY
+from support_patients import drift_donors, drift_population
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -49,6 +53,8 @@ class TestBuildPopulationDataset:
             n_fuzzy_variants_per_patient=0,
             include_normalization_edge_cases=False,
             include_special_populations=False,
+            include_compound_variants=False,
+            profile=DriftProfile(rates={}),
             seed=0,
         )
         case = next(c for c in dataset.cases if c.query_id == "p1")
@@ -149,7 +155,7 @@ class TestPopulationLabelValidity:
         younger["address"] = [
             {"line": ["9 Elm St"], "city": "LA", "state": "CA", "postalCode": "90001"}
         ]
-        dataset = build_population_dataset([elder, younger], pool_size=5, seed=0)
+        dataset = build_population_dataset([elder, younger], pool_size=30, seed=0)
         case = next(c for c in dataset.cases if c.query_id == "e1")
         assert "y1::household::constructed" in case.candidate_ids
         assert "y1::household::constructed" not in case.expected_match_ids
@@ -157,3 +163,113 @@ class TestPopulationLabelValidity:
             dataset.candidates["y1::household::constructed"]["address"]
             == elder["address"]
         )
+
+
+class TestDriftScenariosPopulationTier:
+    def _dataset(self, **kwargs):
+        everything = DriftProfile(rates={n: 1.0 for n in REGISTRY})
+        return build_population_dataset(
+            drift_population(),
+            pool_size=60,
+            donors=drift_donors(),
+            profile=everything,
+            seed=0,
+            **kwargs,
+        )
+
+    def test_every_registry_scenario_appears_as_an_expected_match(self):
+        dataset = self._dataset()
+        suffixes = {
+            cid.split("::", 1)[1]
+            for case in dataset.cases
+            for cid in case.expected_match_ids
+        }
+        for name in REGISTRY:
+            assert name in suffixes, name
+
+    def test_scenario_variants_match_the_per_provision_tier(self):
+        patients = drift_population()
+        everything = DriftProfile(rates={n: 1.0 for n in REGISTRY})
+        dataset = build_population_dataset(
+            patients, pool_size=60, donors=drift_donors(), profile=everything, seed=0
+        )
+        pairs = {
+            p.pair_id: p.candidate_patient
+            for p in generate_raw_pairs(
+                patients, donors=drift_donors(), profile=everything, seed=0
+            )
+            if p.strata["pair_type"] in REGISTRY
+        }
+        assert pairs
+        for pair_id, variant in pairs.items():
+            assert dataset.candidates[pair_id] == variant
+
+    def test_population_includes_compound_sibling_and_name_collision_categories(self):
+        patients = drift_population()
+        sibling_a = drift_population()[0]
+        sibling_b = dict(
+            sibling_a,
+            id="sib",
+            birthDate="1951-02-02",
+            name=[{"family": "Smith", "given": ["Other"]}],
+            identifier=[],
+        )
+        sibling_b["address"] = sibling_a["address"]
+        collision = dict(
+            patients[1],
+            id="col",
+            name=[{"family": "Smyth", "given": ["Given0"]}],
+            birthDate="1999-09-09",
+            identifier=[],
+        )
+        collision["address"] = [
+            {"line": ["5 Far Rd"], "city": "LA", "state": "CA", "postalCode": "90001"}
+        ]
+        dataset = build_population_dataset(
+            [*patients, sibling_b, collision],
+            pool_size=80,
+            profile=DriftProfile(rates={}),
+            seed=0,
+        )
+        categories = set()
+        for case in dataset.cases:
+            categories |= set(case.rationale.split("/", 1)[1].split("+"))
+        assert {
+            "compound_variant",
+            "sibling_negative",
+            "name_collision_negative",
+        } <= categories
+
+    def test_decoy_categories_are_never_expected_matches(self):
+        dataset = self._dataset()
+        for case in dataset.cases:
+            for cid in case.expected_match_ids:
+                assert "::" in cid  # only generated variants are positives
+
+    def test_compound_variants_can_be_switched_off(self):
+        dataset = self._dataset(include_compound_variants=False)
+        assert not [
+            cid
+            for case in dataset.cases
+            for cid in case.candidate_ids
+            if "::compound::" in cid
+        ]
+
+    def test_existing_variant_streams_are_unchanged_by_the_new_scenarios(self):
+        patients = drift_population()
+        base = build_population_dataset(
+            patients, pool_size=60, profile=DriftProfile(rates={}), seed=0
+        )
+        more = build_population_dataset(
+            patients,
+            pool_size=60,
+            donors=drift_donors(),
+            profile=DriftProfile(),
+            seed=0,
+        )
+        for pid in ("d0", "d1"):
+            old = next(c for c in base.cases if c.query_id == pid)
+            new = next(c for c in more.cases if c.query_id == pid)
+            for cid in old.expected_match_ids:
+                assert cid in new.expected_match_ids
+                assert base.candidates[cid] == more.candidates[cid]

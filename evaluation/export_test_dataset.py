@@ -31,10 +31,11 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Sequence
 
+from drift_profile import DriftProfile
+from export_inputs import load_profile, load_sample_and_donors
 from labeled_pairs import DEFAULT_SAMPLE_SIZE, generate_raw_pairs
-from onc_loader import load_onc_patients
 
 Patient = Dict[str, Any]
 FrequencyLookup = Callable[[str], float]
@@ -124,6 +125,8 @@ def build_test_case_records(
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
     institutional_group_size: int = 3,
+    donors: Sequence[Patient] = (),
+    profile: DriftProfile | None = None,
     seed: int = 0,
     frequency_lookup: FrequencyLookup = uniform_frequency,
 ) -> List[LabeledCaseRecord]:
@@ -145,6 +148,8 @@ def build_test_case_records(
         include_normalization_edge_cases=include_normalization_edge_cases,
         include_special_populations=include_special_populations,
         institutional_group_size=institutional_group_size,
+        donors=donors,
+        profile=profile,
         seed=seed,
     ):
         rationale = format_rationale(dict(raw.strata))
@@ -193,11 +198,14 @@ if __name__ == "__main__":
     from prevalence_estimates import researched_frequency
 
     sample_size = int(os.environ.get("SAMPLE_SIZE", DEFAULT_SAMPLE_SIZE))
-    onc_dir = Path(__file__).parent / "fixtures" / "onc"
     # One shard only - see this module's and labeled_pairs.py's docstrings.
-    shard = sorted(onc_dir.glob("*.csv"))[0]
-    patients = load_onc_patients([shard])[:sample_size]
-    records = build_test_case_records(patients, frequency_lookup=researched_frequency)
+    patients, donors = load_sample_and_donors(sample_size)
+    records = build_test_case_records(
+        patients,
+        donors=donors,
+        profile=load_profile(),
+        frequency_lookup=researched_frequency,
+    )
     output_path = Path(os.environ.get("OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH)))
     write_jsonl(records, output_path)
     n_true = sum(r.expected_match for r in records)

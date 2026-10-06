@@ -8,8 +8,13 @@ special_populations.py, none of which need numpy), so these always run.
 
 from __future__ import annotations
 
+from typing import Any
+
+from drift_profile import DriftProfile
 from labeled_pairs import generate_raw_pairs
 from mutations import SSN_SYSTEM, count_changed_fields
+from scenarios import REGISTRY
+from support_patients import drift_donors, drift_population
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -295,3 +300,119 @@ class TestGenerateRawPairs:
             generate_raw_pairs([elder, younger], seed=0, household_constructed_max=0)
         )
         assert not [p for p in pairs if p.strata.get("address_source")]
+
+
+class TestDriftScenariosPerProvisionTier:
+    def test_new_scenarios_emit_true_match_pairs_with_stable_ids_and_subtypes(
+        self,
+    ) -> None:
+        everything = DriftProfile(rates={n: 1.0 for n in REGISTRY})
+        pairs = list(
+            generate_raw_pairs(
+                drift_population(), donors=drift_donors(), profile=everything, seed=0
+            )
+        )
+        by_type: dict[str, list[Any]] = {}
+        for pair in pairs:
+            by_type.setdefault(pair.strata["pair_type"], []).append(pair)
+        for name in (
+            "surname_change",
+            "address_move",
+            "phone_churn",
+            "email_churn",
+            "gender_drift",
+            "placeholder",
+        ):
+            assert by_type[name], name
+            for pair in by_type[name]:
+                assert pair.is_true_match is True
+                assert pair.pair_id == f"{pair.query_patient['id']}::{name}"
+                assert pair.strata["case"]
+
+    def test_without_donors_only_donor_free_variants_are_emitted(self) -> None:
+        pairs = list(generate_raw_pairs(drift_population(), seed=0))
+        types = {p.strata["pair_type"] for p in pairs}
+        assert not types & {"surname_change", "address_move"}
+        assert "gender_drift" not in types
+        churn = {
+            p.strata["case"]
+            for p in pairs
+            if p.strata["pair_type"] in {"phone_churn", "email_churn"}
+        }
+        assert churn <= {"dropped"}
+
+    def test_a_scenario_switched_off_in_the_profile_is_not_emitted(self) -> None:
+        profile = DriftProfile(rates={"phone_churn": 1.0, "address_move": 0.0})
+        types = {
+            p.strata["pair_type"]
+            for p in generate_raw_pairs(
+                drift_population(),
+                donors=drift_donors(),
+                profile=profile,
+                include_ssn_dropped=False,
+                include_marriage_variant=False,
+                include_phone_variant=False,
+                seed=0,
+            )
+        }
+        assert "phone_churn" in types
+        assert "address_move" not in types
+
+    def test_session_14_scenarios_are_unchanged_by_the_registry(self) -> None:
+        patients = drift_population()
+        pairs = [
+            p
+            for p in generate_raw_pairs(patients, seed=0)
+            if p.strata["pair_type"] in {"ssn_dropped", "marriage_variant"}
+        ]
+        ssn = [p for p in pairs if p.strata["pair_type"] == "ssn_dropped"]
+        assert {p.pair_id for p in ssn} == {f"{x['id']}::ssn_dropped" for x in patients}
+        assert all(not any(i for i in p.candidate_patient["identifier"]) for p in ssn)
+
+    def test_placeholder_collision_negatives_share_the_dummy_on_both_sides(
+        self,
+    ) -> None:
+        pairs = [
+            p
+            for p in generate_raw_pairs(drift_population(), seed=0)
+            if p.strata["pair_type"] == "placeholder_collision_negative"
+        ]
+        assert pairs
+        for pair in pairs:
+            assert pair.is_true_match is False
+            assert pair.strata["placeholder_value"]
+            assert pair.pair_id.endswith(f"::placeholder_{pair.strata['case']}")
+
+    def test_placeholder_collisions_follow_include_special_populations(self) -> None:
+        pairs = list(
+            generate_raw_pairs(
+                drift_population(), include_special_populations=False, seed=0
+            )
+        )
+        assert not [
+            p
+            for p in pairs
+            if p.strata["pair_type"] == "placeholder_collision_negative"
+        ]
+
+    def test_donor_scenarios_never_borrow_from_the_generated_set(self) -> None:
+        patients = drift_population()
+        in_set_phones = {
+            t["value"] for p in patients for t in p["telecom"] if t["system"] == "phone"
+        }
+        everything = DriftProfile(rates={"phone_churn": 1.0})
+        for pair in generate_raw_pairs(
+            patients, donors=drift_donors(), profile=everything, seed=0
+        ):
+            if pair.strata["pair_type"] != "phone_churn":
+                continue
+            new = {
+                t["value"]
+                for t in pair.candidate_patient["telecom"]
+                if t["system"] == "phone"
+            } - {
+                t["value"]
+                for t in pair.query_patient["telecom"]
+                if t["system"] == "phone"
+            }
+            assert not new & in_set_phones
