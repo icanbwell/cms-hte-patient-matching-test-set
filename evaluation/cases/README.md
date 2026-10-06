@@ -644,8 +644,10 @@ What this is not:
   weights solved to hit the mean); the cited sources fix only the one-person share and the mean. The
   sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`. The realistic gate floors
   (`shared_phone_rate` >= 0.30, `people_per_address` >= 2.0) are provisional and tied to the placeholder
-  0.5 sharing rate: a measured profile with `household_shared_phone` below roughly 0.2 will fail
-  `make audit-realistic` until the floor is re-set.
+  0.5 sharing rate: children under 13 always take their anchor's phone, so the realistic `shared_phone_rate`
+  stays around 0.29 even when `household_shared_phone` is 0.0 (measured: 0.29, 0.35, 0.41, 0.60 at 0.0, 0.1, 0.2,
+  0.5 respectively). A profile fails the 0.30 floor only when `household_shared_phone` approaches 0. The
+  `people_per_address >= 2.0` floor depends on household size distribution, not sharing rates.
 - **The mined negative categories collapse.** A random 2,000-of-1M draw across all shards removes the
   alphabetical clustering that the sibling, name-collision and shared-ZIP+DOB miners relied on. Pairwise
   rows per category, committed -> realistic: `sibling_negative` 36 -> 3, `name_collision_negative` 75 -> 1,
