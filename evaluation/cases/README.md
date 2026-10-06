@@ -570,7 +570,7 @@ donated surnames start almost entirely with "A" (303 of 303 `surname_change` row
 starting with "A") and donated addresses are almost all NY (364 of 366 `address_move` targets, 99.5%).
 This limits what the `surname_change` and `address_move` categories stress in the committed files. The
 realistic set draws its donors with the age-stratified sampler across all shards, so its 297
-`surname_change` targets are spread over many initials (largest: H 25, M 24, S 23, L 23, B 21); its
+`surname_change` targets are spread over many initials (largest: S 33, H 26, B 25, M 23, R 22; 24 distinct initials); its
 `address_move` targets are still almost all NY (396 of 397), because ONC itself is New York data.
 
 **Phone churn can leave a shared phone.** ONC patients can hold two phones and the scenarios drop or
