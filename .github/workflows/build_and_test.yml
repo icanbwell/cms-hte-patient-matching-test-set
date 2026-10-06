@@ -15,6 +15,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync
       - run: uv run pytest .
+      - run: make audit
 
   lint:
     runs-on: ubuntu-latest

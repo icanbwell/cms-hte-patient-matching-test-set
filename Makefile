@@ -1,4 +1,4 @@
-.PHONY: setup tests lint typecheck run-pre-commit third-party-notices
+.PHONY: setup tests lint typecheck run-pre-commit audit third-party-notices
 
 setup:
 	uv sync
@@ -25,3 +25,6 @@ third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the current depen
 	@echo "## Python dependencies" >> THIRD-PARTY-NOTICES.md
 	@echo "" >> THIRD-PARTY-NOTICES.md
 	uv run pip-licenses --format=markdown --with-urls >> THIRD-PARTY-NOTICES.md
+
+audit: ## Print the dataset audit and evaluate the release gate (see evaluation/release_thresholds.json)
+	PYTHONPATH=. uv run python evaluation/release_gate.py
