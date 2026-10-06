@@ -273,3 +273,67 @@ class TestDriftScenariosPopulationTier:
             for cid in old.expected_match_ids:
                 assert cid in new.expected_match_ids
                 assert base.candidates[cid] == more.candidates[cid]
+
+
+class TestHouseholdMemberDecoys:
+    def test_household_members_are_decoys_in_each_others_pools_never_matches(self):
+        a, b, c = drift_population()[:3]
+        dataset = build_population_dataset(
+            [a, b, c],
+            pool_size=30,
+            profile=DriftProfile(rates={}),
+            households=[[a["id"], b["id"]]],
+            seed=0,
+        )
+        pools = {case.query_id: case for case in dataset.cases}
+        assert b["id"] in pools[a["id"]].candidate_ids
+        assert a["id"] in pools[b["id"]].candidate_ids
+        assert b["id"] not in pools[a["id"]].expected_match_ids
+        assert "household_member_negative" in pools[a["id"]].rationale
+        assert "household_member_negative" not in pools[c["id"]].rationale
+
+    def test_same_person_members_and_unknown_ids_are_ignored(self):
+        a, b = drift_population()[:2]
+        b["name"], b["birthDate"] = a["name"], a["birthDate"]
+        dataset = build_population_dataset(
+            [a, b],
+            pool_size=30,
+            profile=DriftProfile(rates={}),
+            households=[[a["id"], "missing", b["id"]]],
+            seed=0,
+        )
+        case = next(c for c in dataset.cases if c.query_id == a["id"])
+        assert "household_member_negative" not in case.rationale
+
+    def test_households_follow_include_special_populations(self):
+        a, b = drift_population()[:2]
+        dataset = build_population_dataset(
+            [a, b],
+            pool_size=30,
+            profile=DriftProfile(rates={}),
+            households=[[a["id"], b["id"]]],
+            include_special_populations=False,
+            seed=0,
+        )
+        assert all(
+            "household_member_negative" not in c.rationale for c in dataset.cases
+        )
+
+
+class TestDecoyCategories:
+    def test_a_decoy_in_two_categories_is_pooled_once_and_credited_to_both(self):
+        elder = _patient("e1", family="Rivera", given="Rosa")
+        sibling = _patient("s1", family="Rivera", given="Luis")
+        elder["birthDate"], sibling["birthDate"] = "1990-03-01", "1991-07-14"
+        dataset = build_population_dataset(
+            [elder, sibling],
+            pool_size=30,
+            profile=DriftProfile(rates={}),
+            households=[["e1", "s1"]],
+            include_compound_variants=False,
+            seed=0,
+        )
+        case = next(c for c in dataset.cases if c.query_id == "e1")
+        assert case.candidate_ids.count("s1") == 1
+        assert "household_member_negative" in case.rationale
+        assert "sibling_negative" in case.rationale

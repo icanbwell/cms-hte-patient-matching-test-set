@@ -127,6 +127,7 @@ def build_test_case_records(
     institutional_group_size: int = 3,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
+    households: Sequence[Sequence[str]] = (),
     seed: int = 0,
     frequency_lookup: FrequencyLookup = uniform_frequency,
 ) -> List[LabeledCaseRecord]:
@@ -150,6 +151,7 @@ def build_test_case_records(
         institutional_group_size=institutional_group_size,
         donors=donors,
         profile=profile,
+        households=households,
         seed=seed,
     ):
         rationale = format_rationale(dict(raw.strata))

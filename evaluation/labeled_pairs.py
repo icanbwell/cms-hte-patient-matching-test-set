@@ -53,6 +53,8 @@ from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
 )
+from household_assignment import shared_contact_case
+from identity_guard import is_possible_same_person
 from mutations import (
     count_changed_fields,
     generate_compound_variant,
@@ -137,6 +139,7 @@ def generate_raw_pairs(
     institutional_group_size: int = 3,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
+    households: Sequence[Sequence[str]] = (),
     seed: int = 0,
 ) -> Iterator[RawPair]:
     """Yield RawPairs from ONC patients: fuzzy-variant true-matches,
@@ -302,6 +305,23 @@ def generate_raw_pairs(
                     **collision.shared_fields,
                 },
             )
+    by_id = {p["id"]: p for p in patients}
+    for household in households:
+        members = [by_id[pid] for pid in household if pid in by_id]
+        for position, a in enumerate(members):
+            for b in members[position + 1 :]:
+                if is_possible_same_person(a, b):
+                    continue
+                yield RawPair(
+                    pair_id=f"{a['id']}::{b['id']}::household_member",
+                    query_patient=a,
+                    candidate_patient=b,
+                    is_true_match=False,
+                    strata={
+                        "pair_type": "household_member_negative",
+                        "case": shared_contact_case(a, b),
+                    },
+                )
     if include_sibling_negatives:
         for sibling_candidate in mine_sibling_negatives(
             patients, max_age_gap_years=sibling_max_age_gap_years
