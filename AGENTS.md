@@ -176,10 +176,12 @@ own mutation/mining/construction code — no real member-organization data, no d
 step (ONC's data is already public/synthetic).
 
 - **`onc_loader.py`** — loads ONC CSV shards into FHIR `Patient` dicts. No streaming; loading all
-  9 shards materializes all ~1M records in memory at once. **Verified: every EnterpriseID in this
-  vendored copy is unique — zero duplicate-person clusters exist natively in the data.** Nothing
-  downstream depends on ONC providing that structure; true-match clusters are built by this repo's
-  own generators instead.
+  9 shards materializes all ~1M records in memory at once. **Every EnterpriseID in this
+  vendored copy is unique, but the same person can appear under more than one ID (shared name+DOB,
+  and in some cases SSN).** Never treat "different ID" as "different person": every negative miner
+  and the population distractor top-up exclude pairs for which
+  `identity_guard.is_possible_same_person` is true. True-match clusters are built by this repo's own
+  generators.
 - **`mutations.py`** — single-character-edit ("fuzzy-eligible") variants of a record: exactly one
   edit per call, composed as `(original, variant, is_true_match=True)`.
 - **`hard_negatives.py`** — mines *genuinely distinct* real ONC records that coincidentally collide
