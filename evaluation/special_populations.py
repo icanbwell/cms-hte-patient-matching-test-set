@@ -245,8 +245,10 @@ def _mine_same_surname_zip_pairs(
                     continue
                 if is_possible_same_person(a, b):
                     continue
-                if same_street and _street_key(a) != _street_key(b):
-                    continue
+                if same_street:
+                    ka = _street_key(a)
+                    if ka is None or ka != _street_key(b):
+                        continue
                 if require_distinct_given and _first_given(a) == _first_given(b):
                     continue
                 try:

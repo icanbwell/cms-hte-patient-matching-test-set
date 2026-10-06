@@ -80,6 +80,16 @@ class TestMineSharedAddressHardNegatives:
             frozenset({"p2", "p3"}),
         }
 
+    def test_excludes_pairs_sharing_a_real_ssn(self) -> None:
+        a = _patient("p1", "Smith", zip_code="10001", dob="1980-01-01")
+        b = _patient("p2", "Jones", zip_code="10001", dob="1980-01-01")
+        # Same ZIP+DOB, different family names - all OTHER filters pass
+        # But they share a real SSN, so is_possible_same_person should exclude them
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+        for patient in (a, b):
+            patient["identifier"] = [ssn]
+        assert mine_shared_address_hard_negatives([a, b]) == []
+
 
 def _named_patient(id_: str, given: str, family: str, zip_code: str, dob: str):
     return {
@@ -167,3 +177,13 @@ class TestMineNameCollisionNegatives:
         candidates = mine_name_collision_negatives(patients)
         pairs = {frozenset({c.query["id"], c.candidate["id"]}) for c in candidates}
         assert frozenset({"p1", "p2"}) in pairs
+
+    def test_excludes_pairs_sharing_a_real_ssn(self) -> None:
+        a = _named_patient("p1", "Pat", "Smith", "10001", "1980-01-01")
+        b = _named_patient("p2", "Pat", "Smyth", "20002", "1990-05-05")
+        # Name distance is 1 (Smith/Smyth), different ZIP and DOB - all OTHER filters pass
+        # But they share a real SSN, so is_possible_same_person should exclude them
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+        for patient in (a, b):
+            patient["identifier"] = [ssn]
+        assert mine_name_collision_negatives(patients=[a, b]) == []

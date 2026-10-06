@@ -139,6 +139,26 @@ class TestMineSharedSurnameHouseholdNegatives:
         del b["birthDate"]
         assert mine_shared_surname_household_negatives([a, b]) == []
 
+    def test_excludes_pairs_with_missing_street_keys(self) -> None:
+        a = _patient("p1", "Rivera", dob="1955-03-01")
+        b = _patient("p2", "Rivera", dob="1988-07-14")
+        # Remove address lines, leaving only postal codes - _street_key returns None
+        a["address"][0]["line"] = []
+        b["address"][0]["line"] = []
+        # Both have postal codes but no street lines, so _street_key() returns None for both
+        # Should be excluded because same_street=True requires them to share a street
+        assert mine_shared_surname_household_negatives([a, b]) == []
+
+    def test_household_miner_excludes_ssn_same_person(self) -> None:
+        a = _patient("p1", "Rivera", given="Rosa", dob="1950-03-01", street="1 Main St")
+        b = _patient("p2", "Rivera", given="Luis", dob="1988-07-14", street="1 Main St")
+        # Same street, 38 year gap, different first names - all OTHER filters pass
+        # But they share a real SSN, so is_possible_same_person should exclude them
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+        for patient in (a, b):
+            patient["identifier"] = [ssn]
+        assert mine_shared_surname_household_negatives([a, b]) == []
+
 
 class TestMineSiblingNegatives:
     def test_finds_same_family_same_zip_close_in_age(self) -> None:
@@ -187,13 +207,6 @@ class TestMineSiblingNegatives:
         patients = [
             _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
             _patient("p2", "Rivera", given="ANA", dob="2011-06-01"),
-        ]
-        assert mine_sibling_negatives(patients) == []
-
-    def test_excludes_records_that_could_be_the_same_person(self) -> None:
-        patients = [
-            _patient("p1", "Rivera", given="Ana", dob="2010-01-01"),
-            _patient("p2", "RIVERA", given="ana", dob="2010-01-01"),
         ]
         assert mine_sibling_negatives(patients) == []
 
@@ -269,11 +282,14 @@ class TestConstructHouseholdNegatives:
         patients[1]["birthDate"] = "1960-01-01"
         assert construct_household_negatives(patients) == []
 
-    def test_skips_records_that_could_be_the_same_person(self) -> None:
+    def test_excludes_records_that_could_be_the_same_person(self) -> None:
         patients = self._family()
-        patients[1]["birthDate"] = patients[0]["birthDate"]
-        patients[1]["name"][0]["given"] = ["ROSA"]
-        patients[1]["name"][0]["family"] = "RIVERA"
+        # Gap is already 38 years (>= 15), streets are different (will trigger construction)
+        # Different first names (Rosa vs Luis), so require_distinct_given passes
+        # But they share a real SSN, so is_possible_same_person should exclude them
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "892-39-5115"}
+        for patient in patients:
+            patient["identifier"] = [ssn]
         assert construct_household_negatives(patients) == []
 
     def test_respects_max_pairs_and_is_deterministic_for_a_seed(self) -> None:
