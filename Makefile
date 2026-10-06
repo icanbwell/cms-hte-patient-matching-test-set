@@ -1,4 +1,4 @@
-.PHONY: setup tests lint typecheck run-pre-commit audit audit-realistic generate-realistic-dataset third-party-notices
+.PHONY: setup tests lint typecheck run-pre-commit audit audit-realistic generate-realistic-dataset third-party-notices generate-full-dataset
 
 setup:
 	uv sync
@@ -16,6 +16,9 @@ typecheck:
 
 run-pre-commit:
 	uv run pre-commit run --all-files
+
+generate-full-dataset: ## Generate test cases from all 9 ONC shards (~1M records), one shard at a time - see evaluation/SYNTHETIC_DATA_SETUP.md's "Memory & scale" section
+	PYTHONPATH=. uv run python evaluation/export_full_onc_dataset.py
 
 third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the current dependency tree
 	@echo "# Third-Party Notices" > THIRD-PARTY-NOTICES.md

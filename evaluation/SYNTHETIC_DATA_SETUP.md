@@ -147,6 +147,23 @@ patients. `export_population_dataset.py`'s `__main__` follows the same default t
 
 **Practical guidance if you need to scale this up:**
 
+- **`make generate-full-dataset` (`evaluation/export_full_onc_dataset.py`) already implements the
+  "one shard at a time" pattern below for you.** It loads one shard, runs
+  `export_test_dataset.py`'s/`export_population_dataset.py`'s generation logic against it with no
+  `SAMPLE_SIZE` downsampling, appends that shard's output to
+  `evaluation/cases/full_labeled_pairs.jsonl`/`full_population_candidates.jsonl`/
+  `full_population_queries.jsonl`, discards the shard, and moves to the next — so peak memory
+  never exceeds one shard's worth of patients plus that shard's generated cases. It writes to
+  `full_*` filenames, not `sample_labeled_pairs.jsonl`/`population_*.jsonl`, so it never silently
+  overwrites the committed sample files those filenames' consumers already depend on. Still a
+  single process, not distributed — see the Spark bullet below if that's not enough.
+  - **This is memory-safe but not automatically runtime-safe** — `hard_negatives.
+    mine_name_collision_negatives()` is O(n^2), not O(n)/O(n)-blocked like every other generator
+    in the pipeline (measured ~142s at n=16000 per its own docstring; confirmed by actually
+    running it against a full ~110K-record shard, which took over an hour before being stopped).
+    `export_full_onc_dataset.py` disables this one category
+    (`include_name_collision_negatives=False`) for exactly this reason — every other true-match/
+    hard-negative/special-population category still runs against the full, unsampled shard.
 - **Prefer one shard at a time, not all 9 concatenated.** Each shard is ~110K rows (~1/9th of
   the full dataset) — a meaningfully smaller working set than the full ~1,000,000.
 - **Sample before transforming, not after.** Slice the patient list down (`patients[:N]`)

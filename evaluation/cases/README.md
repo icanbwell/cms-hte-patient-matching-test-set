@@ -518,6 +518,18 @@ while `export_population_dataset.py` takes its own `POOL_SIZE` (default 40), `CA
 `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE`/`POOL_SIZE` or
 passing more than one ONC shard's worth of patients.
 
+To generate from the full 9-shard ONC dataset (~1,000,000 records) instead of one sampled shard,
+use `make generate-full-dataset` (`evaluation/export_full_onc_dataset.py`) rather than raising
+`SAMPLE_SIZE`/passing all shards to the scripts above yourself — it processes one shard at a time
+(never materializing the full dataset in memory at once, per `SYNTHETIC_DATA_SETUP.md`'s "Memory &
+scale" section) and writes to `full_labeled_pairs.jsonl`/`full_population_candidates.jsonl`/
+`full_population_queries.jsonl`, not the `sample_`/`population_` files documented above, so it
+never overwrites the committed sample this README describes. One difference from the sample tier:
+the full-dataset run skips the `name_collision_negative` category
+(`hard_negatives.mine_name_collision_negatives()`) because that generator is O(n^2), not O(n) like
+every other generator here — full-shard scale would take on the order of two hours per shard. Every
+other true-match/hard-negative/special-population category is present at full scale.
+
 ## Dataset changelog
 
 - **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match
