@@ -73,9 +73,12 @@ PYTHONPATH=. uv run python evaluation/export_test_dataset.py
 Same one-shard, `SAMPLE_SIZE`-limited default as `labeled_pairs.py` (see "Memory & scale"
 below), writing to `evaluation/cases/sample_labeled_pairs.jsonl` by default (override with the
 `OUTPUT_PATH` env var). A committed copy of this file exists at that path already, generated
-from `SAMPLE_SIZE=2000` on one ONC shard with the default seed — regenerate it any time by
-re-running the command above; it's fully reproducible given the same inputs. See
-**`evaluation/cases/README.md`** for how to actually test a matching algorithm against the file.
+from `SAMPLE_SIZE=2000` on one ONC shard with the default seed. The generators are
+deterministic for a given seed, but the committed file is a curated snapshot, not a byte-for-byte
+regeneration: its positives were hand-filtered (BAI-1061) and its negatives were refreshed
+separately (BAI-1067), so re-running the command above writes a different file (11,539 positives
+instead of 11,222). See **`evaluation/cases/README.md`**'s "Assembly, export, and reproducibility"
+section for the details, and for how to actually test a matching algorithm against the file.
 
 To build the manifest programmatically instead of via the file:
 

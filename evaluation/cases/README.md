@@ -111,8 +111,13 @@ reality. Always two genuinely distinct real ONC records instead:
 
 - **General hard negatives** — distinct-ID pairs sharing postal code + DOB but a *different*
   family name (a coincidental collision, blocked by `(postalCode, birthDate)` for O(n) mining).
-- **Multi-generational households** — distinct-ID pairs sharing postal code + family name, with
-  birth years ≥15 years apart (a parent/child pattern, not the same person or twins).
+- **Multi-generational households** — distinct-ID pairs sharing a street address and family name,
+  with birth years ≥15 years apart (a parent/child pattern). ONC addresses are near-unique, so
+  in the committed sample all household pairs are *constructed* (the mined same-street path yields
+  none here; it remains for inputs with co-resident records): a real younger same-surname record
+  is given the elder's real address (identities unchanged, tagged `address_source=constructed` in
+  the rationale). Each constructed pair is its family's smallest-gap (≥15 years) eligible pair,
+  i.e. the closest available approximation of a parent/child.
 - **Institutional negatives** (8 categories: shelter, nursing facility, correctional institution,
   hotel/short-term housing, halfway house, dormitory, group home, migrant camp) — ONC has no
   column marking institutional residency, so these are *constructed*: 3 already-mutually-distinct
@@ -124,7 +129,7 @@ reality. Always two genuinely distinct real ONC records instead:
   case can't be resolved through field matching alone, so it isn't a valid "should not match" test
   case.
 - **Sibling negatives** (session 14, `mine_sibling_negatives`) — distinct-ID pairs sharing postal
-  code + family name, with birth years ≤3 years apart (the near-DOB case the
+  code + family name, with different first names and birth years ≤3 years apart (the near-DOB case the
   multi-generational-household miner's ≥15-year gap deliberately excludes) — a proxy for
   siblings/twins, since ONC has no family-relationship column. **The 4-14 year gap between these
   two miners is a deliberate, currently-unclaimed dead zone** — a same-surname, same-ZIP pair in
@@ -136,6 +141,9 @@ reality. Always two genuinely distinct real ONC records instead:
   **no** shared postal code or DOB — targets matchers that over-weight name similarity alone with
   no corroborating field.
 
+Every non-match pair is checked with `identity_guard.is_possible_same_person`; none may share a
+real SSN or first+family+DOB.
+
 ### Assembly, export, and reproducibility
 
 - **`labeled_pairs.py`**'s `generate_raw_pairs()` combines all of the above into
@@ -144,7 +152,9 @@ reality. Always two genuinely distinct real ONC records instead:
   fixed order (per patient: fuzzy variant → normalization edge cases → compound variant →
   ssn_dropped → marriage_variant → phone_variant; then, across all patients: hard negatives →
   name-collision negatives → households → sibling negatives → institutional pairs per type), so a
-  given `seed` always reproduces the same output byte-for-byte given the same input patients.
+  given `seed` always reproduces the same generator output byte-for-byte given the same input
+  patients. This applies to the generators, not to the committed files (see the note at the end of
+  this section).
 - **Every case gets a stable, self-describing id**, built from the ONC `EnterpriseID`(s)
   involved: `{id}::{mutation_type}` for a fuzzy variant (e.g. `14065387::family_transpose`),
   `{id}::diacritic` / `{id}::punctuation` for normalization edge cases,
@@ -153,6 +163,7 @@ reality. Always two genuinely distinct real ONC records instead:
   `{query_id}::{candidate_id}` for a mined hard negative,
   `{query_id}::{candidate_id}::name_collision` for a mined name-collision negative,
   `{query_id}::{candidate_id}::household` for a mined household pair,
+  `{query_id}::{candidate_id}::household_constructed` for a constructed household pair,
   `{query_id}::{candidate_id}::sibling` for a mined sibling negative, and
   `{query_id}::{candidate_id}::{institution_type}` for a constructed institutional pair.
 - **Every case gets a `rationale` string** built by `format_rationale()`: the pair's category plus
@@ -178,8 +189,17 @@ reality. Always two genuinely distinct real ONC records instead:
 - Every export defaults to **one ONC shard, sampled down to `SAMPLE_SIZE`** (2,000 patients) —
   loading and transforming the full ~1,000,000-record dataset at once has crashed a cluster
   before; see `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising this.
-- Fully reproducible given the same seed/inputs — regenerate any committed file with the commands
-  in "Regenerating or extending this file" below.
+- The generators are reproducible given the same seed/inputs, and the commands in "Regenerating
+  or extending this file" below re-run them. **The committed files are curated snapshots, not
+  byte-for-byte regenerable outputs:**
+  1. The committed positives were hand-filtered by BAI-1061 (317 rule-29-only positives removed).
+     No code reproduces that filter, so regenerating yields 11,539 positives instead of the
+     committed 11,222.
+  2. BAI-1067 refreshed only the negatives (a negatives-only migration), so regenerating
+     `sample_labeled_pairs.jsonl` reproduces the committed negatives but not the positives.
+  3. The committed population tier was not refreshed for constructed households: regenerating
+     `population_*.jsonl` adds `::household::constructed` decoys and yields different pools than
+     the committed files.
 
 ### Frequency weighting (`prevalence_estimates.py`)
 
@@ -290,7 +310,8 @@ A candidate id with no `::` suffix is a real, unmodified ONC record (either the 
 population co-member, used as a distractor, or a mined hard-negative/household decoy). A `::`
 suffix marks a generated variant (`::family_transpose`, `::diacritic`, `::punctuation`, one of
 `mutations.MUTATIONS`' keys) or a constructed special-population candidate
-(`::institutional::<type>`, whose `address` is a fabricated, unambiguously-synthetic institutional
+(`::household::constructed`, a same-surname record given its elder's real address, or
+`::institutional::<type>`, whose `address` is a fabricated, unambiguously-synthetic institutional
 address per `special_populations.py` — the underlying identity is still a real, distinct ONC
 record). **Known simplification, read before treating this tier as equivalent to
 `labeled_pairs.py`'s institutional pairs:** `special_populations.construct_institutional_negatives()`
@@ -488,6 +509,16 @@ while `export_population_dataset.py` takes its own `POOL_SIZE` (default 40), `CA
 `evaluation/cases/population_queries.jsonl`) — it does not read `OUTPUT_PATH`. Read
 `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising `SAMPLE_SIZE`/`POOL_SIZE` or
 passing more than one ONC shard's worth of patients.
+
+## Dataset changelog
+
+- **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match
+  pairs that could be the same person (shared real SSN, or identical first name + family + DOB) were
+  removed. `::sibling` case ids changed, and a new `::household_constructed` id class was added
+  (a real younger record given a real elder's address; the pair-tier target keeps the younger
+  record's id). Positives are unchanged. `population_*.jsonl` no longer contains such pairs but does
+  not yet contain constructed households (a follow-up regenerates the population tier). Consumers
+  that pin row counts or case ids should re-pin.
 
 ## Release gate
 

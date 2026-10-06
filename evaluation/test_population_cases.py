@@ -127,3 +127,33 @@ class TestBuildPopulationDataset:
                 dataset.candidates[cid]["address"]
                 != dataset.candidates[plain_id]["address"]
             )
+
+
+class TestPopulationLabelValidity:
+    def test_topup_never_adds_a_possible_same_person_as_a_decoy(self):
+        patients = [
+            _patient("p1"),
+            _patient("p2"),
+            _patient("p3", family="Jones", given="Robert"),
+        ]
+        # p2 is the same person as p1 (same first+family+DOB) under another id.
+        dataset = build_population_dataset(patients, pool_size=10, seed=0)
+        case = next(c for c in dataset.cases if c.query_id == "p1")
+        assert "p2" not in case.candidate_ids
+
+    def test_constructed_household_candidates_are_namespaced(self):
+        elder = _patient("e1", family="Rivera", given="Rosa")
+        elder["birthDate"] = "1950-03-01"
+        younger = _patient("y1", family="Rivera", given="Luis")
+        younger["birthDate"] = "1988-07-14"
+        younger["address"] = [
+            {"line": ["9 Elm St"], "city": "LA", "state": "CA", "postalCode": "90001"}
+        ]
+        dataset = build_population_dataset([elder, younger], pool_size=5, seed=0)
+        case = next(c for c in dataset.cases if c.query_id == "e1")
+        assert "y1::household::constructed" in case.candidate_ids
+        assert "y1::household::constructed" not in case.expected_match_ids
+        assert (
+            dataset.candidates["y1::household::constructed"]["address"]
+            == elder["address"]
+        )

@@ -26,6 +26,18 @@ def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
     }
 
 
+def _household_pair():
+    """A real elder and a younger same-surname record living at a different street."""
+    elder = _patient("p1", family="Rivera", given="Rosa")
+    elder["birthDate"] = "1950-03-01"
+    younger = _patient("p2", family="Rivera", given="Luis")
+    younger["birthDate"] = "1988-07-14"
+    younger["address"] = [
+        {"line": ["9 Elm St"], "city": "LA", "state": "CA", "postalCode": "90001"}
+    ]
+    return elder, younger
+
+
 class TestGenerateRawPairs:
     def test_produces_one_fuzzy_variant_pair_per_patient_by_default(self) -> None:
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
@@ -265,3 +277,21 @@ class TestGenerateRawPairs:
         for pair in compound:
             changed = count_changed_fields(pair.query_patient, pair.candidate_patient)
             assert changed >= 3, (pair.pair_id, changed)
+
+    def test_constructed_household_pairs_share_the_elders_address(self) -> None:
+        elder, younger = _household_pair()
+        pairs = list(generate_raw_pairs([elder, younger], seed=0))
+        constructed = [
+            p for p in pairs if p.strata.get("address_source") == "constructed"
+        ]
+        assert len(constructed) == 1
+        assert constructed[0].is_true_match is False
+        assert constructed[0].candidate_patient["address"] == elder["address"]
+        assert constructed[0].pair_id.endswith("::household_constructed")
+
+    def test_household_constructed_max_zero_disables_the_constructed_path(self) -> None:
+        elder, younger = _household_pair()
+        pairs = list(
+            generate_raw_pairs([elder, younger], seed=0, household_constructed_max=0)
+        )
+        assert not [p for p in pairs if p.strata.get("address_source")]
