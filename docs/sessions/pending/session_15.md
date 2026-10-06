@@ -3,7 +3,7 @@
 **Status:** Draft, not yet reviewed. Written 2026-10-06 in response to written feedback from a
 workgroup reviewer on the post-session-14 test set ("getting closer to a solid first release").
 **Author:** Imran Qureshi
-**Ticket:** TBD (project BAI unless the workgroup board says otherwise)
+**Ticket:** BAI-1063
 **Thread:** Evaluation & Statistical Rigor Framework
 **Estimated size:** L — one new module family (audit/baselines/sampling), four generator changes,
 one refactor of the true-match generation loop. Recommend shipping as four PRs (see Rollout);
@@ -21,7 +21,7 @@ ready to release" becomes a CI check rather than a reviewer's judgment.
 ## Findings, verified
 
 I re-ran each claim against the committed `evaluation/cases/sample_labeled_pairs.jsonl`
-(11,668 rows; 2,000 distinct source patients). All reproduce except where noted.
+(11,668 rows; 2,000 distinct source patients). All reproduce except where noted; figures marked as differing (F3, F5, F6, F7) reproduce under the counting method stated in their row.
 
 | # | Reviewer's claim | Reproduced | Root cause in code |
 |---|---|---|---|
@@ -116,7 +116,7 @@ migrated to the registry with identical `case_id`s and output.
 | `address_move` (replaces `marriage_variant`'s address half) | Move, with history | Subtypes: `current_vs_prior` (source = old address, target = new), `history_on_one_side` (target carries both, new one `use: home` with `period.start`, old one `use: old` with `period.end`). Donor address from the held-out pool, same-state weighted. |
 | `phone_churn` (replaces `phone_variant`) | Contact churn | Target gets a replacement phone from the held-out donor pool (real ONC numbers on no in-set record), or phone dropped, or a PHONE2 swap. No longer gated on PHONE2 existing. `email_churn` follows the same shape. |
 | `gender_drift` | Administrative-sex disagreement | male↔female, ↔unknown, composed with another field change so gender is not the only signal. |
-| `placeholder` | Placeholder values | One side carries a well-known placeholder in SSN (`000-00-0000`, `999-99-9999`, `123-45-6789`), DOB (`1900-01-01`, `1901-01-01`, `01-01` of any year), phone (`000-000-0000`, `555-555-5555`), name (`BABY BOY`, `UNKNOWN`), or address (`HOMELESS`, `UNKNOWN`). Positives: other fields still match. Negatives: two distinct people share the placeholder and must not match on it (new `placeholder_collision_negative`). A single curated, versioned catalog lives in `placeholders.py`. |
+| `placeholder` | Placeholder values | One side carries a well-known placeholder in SSN (`000-00-0000`, `999-99-9999`, `123-45-6789`), DOB (`1900-01-01`, `1901-01-01`, a specific known value only (never "any `01-01`", which would flag real January-1 birthdays)), phone (`000-000-0000`, `555-555-5555`), name (`BABY BOY`, `UNKNOWN`), or address (`HOMELESS`, `UNKNOWN`). Positives: other fields still match. Negatives: two distinct people share the placeholder and must not match on it (new `placeholder_collision_negative`). A single curated, versioned catalog lives in `placeholders.py`. |
 
 **Held-out donor pool.** New phones, addresses and surnames come from a reserved slice of ONC that
 is excluded from the generated set, so a donor value never collides with a real in-set record.
@@ -238,6 +238,34 @@ changed.
 - **Donor pool shrinks the usable population** slightly; negligible at 1M.
 - **Reversibility:** all additive behind the registry and profile, except the case_id change, which
   is one-way once consumers adopt it. Decide the versioning policy before PR 2 merges.
+
+## Review resolutions (added after adversarial/EA review of this PR)
+
+Decisions to carry into implementation; each closes a gap the review found.
+
+- **Native duplicates in the population tier.** The same-person guard applies to the random
+  distractor top-up and to final pool validation, not only to the negative miners.
+- **Independent validity audit.** The label-validity invariant is checked by a second, looser
+  audit-only detector (fuzzy name + DOB, SSN within one edit, phone + DOB + surname), reported with
+  its own threshold, so it is not circular with the generator's `is_possible_same_person`.
+- **Dataset versioning.** The manifest gains a `dataset_version` and changelog before PR 2/3. The
+  "identical output" claim applies only to the registry refactor; PR 3 replaces the sample and
+  documents removed and renamed case ids in `cases/README.md`.
+- **Positive-label validation.** Before PR 2, each new positive scenario encodes which Table 2
+  rule(s) it satisfies with the drifted field excluded, checked by a test. Resolving Open
+  Question 4 gates `gender_drift`; it does not ship with a guessed label.
+- **PR 0 gate mode.** PR 0 runs `release_thresholds.json` as `tracked` (report-only). Each metric
+  flips to `enforced` in the PR that fixes it.
+- **Drift defaults.** Default rates ship as explicit placeholders (`has_public_estimate=False`) and
+  the dataset is marked provisional until Open Question 1 is answered; the profile source is
+  recorded in the manifest.
+- **Constructed households** are a documented exception to the "clearly synthetic or held-out"
+  constraint: they reuse another real in-set record's real address. Constructed ids are
+  namespaced (`::household_constructed`) and carry `strata.address_source = "constructed"`.
+- **Donor pool.** Defined as a deterministic hash partition of EnterpriseID (for example, id hash
+  mod 20), so it is computable per shard with no global state.
+- **Baseline gate.** Baselines and weights are frozen and versioned in PR 0; the gate is a floor,
+  not evidence of realism.
 
 ## Open questions
 
