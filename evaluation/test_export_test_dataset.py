@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+from drift_profile import DriftProfile
 from export_test_dataset import (
     LabeledCaseRecord,
     build_test_case_records,
@@ -111,6 +112,24 @@ class TestBuildLabeledCaseRecords:
         records = build_test_case_records(patients, seed=0)
         assert any(r.expected_match for r in records)
         assert any(not r.expected_match for r in records)
+
+
+class TestDriftInputs:
+    def test_donors_and_profile_reach_the_generators(self):
+        from support_patients import drift_donors, drift_population
+
+        profile = DriftProfile(rates={"surname_change": 1.0})
+        records = build_test_case_records(
+            drift_population(), donors=drift_donors(), profile=profile
+        )
+        surname = [r for r in records if r.case_id.endswith("::surname_change")]
+        assert surname
+        assert all(r.expected_match for r in surname)
+        assert all(r.rationale.startswith("surname_change/") for r in surname)
+
+    def test_default_call_still_works_without_donors_or_profile(self):
+        records = build_test_case_records([_patient("p1")])
+        assert records
 
 
 class TestWriteJsonl:

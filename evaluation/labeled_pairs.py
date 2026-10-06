@@ -46,8 +46,9 @@ import random
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Mapping
+from typing import Any, Dict, Iterator, List, Mapping, Sequence
 
+from drift_profile import DriftProfile
 from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
@@ -56,12 +57,11 @@ from mutations import (
     count_changed_fields,
     generate_compound_variant,
     generate_fuzzy_variant,
-    marriage_variant,
-    phone_variant,
-    ssn_dropped_variant,
 )
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
+from placeholders import COLLISION_FIELDS, construct_placeholder_collision_negatives
+from scenarios import generate_scenario_variants
 from special_populations import (
     INSTITUTION_TYPES,
     construct_household_negatives,
@@ -96,6 +96,27 @@ class RawPair:
     strata: Mapping[str, Any]
 
 
+def _effective_profile(
+    profile: DriftProfile | None,
+    *,
+    include_ssn_dropped: bool,
+    include_marriage_variant: bool,
+    include_phone_variant: bool,
+) -> DriftProfile:
+    """The caller's profile (default: DriftProfile()) with any session-14
+    scenario whose `include_*` flag is False switched off."""
+    off = [
+        name
+        for name, enabled in (
+            ("ssn_dropped", include_ssn_dropped),
+            ("marriage_variant", include_marriage_variant),
+            ("phone_variant", include_phone_variant),
+        )
+        if not enabled
+    ]
+    return (profile or DriftProfile()).without(*off)
+
+
 def generate_raw_pairs(
     patients: List[Patient],
     *,
@@ -111,8 +132,11 @@ def generate_raw_pairs(
     include_name_collision_negatives: bool = True,
     sibling_max_age_gap_years: int = 3,
     household_constructed_max: int = 250,
+    placeholder_collision_max: int = 100,
     name_collision_max_distance: int = 1,
     institutional_group_size: int = 3,
+    donors: Sequence[Patient] = (),
+    profile: DriftProfile | None = None,
     seed: int = 0,
 ) -> Iterator[RawPair]:
     """Yield RawPairs from ONC patients: fuzzy-variant true-matches,
@@ -125,6 +149,12 @@ def generate_raw_pairs(
     all additive, default-on, appended alongside every prior category.
     """
     rng = random.Random(seed)
+    profile = _effective_profile(
+        profile,
+        include_ssn_dropped=include_ssn_dropped,
+        include_marriage_variant=include_marriage_variant,
+        include_phone_variant=include_phone_variant,
+    )
 
     for idx, p in enumerate(patients):
         for _ in range(n_fuzzy_variants_per_patient):
@@ -173,37 +203,20 @@ def generate_raw_pairs(
                         "mutations": ",".join(mutation_types),
                     },
                 )
-        if include_ssn_dropped:
-            dropped = ssn_dropped_variant(p)
-            if dropped != p:
-                yield RawPair(
-                    pair_id=f"{p['id']}::ssn_dropped",
-                    query_patient=p,
-                    candidate_patient=dropped,
-                    is_true_match=True,
-                    strata={"pair_type": "ssn_dropped"},
-                )
-        if include_marriage_variant:
-            donor = patients[(idx + 1) % len(patients)]
-            married = marriage_variant(p, donor)
-            if married != p:
-                yield RawPair(
-                    pair_id=f"{p['id']}::marriage_variant",
-                    query_patient=p,
-                    candidate_patient=married,
-                    is_true_match=True,
-                    strata={"pair_type": "marriage_variant"},
-                )
-        if include_phone_variant:
-            phoned = phone_variant(p)
-            if phoned != p:
-                yield RawPair(
-                    pair_id=f"{p['id']}::phone_variant",
-                    query_patient=p,
-                    candidate_patient=phoned,
-                    is_true_match=True,
-                    strata={"pair_type": "phone_variant"},
-                )
+        for scenario, result in generate_scenario_variants(
+            p,
+            next_patient=patients[(idx + 1) % len(patients)],
+            donors=donors,
+            profile=profile,
+            seed=seed,
+        ):
+            yield RawPair(
+                pair_id=f"{p['id']}::{result.suffix}",
+                query_patient=p,
+                candidate_patient=result.variant,
+                is_true_match=True,
+                strata={"pair_type": scenario.pair_type, **result.strata},
+            )
 
     for candidate in mine_shared_address_hard_negatives(patients):
         yield RawPair(
@@ -269,6 +282,26 @@ def generate_raw_pairs(
                 **constructed_household.shared_fields,
             },
         )
+    for field in COLLISION_FIELDS:
+        for collision in construct_placeholder_collision_negatives(
+            patients,
+            field,
+            max_pairs=placeholder_collision_max,
+            rng=random.Random(f"{seed}:placeholder_collision:{field}"),
+        ):
+            yield RawPair(
+                pair_id=(
+                    f"{collision.query['id']}::{collision.candidate['id']}"
+                    f"::placeholder_{field}"
+                ),
+                query_patient=collision.query,
+                candidate_patient=collision.candidate,
+                is_true_match=False,
+                strata={
+                    "pair_type": "placeholder_collision_negative",
+                    **collision.shared_fields,
+                },
+            )
     if include_sibling_negatives:
         for sibling_candidate in mine_sibling_negatives(
             patients, max_age_gap_years=sibling_max_age_gap_years
