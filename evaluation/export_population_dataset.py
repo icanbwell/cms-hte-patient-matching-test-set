@@ -31,8 +31,8 @@ import json
 import os
 from pathlib import Path
 
+from export_inputs import load_profile, load_sample_and_donors
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
-from onc_loader import load_onc_patients
 from population_cases import (
     DEFAULT_POOL_SIZE,
     PopulationDataset,
@@ -75,12 +75,12 @@ def write_population_dataset(
 if __name__ == "__main__":
     sample_size = int(os.environ.get("SAMPLE_SIZE", DEFAULT_SAMPLE_SIZE))
     pool_size = int(os.environ.get("POOL_SIZE", DEFAULT_POOL_SIZE))
-    onc_dir = Path(__file__).parent / "fixtures" / "onc"
-    # One shard only, not sorted(onc_dir.glob("*.csv")) (all 9) - see
-    # population_cases.py's and SYNTHETIC_DATA_SETUP.md's "Memory & scale".
-    shard = sorted(onc_dir.glob("*.csv"))[0]
-    patients = load_onc_patients([shard])[:sample_size]
-    dataset = build_population_dataset(patients, pool_size=pool_size)
+    # One shard only, not all 9 - see population_cases.py's and
+    # SYNTHETIC_DATA_SETUP.md's "Memory & scale".
+    patients, donors = load_sample_and_donors(sample_size)
+    dataset = build_population_dataset(
+        patients, pool_size=pool_size, donors=donors, profile=load_profile()
+    )
 
     candidates_path = Path(
         os.environ.get("CANDIDATES_PATH", str(DEFAULT_CANDIDATES_PATH))

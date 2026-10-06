@@ -52,17 +52,27 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Sequence, Set
 
-from hard_negatives import mine_shared_address_hard_negatives
+from drift_profile import DriftProfile
+from hard_negatives import (
+    mine_name_collision_negatives,
+    mine_shared_address_hard_negatives,
+)
 from identity_guard import SamePersonIndex
-from mutations import generate_fuzzy_variant
+from mutations import (
+    count_changed_fields,
+    generate_compound_variant,
+    generate_fuzzy_variant,
+)
 from normalization_edge_cases import diacritic_variant, punctuation_variant
+from scenarios import generate_scenario_variants
 from special_populations import (
     INSTITUTION_TYPES,
     construct_household_negatives,
     construct_institutional_negatives,
     mine_shared_surname_household_negatives,
+    mine_sibling_negatives,
 )
 
 Patient = Dict[str, Any]
@@ -118,8 +128,11 @@ def build_population_dataset(
     n_fuzzy_variants_per_patient: int = 1,
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
+    include_compound_variants: bool = True,
     institutional_group_size: int = 3,
     household_constructed_max: int = 250,
+    donors: Sequence[Patient] = (),
+    profile: DriftProfile | None = None,
     seed: int = 0,
 ) -> PopulationDataset:
     """Build the population-query tier from ONC patients - see module
@@ -151,7 +164,8 @@ def build_population_dataset(
             match_members[query_id].append(candidate_id)
         categories[query_id].add(category)
 
-    for pid, patient in by_id.items():
+    profile = profile or DriftProfile()
+    for idx, (pid, patient) in enumerate(by_id.items()):
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(patient, rng=rng)
             add_candidate(
@@ -166,6 +180,33 @@ def build_population_dataset(
             add_candidate(
                 pid, f"{pid}::punctuation", punctuated, True, "normalization_edge_case"
             )
+        # Compound variants keep their own per-patient RNG so they never
+        # perturb the stream above (session 15 tier parity).
+        compound, mutation_types = generate_compound_variant(
+            patient, n_mutations=2, rng=random.Random(f"{seed}:compound:{pid}")
+        )
+        if include_compound_variants and count_changed_fields(patient, compound) >= 2:
+            add_candidate(
+                pid,
+                f"{pid}::compound::{'-'.join(mutation_types)}",
+                compound,
+                True,
+                "compound_variant",
+            )
+        for scenario, result in generate_scenario_variants(
+            patient,
+            next_patient=patients[(idx + 1) % len(patients)],
+            donors=donors,
+            profile=profile,
+            seed=seed,
+        ):
+            add_candidate(
+                pid,
+                f"{pid}::{result.suffix}",
+                result.variant,
+                True,
+                scenario.pair_type,
+            )
 
     for hard_negative in mine_shared_address_hard_negatives(patients):
         add_candidate(
@@ -176,7 +217,24 @@ def build_population_dataset(
             "hard_negative",
         )
 
+    for name_collision in mine_name_collision_negatives(patients):
+        add_candidate(
+            name_collision.query["id"],
+            name_collision.candidate["id"],
+            name_collision.candidate,
+            False,
+            "name_collision_negative",
+        )
+
     if include_special_populations:
+        for sibling in mine_sibling_negatives(patients):
+            add_candidate(
+                sibling.query["id"],
+                sibling.candidate["id"],
+                sibling.candidate,
+                False,
+                "sibling_negative",
+            )
         for household in mine_shared_surname_household_negatives(patients):
             add_candidate(
                 household.query["id"],
