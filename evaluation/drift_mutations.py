@@ -2,9 +2,10 @@
 
 Each function returns `(variant, subtype)`, or None when the scenario cannot
 apply to this patient (missing field, no usable donor value). New values come
-from `donors`: real ONC records held out of the generated set, so a donated
-surname, address, phone or email never collides with an in-set record and no
-identifier is fabricated. Inputs are never mutated.
+from `donors`: real ONC records held out of the generated set, so no
+identifier is fabricated. Donors are distinct records, but a donated value can
+coincidentally equal a value held by an in-set patient. Inputs are never
+mutated.
 """
 
 from __future__ import annotations

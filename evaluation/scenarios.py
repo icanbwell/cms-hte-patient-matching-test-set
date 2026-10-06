@@ -8,8 +8,11 @@ perturbs another scenario's output, and a patient's variant is identical in
 both tiers.
 
 Not in the registry (they keep their own generation): fuzzy variants,
-normalization edge cases, and compound variants, which use the shared
-generator stream.
+normalization edge cases, and compound variants. Compound variants are
+generated per tier (shared generator stream in the per-provision tier, a
+per-patient RNG in the population tier), so their bodies match between tiers
+only in the committed files, where the migration copied them from the sample
+rows; registry scenarios match on regeneration too.
 """
 
 from __future__ import annotations

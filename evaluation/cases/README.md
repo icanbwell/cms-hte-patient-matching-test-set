@@ -151,15 +151,22 @@ real SSN or first+family+DOB.
   on. It runs on **one shared `random.Random(seed)` instance** (default `seed=0`), consumed in a
   fixed order (per patient: fuzzy variant → normalization edge cases → compound variant →
   ssn_dropped → marriage_variant → phone_variant; then, across all patients: hard negatives →
-  name-collision negatives → households → sibling negatives → institutional pairs per type), so a
-  given `seed` always reproduces the same generator output byte-for-byte given the same input
-  patients. This applies to the generators, not to the committed files (see the note at the end of
+  name-collision negatives → households → sibling negatives → institutional pairs per type). The
+  session-15 registry scenarios (`surname_change`, `address_move`, `phone_churn`, `email_churn`,
+  `placeholder`, `gender_drift`) do not draw from that stream: each uses its own RNG seeded by
+  `(seed, scenario name, patient id)`, and the placeholder-collision negatives are built after the
+  existing categories. A given `seed` therefore reproduces the same generator output byte-for-byte
+  given the same input patients. This applies to the generators, not to the committed files (see the note at the end of
   this section).
 - **Every case gets a stable, self-describing id**, built from the ONC `EnterpriseID`(s)
   involved: `{id}::{mutation_type}` for a fuzzy variant (e.g. `14065387::family_transpose`),
   `{id}::diacritic` / `{id}::punctuation` for normalization edge cases,
   `{id}::compound::{mutation_types}` for a compound variant, `{id}::ssn_dropped` /
   `{id}::marriage_variant` / `{id}::phone_variant` for those session-14 scenarios,
+  `{id}::surname_change` / `{id}::address_move` / `{id}::phone_churn` / `{id}::email_churn` /
+  `{id}::placeholder` / `{id}::gender_drift` for the session-15 drift scenarios,
+  `{a}::{b}::placeholder_{field}` for a placeholder-collision negative (two distinct people
+  sharing a dummy SSN, phone or DOB),
   `{query_id}::{candidate_id}` for a mined hard negative,
   `{query_id}::{candidate_id}::name_collision` for a mined name-collision negative,
   `{query_id}::{candidate_id}::household` for a mined household pair,
@@ -176,9 +183,10 @@ real SSN or first+family+DOB.
 - **`population_cases.py`**'s `build_population_dataset()` regroups the same underlying generation
   logic into the population-query shape, using two independent RNGs so topping up a pool with
   random distractors never perturbs the same random stream used to generate variants: a
-  query's **known-match cluster** is its own fuzzy-variant/normalization-edge-case candidates
+  query's **known-match cluster** is its own fuzzy-variant, normalization-edge-case, compound and
+  registry-scenario (drift) candidates
   (added to its pool first, so trimming logic below can never drop them); its **decoy pool** is
-  its mined hard-negative/household/institutional candidates, deduplicated against a per-query
+  its mined hard-negative/household/sibling/name-collision/institutional candidates, deduplicated against a per-query
   "already in this pool" set. If the pool is still under `pool_size` (default 40) after that, it's
   topped up with randomly-shuffled distractors from the rest of the sample; if it's over, only
   decoys are trimmed — true matches are never dropped to make room. Institutional decoys are
@@ -507,8 +515,12 @@ passing more than one ONC shard's worth of patients.
 ## Release gate
 
 `make audit` evaluates `evaluation/release_thresholds.json` against `evaluation/audit.py`'s report
-(label validity, tier parity, naive-baseline F1). A metric marked `"tracked"` is reported but does
-not fail; `"enforced"` fails CI. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
+(label validity, tier parity, positive phone drift, naive-baseline F1). A metric marked
+`"tracked"` is reported but does not fail; `"enforced"` fails CI. Enforced: `same_person_negatives`
+(max 0); `tier_parity_gap` (max 0; `placeholder_collision_negative` is exempt because it is
+pairwise-only by design); and `positive_phone_drift_rate` (min 0.05). The 0.05 floor is
+**provisional**: it is to be re-set when the workgroup supplies measured rates, and a measured
+profile with phone churn below roughly that level will fail CI until the floor is changed. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
 JSON report (per-field positive drift rates, people per address, shared-phone rate, age bands).
 The naive baselines (phone-only, SSN-only, ...) are deliberately weak matchers: a test set where
 one of them scores near the multi-field baseline is not discriminating between algorithms.
@@ -516,8 +528,11 @@ one of them scores near the multi-field baseline is not discriminating between a
 ## Drift scenarios (session 15)
 
 True-match pairs where the same person differs between two systems. Every scenario is in **both**
-tiers (`phone_churn` etc. use the same variant body in the pairwise file and in the population
-pools); `placeholder_collision_negative` is pairwise-only (both sides must carry the shared dummy).
+tiers. Registry scenarios (`surname_change`, `address_move`, `phone_churn`, `email_churn`,
+`placeholder`, `gender_drift`) use the same variant body in both tiers, including on regeneration.
+Compound variants are generated per tier (a shared generator stream in the per-provision tier, a
+per-patient RNG in the population tier), so their bodies match between tiers only in the committed
+files, where the migration copied them from the sample rows; `placeholder_collision_negative` is pairwise-only (both sides must carry the shared dummy).
 
 | Scenario | What differs | Subtypes (`rationale` = `scenario/subtype`) |
 |---|---|---|
@@ -529,7 +544,7 @@ pools); `placeholder_collision_negative` is pairwise-only (both sides must carry
 | `placeholder_collision_negative` | two distinct people share a placeholder SSN, phone or DOB | the field name |
 
 New phones, emails, addresses and surnames come from a held-out donor pool (the ONC rows right
-after the sample), so a donated value normally cannot match an in-set record (a coincidental equal value is possible; see the migration notes). Emission rates come from
+after the sample), so donors are distinct records, but a donated value can coincidentally equal a value held by an in-set patient (counts below). Emission rates come from
 `drift_profile.py` and are **placeholders, not measured real-world rates**; supply measured ones
 with `DRIFT_PROFILE_PATH=profile.json` (`{"source": "...", "rates": {"phone_churn": 0.4}}`).
 `marriage_variant` and `phone_variant` (session 14) are kept unchanged for `case_id` stability;
@@ -537,11 +552,47 @@ with `DRIFT_PROFILE_PATH=profile.json` (`{"source": "...", "rates": {"phone_chur
 awaits the workgroup's versioning decision.
 
 The committed files were extended **append-only** by a one-off migration: every row that was
-committed before is unchanged, and population pools grew by the new candidates (39-48 candidates
+committed before is unchanged in content (`population_candidates.jsonl` is
+re-sorted by id), and population pools grew by the new candidates (39-48 candidates
 per query). Regenerating the files will not reproduce them exactly (see "Assembly, export, and
-reproducibility"). Of the appended `email_churn/replaced` rows, 2 carry a replacement email equal to an email held by another in-set patient (no `phone_churn/replaced` row does).
+reproducibility"). 
+**Donor coincidences** (computed over the 2,715 appended pairwise rows; a "new" value is on the target
+but not on the source; "in-set" means held by a different patient in the committed sample or queries):
+`email_churn/replaced` 2 of 78 rows carry a new email equal to an in-set email, and `email_churn/added`
+5 of 363; `phone_churn/replaced` and `phone_churn/added` 0 of 462 and 0 of 25; `surname_change` 0 of
+303; `address_move` 19 of 366 target addresses (street + city + ZIP) equal an in-set patient's address.
+7 of the 366 `address_move` targets are placeholder-like addresses (line containing UNDOMICILED,
+HOMELESS or UNKNOWN, or ZIP 99999/00000), so `address_move` can move a record to a placeholder-like
+address in those rows.
+
+**Donor skew.** Donors are the rows immediately after the sample in one alphabetically sorted shard, so
+donated surnames start almost entirely with "A" (303 of 303 `surname_change` rows have a new surname
+starting with "A") and donated addresses are almost all NY (364 of 366 `address_move` targets, 99.5%).
+This limits what the `surname_change` and `address_move` categories stress until the stratified
+sampler (a later plan) lands.
+
+**Phone churn can leave a shared phone.** ONC patients can hold two phones and the scenarios drop or
+replace only the first, so some `phone_churn` rows still share a phone with the source: 63 of 474
+`phone_churn/dropped`, 82 of 462 `phone_churn/replaced`, and 12 of 74 `placeholder/phone` rows have a
+shared normalized phone between source and target. `audit.positive_phone_drift_rate` counts set
+inequality of normalized phones: it is 0.0801 (1,093 of 13,637 positives) as reported, and 0.0728
+(982 of 13,480) when those 157 rows are excluded.
 
 **Not yet verified against the CMS reference algorithm.** This repo has no matching engine. BAI-1061
 removed positives that only a removed rule could match; a new positive that no Table 2 rule can
 match is a label defect. Run the new categories through the reference algorithm and report any
 such rows.
+
+Highest label-defect risk: subtypes whose only differing identifying field is a name field. Appended
+row counts, and how many of them have no shared real SSN between source and target (placeholder SSNs
+do not count), so no SSN-based rule can match them:
+
+| Subtype | Rows | No shared real SSN |
+|---|---|---|
+| `placeholder/given` | 82 | 18 |
+| `surname_change/no_history` | 96 | 20 |
+| `surname_change/hyphenated` | 109 | 21 |
+| `surname_change/prior_name_on_target` | 98 | 27 |
+
+Run these rows FIRST through the reference algorithm. A conformant algorithm failing them may
+indicate a label defect, not an algorithm defect.

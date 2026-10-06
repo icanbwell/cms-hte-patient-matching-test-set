@@ -14,11 +14,13 @@ and the subset of that pool which is a true match."
 
 For each query patient:
   - The **known-match cluster** is its generated fuzzy-variant/normalization-
-    edge-case candidates (never the query's own literal record - this mirrors
+    edge-case, compound and registry-scenario (drift) candidates (never the
+    query's own literal record - this mirrors
     FHIR Patient/$match's real shape of "find my other record(s)," not a
     trivial self-match).
-  - The **decoy pool** is that query's mined hard-negative/special-population
-    near-misses, topped up with random distractors from the broader sample up
+  - The **decoy pool** is that query's mined hard-negative/special-population/
+    sibling/name-collision near-misses, topped up with random distractors from
+    the broader sample up
     to `pool_size` (per the current Doc's own "forty near-misses" framing) -
     never displacing a true match to make room.
 

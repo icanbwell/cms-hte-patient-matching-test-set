@@ -2,9 +2,9 @@
 donor pool, and the drift profile.
 
 Donors are the rows IMMEDIATELY AFTER the sample in the same ONC shard, so
-they are never in the generated set: a donated surname, address, phone or
-email cannot collide with an in-set record. The usual memory caution applies
-(one shard only, see SYNTHETIC_DATA_SETUP.md "Memory & scale").
+they are distinct records, never in the generated set; a donated surname,
+address, phone or email can still coincidentally equal an in-set value. The
+usual memory caution applies (one shard only, see SYNTHETIC_DATA_SETUP.md "Memory & scale").
 """
 
 from __future__ import annotations
