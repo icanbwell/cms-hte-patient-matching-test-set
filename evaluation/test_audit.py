@@ -187,3 +187,56 @@ class TestDegenerateInputs:
             _patient("b", given="Robert", phones=("+1 (347) 984-6839",)),
         ]
         assert shared_contact_rate(patients, "phone") == 1.0
+
+
+class TestBuildReportGuards:
+    def _write(self, path, rows):
+        import json
+
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return path
+
+    def _inputs(self, tmp_path, pairs=True, queries=True, candidates=True):
+        a, b = _patient("q"), _patient("x", given="Robert", family="Jones")
+        return (
+            self._write(
+                tmp_path / "pairs.jsonl",
+                [_row("c1", a, a, True)] if pairs else [],
+            ),
+            self._write(
+                tmp_path / "queries.jsonl",
+                [
+                    {
+                        "query_id": "q",
+                        "query": a,
+                        "candidate_ids": ["x"],
+                        "expected_match_ids": [],
+                        "rationale": "population/fuzzy_variant",
+                    }
+                ]
+                if queries
+                else [],
+            ),
+            self._write(
+                tmp_path / "cands.jsonl",
+                [{"id": "x", "patient": b}] if candidates else [],
+            ),
+        )
+
+    @pytest.mark.parametrize("empty", ["pairs", "queries", "candidates"])
+    def test_an_empty_input_file_raises_instead_of_passing_vacuously(
+        self, tmp_path, empty
+    ):
+        from audit import build_report
+
+        pairs, queries, candidates = self._inputs(tmp_path, **{empty: False})
+        with pytest.raises(ValueError, match="no rows"):
+            build_report(pairs, queries, candidates)
+
+    def test_a_baseline_that_never_predicts_scores_zero_not_nan(self, tmp_path):
+        from audit import build_report
+
+        report = build_report(*self._inputs(tmp_path))
+        assert all(v == 0.0 for v in report["baseline_f1"].values())
+        assert report["best_single_field_f1"] == 0.0
+        assert report["multi_field_margin"] == 0.0

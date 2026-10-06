@@ -8,6 +8,7 @@ Run from the repo root:
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter, defaultdict
 from datetime import date
@@ -45,6 +46,13 @@ AGE_BANDS: Tuple[Tuple[str, int, int], ...] = (
 def read_jsonl(path: Path) -> List[Row]:
     with path.open() as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def _read_nonempty(path: Path) -> List[Row]:
+    rows = read_jsonl(path)
+    if not rows:
+        raise ValueError(f"{path} has no rows; refusing to audit an empty dataset")
+    return rows
 
 
 def category_of(rationale: str) -> str:
@@ -200,11 +208,16 @@ def build_report(
     queries_path: Path = QUERIES_PATH,
     candidates_path: Path = CANDIDATES_PATH,
 ) -> Dict[str, Any]:
-    pair_rows = read_jsonl(pairs_path)
-    query_rows = read_jsonl(queries_path)
-    candidates = {r["id"]: r["patient"] for r in read_jsonl(candidates_path)}
+    pair_rows = _read_nonempty(pairs_path)
+    query_rows = _read_nonempty(queries_path)
+    candidates = {r["id"]: r["patient"] for r in _read_nonempty(candidates_path)}
     patients = unique_source_patients(pair_rows)
-    f1s = baseline_f1s(query_rows, candidates)
+    # A matcher that never predicts a match has an undefined (NaN) F1; score it 0
+    # so max()/subtraction below cannot drop it or poison the gate.
+    f1s = {
+        name: 0.0 if math.isnan(value) else value
+        for name, value in baseline_f1s(query_rows, candidates).items()
+    }
     best_single = max(f1s[name] for name in SINGLE_FIELD_BASELINES)
     return {
         "same_person_negatives": same_person_negatives(pair_rows),
