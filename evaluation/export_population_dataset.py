@@ -31,6 +31,7 @@ import json
 import os
 from pathlib import Path
 
+from case_exclusions import ExclusionPolicy
 from export_inputs import load_profile, load_sample_and_donors
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
 from population_cases import (
@@ -78,8 +79,13 @@ if __name__ == "__main__":
     # One shard only, not all 9 - see population_cases.py's and
     # SYNTHETIC_DATA_SETUP.md's "Memory & scale".
     patients, donors = load_sample_and_donors(sample_size)
+    exclusions = ExclusionPolicy()
     dataset = build_population_dataset(
-        patients, pool_size=pool_size, donors=donors, profile=load_profile()
+        patients,
+        pool_size=pool_size,
+        donors=donors,
+        profile=load_profile(),
+        exclusions=exclusions,
     )
 
     candidates_path = Path(
@@ -94,4 +100,7 @@ if __name__ == "__main__":
         f"expected match set) and {len(dataset.candidates)} candidates from {len(patients)} "
         f"ONC patients (one shard, sampled to SAMPLE_SIZE={sample_size}, POOL_SIZE={pool_size}) "
         f"to {candidates_path} and {queries_path}"
+    )
+    print(
+        f"Excluded true-match candidates (case_exclusions.py): {exclusions.summary()}"
     )

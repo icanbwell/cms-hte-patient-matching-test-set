@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Sequence
 
+from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
 from hard_negatives import (
     mine_name_collision_negatives,
@@ -120,7 +121,7 @@ def _effective_profile(
     return (profile or DriftProfile()).without(*off)
 
 
-def generate_raw_pairs(
+def _generate_all_raw_pairs(
     patients: List[Patient],
     *,
     n_fuzzy_variants_per_patient: int = 1,
@@ -354,6 +355,26 @@ def generate_raw_pairs(
                     "category": institution_type,
                 },
             )
+
+
+def generate_raw_pairs(
+    patients: List[Patient],
+    *,
+    exclusions: ExclusionPolicy | None = None,
+    **kwargs: Any,
+) -> Iterator[RawPair]:
+    """Yield RawPairs (see `_generate_all_raw_pairs` for the categories) minus
+    the true-match pairs the exclusion policy drops (case_exclusions.py;
+    default: DEFAULT_RULES). Negatives are never dropped. Pass an
+    `ExclusionPolicy` to read its counts afterwards, or `no_exclusions()` to
+    keep every generated pair."""
+    policy = exclusions if exclusions is not None else ExclusionPolicy()
+    for pair in _generate_all_raw_pairs(patients, **kwargs):
+        if pair.is_true_match and policy.excludes(
+            pair.query_patient, pair.candidate_patient
+        ):
+            continue
+        yield pair
 
 
 if __name__ == "__main__":

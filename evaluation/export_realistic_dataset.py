@@ -12,10 +12,9 @@ samples are curated snapshots and are never overwritten):
     realistic_population_queries.jsonl
     realistic_manifest.json
 
-These files are NOT filtered for CMS Table 2 rule 29 (BAI-1061 removed such
-positives from the committed files by hand; no code reproduces that filter),
-so they are a release CANDIDATE: run the reference algorithm and apply the
-filter before promoting them.
+The generators apply the case exclusions in case_exclusions.py (rule 29
+removed), so no hand filter is needed. The new drift positives are not yet
+verified against the CMS reference algorithm, so these are a release CANDIDATE.
 
 Run from the repo root (reads all 9 shards, about a minute):
 
