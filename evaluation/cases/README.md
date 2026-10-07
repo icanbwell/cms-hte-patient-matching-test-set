@@ -58,13 +58,15 @@ transposition). 10 registered mutation types:
 | Mutation | What it does |
 |---|---|
 | `dob_day` / `dob_month` / `dob_year` | Shifts the DOB component by a small random offset (±1-3 days, ±1-2 months, ±1-2 years) |
-| `dob_swap` | Transposes month/day (e.g. `03/07` → `07/03`), only when both are valid as the other. A random draw is only made for patients whose DOB can be transposed (day ≤ 12 and ≠ month; `dob_swap_applicable`), so every `dob_swap`-labeled pair has a real transposition. Before this, a draw for any other patient emitted a pair labeled `dob_swap` with an unchanged DOB (126 of 180 standalone swap pairs in 0.0.3) |
+| `dob_swap` | Transposes month/day (e.g. `03/07` → `07/03`), only when both are valid as the other. A random fuzzy-variant draw never returns an unchanged patient (see below), so every `dob_swap`-labeled pair has a real transposition. Before this, a draw for a patient whose DOB can't be transposed emitted a pair labeled `dob_swap` with an unchanged DOB (126 of 180 standalone swap pairs in 0.0.3) |
 | `dob_typo` | Substitutes one digit of the `YYYYMMDD` string, re-parsed to a valid calendar date |
 | `family_typo` | One random insert/delete/substitute edit on the family name |
 | `family_transpose` | Swaps one adjacent character pair in the family name |
 | `family_drop_letters` | Drops ~20% of the family name's letters |
 | `given_nickname` | Substitutes the given name with a known nickname/diminutive (e.g. "Katherine" → "Kate", via the `nicknames` library) |
 | `given_abbreviate` | Reduces the given name to its first initial (e.g. "William" → "W.") |
+
+**Every standalone fuzzy-variant pair differs from its source.** The mutation type is drawn at random, and a type that does nothing on that patient (a swap on a DOB that can't be transposed, a nickname for a name with none, a `dob_typo` digit that lands on an invalid date, a transposition of two identical letters) is retried, then replaced by another type. A patient nothing applies to (no DOB and no usable name) gets no fuzzy-variant pair. Before this, those draws were emitted unchanged under their label: in 0.0.3, 128 of 180 `dob_swap`, 104 of 195 `given_nickname`, 41 of 148 `dob_typo` and 21 of 184 `family_transpose` standalone pairs were identical to their source, so each category's recall was overstated (an exact copy always matches) and its real cases were under-sampled. An explicit `mutation_type` request is applied once and may still no-op.
 
 ### True-match pairs — normalization edge cases (`normalization_edge_cases.py`)
 

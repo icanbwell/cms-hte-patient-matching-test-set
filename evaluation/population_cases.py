@@ -177,6 +177,8 @@ def build_population_dataset(
     for idx, (pid, patient) in enumerate(by_id.items()):
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(patient, rng=rng)
+            if variant == patient:
+                continue  # nothing to mutate (no DOB, no usable name)
             add_candidate(
                 pid, f"{pid}::{mutation_type}", variant, True, "fuzzy_variant"
             )

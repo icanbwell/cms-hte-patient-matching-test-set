@@ -75,18 +75,6 @@ def _can_swap_month_day(d: date) -> bool:
     return d.day <= 12 and d.day != d.month
 
 
-def dob_swap_applicable(patient: Patient) -> bool:
-    """Whether a month/day transposition would actually change `patient`'s DOB.
-
-    False when `birthDate` is absent, the day is above 12 (it can't be a
-    month), or day == month (the swap is the identity).
-    """
-    raw = patient.get("birthDate")
-    if not raw:
-        return False
-    return _can_swap_month_day(date.fromisoformat(raw))
-
-
 def mutate_dob(
     patient: Patient, error_type: str = "random", *, rng: random.Random | None = None
 ) -> Patient:
@@ -413,6 +401,15 @@ MUTATIONS: Dict[str, Callable[[Patient, random.Random], Patient]] = {
 }
 
 
+# How many times to retry one mutation type on a patient before treating it as
+# inapplicable. Deterministic no-ops (a name with no known nickname, a DOB that
+# cannot be transposed) fail every attempt; randomly-failing ones (a dob_typo whose
+# digit lands on an invalid calendar date, a transposition of two identical
+# letters) usually succeed within a few, so retrying keeps them from being
+# under-sampled.
+_MAX_ATTEMPTS_PER_MUTATION = 10
+
+
 def generate_fuzzy_variant(
     patient: Patient, mutation_type: str = "random", *, rng: random.Random | None = None
 ) -> Tuple[Patient, str]:
@@ -420,19 +417,31 @@ def generate_fuzzy_variant(
 
     Returns (mutated_patient, mutation_type_applied) so callers can record which
     mutation produced a given labeled pair (e.g. as rule_eval.LabeledPair.strata).
-    A random draw never yields a no-op `dob_swap` (see `dob_swap_applicable`).
+
+    A "random" draw never returns an unchanged patient while any mutation can
+    change it: a drawn type that does nothing on this patient (a swap on a DOB
+    that cannot be transposed, a nickname for a name with none, a typo that
+    lands on an invalid date) is retried and then replaced by another type. Only
+    a patient nothing applies to (no DOB and no usable name) is returned
+    unchanged; callers should skip emitting a pair for it. An explicit
+    `mutation_type` is applied once and may legitimately no-op.
     """
     rng = _rng(rng)
-    if mutation_type == "random":
-        mutation_type = rng.choice(list(MUTATIONS))
-        # A dob_swap draw for a patient whose DOB can't be transposed would be
-        # emitted as a labeled swap pair with an unchanged date. Redraw from the
-        # other mutations instead; an explicit "dob_swap" request is unchanged.
-        if mutation_type == "dob_swap" and not dob_swap_applicable(patient):
-            mutation_type = rng.choice([m for m in MUTATIONS if m != "dob_swap"])
-    if mutation_type not in MUTATIONS:
-        raise ValueError(f"Unknown mutation_type: {mutation_type!r}")
-    return MUTATIONS[mutation_type](patient, rng), mutation_type
+    if mutation_type != "random":
+        if mutation_type not in MUTATIONS:
+            raise ValueError(f"Unknown mutation_type: {mutation_type!r}")
+        return MUTATIONS[mutation_type](patient, rng), mutation_type
+
+    remaining = list(MUTATIONS)
+    while True:
+        mutation_type = rng.choice(remaining)
+        for _ in range(_MAX_ATTEMPTS_PER_MUTATION):
+            variant = MUTATIONS[mutation_type](patient, rng)
+            if variant != patient:
+                return variant, mutation_type
+        remaining.remove(mutation_type)
+        if not remaining:
+            return variant, mutation_type
 
 
 # Each MUTATIONS key targets exactly one of these three top-level fields.

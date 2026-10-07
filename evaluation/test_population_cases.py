@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from drift_profile import DriftProfile
 from labeled_pairs import generate_raw_pairs
+from mutations import MUTATIONS
 from population_cases import build_population_dataset
 from scenarios import REGISTRY
 from support_patients import drift_donors, drift_population
@@ -42,6 +43,16 @@ class TestBuildPopulationDataset:
         )
         (case,) = dataset.cases
         assert case.expected_match_ids
+
+    def test_patient_with_nothing_to_mutate_gets_no_fuzzy_candidate(self):
+        empty = {"resourceType": "Patient", "id": "p0", "name": [{"family": ""}]}
+        dataset = build_population_dataset(
+            [empty], n_fuzzy_variants_per_patient=1, seed=0
+        )
+        fuzzy_ids = [
+            cid for cid in dataset.candidates if cid.partition("::")[2] in MUTATIONS
+        ]
+        assert fuzzy_ids == []
 
     def test_no_generated_variants_produces_an_empty_expected_match_set(self):
         """The current Doc calls this out explicitly as a real case ('possibly

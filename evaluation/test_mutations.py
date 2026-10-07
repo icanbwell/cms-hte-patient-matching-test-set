@@ -17,7 +17,6 @@ from mutations import (
     SSN_SYSTEM,
     abbreviate,
     count_changed_fields,
-    dob_swap_applicable,
     drop_letters,
     generate_compound_variant,
     generate_fuzzy_variant,
@@ -43,27 +42,6 @@ def _patient(**overrides):
     }
     base.update(overrides)
     return base
-
-
-class TestDobSwapApplicable:
-    @pytest.mark.parametrize(
-        "birth_date,expected",
-        [
-            ("2000-03-07", True),  # day 7 <= 12 and != month 3
-            ("2000-03-12", True),  # boundary: day 12 is still a valid month
-            ("2000-03-13", False),  # day 13 cannot be a month
-            ("1990-06-20", False),
-            ("2000-07-07", False),  # day == month: swap changes nothing
-            ("2000-12-12", False),
-        ],
-    )
-    def test_boundaries(self, birth_date: str, expected: bool) -> None:
-        assert dob_swap_applicable(_patient(birthDate=birth_date)) is expected
-
-    def test_missing_birth_date_is_not_applicable(self) -> None:
-        patient = _patient()
-        del patient["birthDate"]
-        assert dob_swap_applicable(patient) is False
 
 
 class TestRandomFuzzyVariantNeverEmitsNoopSwap:
@@ -98,6 +76,49 @@ class TestRandomFuzzyVariantNeverEmitsNoopSwap:
         )
         assert mutation_type == "dob_swap"
         assert variant["birthDate"] == "1990-06-20"
+
+
+class TestRandomFuzzyVariantNeverEmitsNoop:
+    """A random fuzzy variant must differ from its source whenever any mutation can."""
+
+    @pytest.mark.parametrize(
+        "patient",
+        [
+            _patient(),
+            # day > 12 (no swap), name with no known nickname
+            _patient(
+                birthDate="1990-06-20",
+                name=[{"family": "Zzyzxx", "given": ["Quentin"]}],
+            ),
+            # repeated letters make adjacent-pair transposition a possible no-op
+            _patient(name=[{"family": "Aabbee", "given": ["Katherine"]}]),
+            # no given name: only DOB and family mutations apply
+            _patient(name=[{"family": "Smith"}]),
+        ],
+    )
+    def test_variant_always_differs_from_source(self, patient: dict) -> None:
+        for seed in range(400):
+            variant, mutation_type = generate_fuzzy_variant(
+                patient, rng=random.Random(seed)
+            )
+            assert variant != patient, f"seed {seed}: {mutation_type} was a no-op"
+            assert mutation_type in MUTATIONS
+
+    def test_every_applicable_type_is_still_reachable(self) -> None:
+        """Retrying must not starve a mutation that only sometimes no-ops (dob_typo
+        lands on an invalid calendar date for some random digits)."""
+        patient = _patient(name=[{"family": "Smithson", "given": ["Katherine"]}])
+        seen = {
+            generate_fuzzy_variant(patient, rng=random.Random(seed))[1]
+            for seed in range(1500)
+        }
+        assert {"dob_typo", "family_transpose", "given_nickname"} <= seen
+
+    def test_patient_with_nothing_to_mutate_is_returned_unchanged(self) -> None:
+        empty = {"resourceType": "Patient", "id": "p0", "name": [{"family": ""}]}
+        variant, mutation_type = generate_fuzzy_variant(empty, rng=random.Random(0))
+        assert variant == empty
+        assert mutation_type in MUTATIONS
 
 
 class TestMutateDob:

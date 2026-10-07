@@ -163,6 +163,8 @@ def generate_raw_pairs(
     for idx, p in enumerate(patients):
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(p, rng=rng)
+            if variant == p:
+                continue  # nothing to mutate (no DOB, no usable name)
             yield RawPair(
                 pair_id=f"{p['id']}::{mutation_type}",
                 query_patient=p,
