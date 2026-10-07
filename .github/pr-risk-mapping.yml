@@ -62,7 +62,7 @@ type_keywords:
   upgrade: ["upgrade"]
   docs: ["docs", "documentation", "readme"]
   bug: ["fix", "bug", "resolve", "correct", "regression", "crash", "broken"]
-  feature: ["feat", "add ", "adds ", "added ", "implement", "support ", "enable", "introduce"]
+  feature: ["feat", "add ", "adds ", "added ", "implement", "support ", "enable", "introduce", "scaffold"]
   refactor: ["refactor", "change ", "rename", "cleanup", "clean up", "restructure", "extract", "simplify", "sync "]
 
 # semver — mandatory on every PR (org mandate, EA review 2026-09-03), as an
@@ -97,6 +97,7 @@ semver_minor_title_keywords:
   - "feat"
   - "feature"
   - "add "
+  - "scaffold"
 
 # If every changed file matches one of these globs, the PR gets semver:none
 # (no release-worthy contract change) rather than a version bump. Checked
