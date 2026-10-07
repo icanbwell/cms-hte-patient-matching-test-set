@@ -17,6 +17,13 @@ high_risk_paths:
   - "evaluation/case_exclusions.py" # decides which true matches the benchmark contains
   - "evaluation/mutations.py" # generates the positives; changes shift every recall metric
   - "evaluation/hard_negatives.py" # generates the negatives; changes shift FPR
+  - "evaluation/release_gate.py" # the release gate itself; loosening it changes what ships
+  - "evaluation/audit.py" # computes the metrics the gate evaluates
+  - "evaluation/identity_guard.py" # same-person guard behind negative-label validity
+  - "evaluation/labeled_pairs.py" # assembles the pairs tier
+  - "evaluation/population_cases.py" # assembles the population tier
+  - ".github/workflows/*" # CI and merge gates
+  - ".github/pr-risk-mapping.yml" # this file defines the labels that gate merges
 
 # Title substrings (case-insensitive) that force risk:deep-review.
 high_risk_title_keywords:
@@ -60,10 +67,10 @@ type_keywords:
   migration: ["migration", "migrate"]
   dependency: ["bump", "dependabot", "deps:", "dependency"]
   upgrade: ["upgrade"]
-  docs: ["docs", "documentation", "readme"]
-  bug: ["fix", "bug", "resolve", "correct", "regression", "crash", "broken"]
-  feature: ["feat", "add ", "adds ", "added ", "implement", "support ", "enable", "introduce", "scaffold"]
-  refactor: ["refactor", "change ", "rename", "cleanup", "clean up", "restructure", "extract", "simplify", "sync "]
+  docs: ["docs", "documentation", "readme", "design doc", "document ", "methodology"]
+  bug: ["fix", "bug", "resolve", "correct", "regression", "crash", "broken", "never ", "validity", "remove ", "drop "]
+  feature: ["feat", "add ", "adds ", "added ", "implement", "support ", "enable", "introduce", "scaffold", "drift", "realistic", "regenerat", "session"]
+  refactor: ["refactor", "change ", "rename", "cleanup", "clean up", "restructure", "extract", "simplify", "sync ", "move "]
 
 # semver — mandatory on every PR (org mandate, EA review 2026-09-03), as an
 # integration-risk signal distinct from risk:* (risk = how much scrutiny;
@@ -98,6 +105,9 @@ semver_minor_title_keywords:
   - "feature"
   - "add "
   - "scaffold"
+  - "drift"
+  - "realistic"
+  - "regenerat"
 
 # If every changed file matches one of these globs, the PR gets semver:none
 # (no release-worthy contract change) rather than a version bump. Checked
