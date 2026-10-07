@@ -1,0 +1,109 @@
+# Per-repo PR risk mapping — filled in once during pr-label-classifier's adoption
+# checklist, then read on every push by .github/workflows/pr-label-classify.yml
+# (via .github/scripts/classify_pr.py). Design/rationale:
+# plugins/software-developers/skills/pr-label-classifier/references/classification.md
+#
+# Risk is defined per repo: name what's actually risky HERE, don't inherit a
+# generic rule. E.g. for a FHIR composition service: dedup/identity logic,
+# clinical code mapping, anything that drops or suppresses records. For a docs
+# or skill-marketplace repo, "risky" looks completely different — maybe nothing
+# ever qualifies as high_risk_paths, and small_diff_line_threshold can be large.
+
+# Glob patterns (fnmatch, matched against each changed file's repo-relative
+# path) that always force risk:deep-review, regardless of diff size or tests.
+high_risk_paths:
+  - "evaluation/cases/*.jsonl" # the released benchmark data; a change reaches every consumer that pins a tag
+  - "evaluation/release_thresholds*.json" # the release gate's floors and ceilings
+  - "evaluation/case_exclusions.py" # decides which true matches the benchmark contains
+  - "evaluation/mutations.py" # generates the positives; changes shift every recall metric
+  - "evaluation/hard_negatives.py" # generates the negatives; changes shift FPR
+
+# Title substrings (case-insensitive) that force risk:deep-review.
+high_risk_title_keywords:
+  - "breaking"
+  - "BREAKING CHANGE"
+  - "migration"
+
+# A PR under this many total changed lines (additions + deletions) is a
+# candidate for risk:auto-approve; at or above it, risk:standard (unless a
+# high_risk_* trigger above already applies). Calibrate to this repo's own
+# typical PR size — don't copy another repo's number.
+small_diff_line_threshold: 50
+
+# If true, a change must also touch a file matching test_path_patterns to be
+# eligible for risk:auto-approve; otherwise it's capped at risk:standard.
+require_tests_for_auto_approve: true
+
+test_path_patterns:
+  - "**/*test*"
+  - "**/*spec*"
+
+# type:* keyword mapping — title substrings (case-insensitive), first match
+# wins per type, first type listed wins overall. A PR matching none of these
+# gets no type:* label — add a keyword here rather than leaving it to guess.
+#
+# Measured against ui-platform's own PR history (EA-1466, #5126): the narrow
+# keyword lists below (pre-2026-10) left 9 of the last 30 merged PRs without
+# a classifier-produced type:* — 6 needed a human to hand-apply one, 3 got
+# none at all. The synonyms here are that measurement's generic, non-repo-
+# specific widening; trailing-space entries (e.g. "add ") are the existing
+# substring-false-positive guard (so "add " doesn't also match "address"),
+# applied the same way to every new short/generic word. `docs` is checked
+# before `bug`/`feature` so a conventional-commit title combining the
+# "docs:" prefix with a body word like "fix"/"add " (e.g. "docs: fix typo")
+# still resolves to type:docs. If this repo's own PR titles have a recurring
+# word that isn't here, add it — don't wait for another repo to measure the
+# same gap independently.
+type_keywords:
+  security: ["security", "cve", "vuln", "sanitize"]
+  incident: ["incident", "hotfix", "sev1", "sev2"]
+  migration: ["migration", "migrate"]
+  dependency: ["bump", "dependabot", "deps:", "dependency"]
+  upgrade: ["upgrade"]
+  docs: ["docs", "documentation", "readme"]
+  bug: ["fix", "bug", "resolve", "correct", "regression", "crash", "broken"]
+  feature: ["feat", "add ", "adds ", "added ", "implement", "support ", "enable", "introduce"]
+  refactor: ["refactor", "change ", "rename", "cleanup", "clean up", "restructure", "extract", "simplify", "sync "]
+
+# semver — mandatory on every PR (org mandate, EA review 2026-09-03), as an
+# integration-risk signal distinct from risk:* (risk = how much scrutiny;
+# semver = how much this changes the contract). Unlike risk/type, this axis
+# always resolves to one of the four values below — never left unlabeled.
+#
+# If this repo already runs bwell-sdk/health-data-service's older bare-word
+# scheme, override the label NAMES here to match it instead of migrating:
+#   semver_labels:
+#     major: "Major"
+#     minor: "Minor"
+#     patch: "Patch"
+#     none: "do-not-release"
+# Leave unset to use the semver:major|minor|patch|none default names.
+# This repo's existing labels are the bare-word scheme (Major/Minor/Patch).
+semver_labels:
+  major: "Major"
+  minor: "Minor"
+  patch: "Patch"
+  none: "do-not-release"
+
+# Title substrings/markers forcing semver:major (or your override). The
+# conventional-commit breaking marker (`feat!:`, `fix!:`) is always checked
+# in addition to these.
+semver_major_title_keywords:
+  - "breaking"
+  - "breaking change"
+
+# Title substrings forcing semver:minor, checked after major and none.
+semver_minor_title_keywords:
+  - "feat"
+  - "feature"
+  - "add "
+
+# If every changed file matches one of these globs, the PR gets semver:none
+# (no release-worthy contract change) rather than a version bump. Checked
+# after major, before minor — a breaking docs typo still needs `!:` or a
+# breaking-title-keyword to register as major.
+semver_none_path_patterns:
+  - "**/*.md"
+  - "docs/**"
+  - "**/*test*"
+  - "**/*spec*"
