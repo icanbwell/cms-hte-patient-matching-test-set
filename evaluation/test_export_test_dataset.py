@@ -176,3 +176,40 @@ class TestWriteJsonl:
         out_path = tmp_path / "nested" / "dir" / "cases.jsonl"
         write_jsonl(records, out_path)
         assert out_path.exists()
+
+
+def _named_patient(id_: str, family: str, zip_code: str, birth_date: str):
+    patient = _patient(id_, family=family, given="Pat")
+    patient["birthDate"] = birth_date
+    patient["address"][0]["postalCode"] = zip_code
+    return patient
+
+
+class TestIncludeNameCollisionNegatives:
+    def _patients(self):
+        return [
+            _named_patient("p1", "Smith", "10001", "1980-01-01"),
+            _named_patient("p2", "Smyth", "20002", "1990-05-05"),
+        ]
+
+    def test_default_includes_name_collision_negatives(self):
+        with_flag = build_test_case_records(self._patients())
+        without_flag = build_test_case_records(
+            self._patients(), include_name_collision_negatives=False
+        )
+        assert len(with_flag) > len(without_flag)
+
+    def test_disabling_removes_only_name_collision_pairs(self):
+        with_ids = {r.case_id for r in build_test_case_records(self._patients())}
+        without_ids = {
+            r.case_id
+            for r in build_test_case_records(
+                self._patients(), include_name_collision_negatives=False
+            )
+        }
+        assert without_ids < with_ids
+        assert all(
+            not r.expected_match
+            for r in build_test_case_records(self._patients())
+            if r.case_id in with_ids - without_ids
+        )

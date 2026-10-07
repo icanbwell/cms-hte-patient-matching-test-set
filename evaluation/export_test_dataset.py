@@ -124,6 +124,7 @@ def build_test_case_records(
     n_fuzzy_variants_per_patient: int = 1,
     include_normalization_edge_cases: bool = True,
     include_special_populations: bool = True,
+    include_name_collision_negatives: bool = True,
     institutional_group_size: int = 3,
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
@@ -141,6 +142,14 @@ def build_test_case_records(
     1.0). Pass a different lookup (e.g. evaluation/prevalence_estimates.py's
     real, cited estimates) to apply real-world-prevalence weighting without
     touching this function.
+
+    `include_name_collision_negatives=False` skips
+    hard_negatives.mine_name_collision_negatives() - per that function's own
+    docstring, it's effectively O(n^2) at scale (measured ~142s at n=16000)
+    unlike every other generator here, so callers feeding this more than the
+    "low tens of thousands" of patients SYNTHETIC_DATA_SETUP.md warns about
+    (e.g. export_full_onc_dataset.py, one full ~110K-record ONC shard at a
+    time) should disable it rather than let it dominate runtime.
     """
     records = []
     for raw in generate_raw_pairs(
@@ -148,6 +157,7 @@ def build_test_case_records(
         n_fuzzy_variants_per_patient=n_fuzzy_variants_per_patient,
         include_normalization_edge_cases=include_normalization_edge_cases,
         include_special_populations=include_special_populations,
+        include_name_collision_negatives=include_name_collision_negatives,
         institutional_group_size=institutional_group_size,
         donors=donors,
         profile=profile,

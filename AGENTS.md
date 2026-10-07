@@ -160,6 +160,15 @@ PYTHONPATH=. uv run python evaluation/export_population_dataset.py  # writes pop
 SAMPLE_SIZE=20000 PYTHONPATH=. uv run python evaluation/labeled_pairs.py   # override sample size
 ```
 
+Generate from the full 9-shard ONC dataset (~1,000,000 records), one shard at a time rather than
+concatenating all 9 into one in-memory list — see "Memory & scale" below:
+```
+make generate-full-dataset   # PYTHONPATH=. uv run python evaluation/export_full_onc_dataset.py
+# writes evaluation/cases/full_labeled_pairs.jsonl, full_population_candidates.jsonl,
+# full_population_queries.jsonl — deliberately not the same filenames as the sample_/population_
+# files above, since those are the committed, curated sample consumers already depend on.
+```
+
 Lint/typecheck just the files you're touching:
 ```
 uv run ruff check evaluation/mutations.py evaluation/hard_negatives.py
