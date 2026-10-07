@@ -434,14 +434,14 @@ def generate_fuzzy_variant(
 
     remaining = list(MUTATIONS)
     while True:
-        mutation_type = rng.choice(remaining)
+        drawn = rng.choice(remaining)
         for _ in range(_MAX_ATTEMPTS_PER_MUTATION):
-            variant = MUTATIONS[mutation_type](patient, rng)
+            variant = MUTATIONS[drawn](patient, rng)
             if variant != patient:
-                return variant, mutation_type
-        remaining.remove(mutation_type)
+                return variant, drawn
+        remaining.remove(drawn)
         if not remaining:
-            return variant, mutation_type
+            return variant, drawn
 
 
 # Each MUTATIONS key targets exactly one of these three top-level fields.
