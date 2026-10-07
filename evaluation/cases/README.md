@@ -536,6 +536,14 @@ other true-match/hard-negative/special-population category is present at full sc
 
 ## Dataset changelog
 
+- **BAI-1061 (regenerated cases)** - `sample_labeled_pairs.jsonl` and `population_*.jsonl` regenerated
+  at the default seed with the generators as of the case-exclusion mechanism (rule 29 excluded in
+  code) and the no-op fuzzy-variant fix (#20). `sample_labeled_pairs.jsonl`: 14,159 rows (13,577
+  true matches, 582 non-matches); 378 rule-29-only true matches excluded. Population tier: 2,000
+  queries, 15,702 candidates; 413 rule-29-only candidates excluded; the pools now include
+  `::household::constructed` decoys. Not row-comparable to 0.0.3 (the seed stream shifted), so
+  consumers re-pin.
+
 - **BAI-1061 (case exclusions)** - `case_exclusions.py` drops true-match pairs the CMS spec cannot
   link, at generation time in `labeled_pairs.generate_raw_pairs` and
   `population_cases.build_population_dataset`; negatives are never dropped. The first rule,
