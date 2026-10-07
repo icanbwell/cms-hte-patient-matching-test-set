@@ -53,6 +53,18 @@ class TestGenerateRawPairs:
         assert len(fuzzy_variants) == len(patients)
         assert all(p.is_true_match for p in fuzzy_variants)
 
+    def test_patient_with_nothing_to_mutate_gets_no_fuzzy_variant_pair(self) -> None:
+        empty = {"resourceType": "Patient", "id": "p0", "name": [{"family": ""}]}
+        pairs = list(generate_raw_pairs([empty], seed=0))
+        assert [p for p in pairs if p.strata.get("pair_type") == "fuzzy_variant"] == []
+
+    def test_no_fuzzy_variant_pair_is_identical_to_its_source(self) -> None:
+        patients = [_patient(f"p{i}") for i in range(60)]
+        pairs = list(generate_raw_pairs(patients, seed=0))
+        fuzzy = [p for p in pairs if p.strata.get("pair_type") == "fuzzy_variant"]
+        assert len(fuzzy) == len(patients)
+        assert all(p.query_patient != p.candidate_patient for p in fuzzy)
+
     def test_true_match_pairs_are_labeled_with_the_mutation_applied(self) -> None:
         pairs = list(generate_raw_pairs([_patient("p1")], seed=0))
         (pair,) = [p for p in pairs if p.strata.get("pair_type") == "fuzzy_variant"]

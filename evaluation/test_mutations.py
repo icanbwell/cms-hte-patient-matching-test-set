@@ -44,6 +44,83 @@ def _patient(**overrides):
     return base
 
 
+class TestRandomFuzzyVariantNeverEmitsNoopSwap:
+    """A pair labeled `dob_swap` must actually transpose the date."""
+
+    @pytest.mark.parametrize("birth_date", ["1990-06-20", "2000-07-07", "1975-11-28"])
+    def test_ineligible_patient_never_gets_a_dob_swap_label(
+        self, birth_date: str
+    ) -> None:
+        patient = _patient(birthDate=birth_date)
+        for seed in range(300):
+            _, mutation_type = generate_fuzzy_variant(patient, rng=random.Random(seed))
+            assert mutation_type != "dob_swap", f"seed {seed}"
+
+    def test_eligible_patient_still_gets_real_swaps(self) -> None:
+        patient = _patient(birthDate="2000-03-07")
+        swaps = []
+        for seed in range(300):
+            variant, mutation_type = generate_fuzzy_variant(
+                patient, rng=random.Random(seed)
+            )
+            if mutation_type == "dob_swap":
+                swaps.append(variant["birthDate"])
+        assert swaps, "dob_swap was never drawn for an eligible patient"
+        assert set(swaps) == {"2000-07-03"}
+
+    def test_explicit_dob_swap_request_is_still_honoured_as_a_noop(self) -> None:
+        """Only the random draw is gated; an explicit request keeps its contract."""
+        patient = _patient(birthDate="1990-06-20")
+        variant, mutation_type = generate_fuzzy_variant(
+            patient, "dob_swap", rng=random.Random(0)
+        )
+        assert mutation_type == "dob_swap"
+        assert variant["birthDate"] == "1990-06-20"
+
+
+class TestRandomFuzzyVariantNeverEmitsNoop:
+    """A random fuzzy variant must differ from its source whenever any mutation can."""
+
+    @pytest.mark.parametrize(
+        "patient",
+        [
+            _patient(),
+            # day > 12 (no swap), name with no known nickname
+            _patient(
+                birthDate="1990-06-20",
+                name=[{"family": "Zzyzxx", "given": ["Quentin"]}],
+            ),
+            # repeated letters make adjacent-pair transposition a possible no-op
+            _patient(name=[{"family": "Aabbee", "given": ["Katherine"]}]),
+            # no given name: only DOB and family mutations apply
+            _patient(name=[{"family": "Smith"}]),
+        ],
+    )
+    def test_variant_always_differs_from_source(self, patient: dict) -> None:
+        for seed in range(400):
+            variant, mutation_type = generate_fuzzy_variant(
+                patient, rng=random.Random(seed)
+            )
+            assert variant != patient, f"seed {seed}: {mutation_type} was a no-op"
+            assert mutation_type in MUTATIONS
+
+    def test_every_applicable_type_is_still_reachable(self) -> None:
+        """Retrying must not starve a mutation that only sometimes no-ops (dob_typo
+        lands on an invalid calendar date for some random digits)."""
+        patient = _patient(name=[{"family": "Smithson", "given": ["Katherine"]}])
+        seen = {
+            generate_fuzzy_variant(patient, rng=random.Random(seed))[1]
+            for seed in range(1500)
+        }
+        assert {"dob_typo", "family_transpose", "given_nickname"} <= seen
+
+    def test_patient_with_nothing_to_mutate_is_returned_unchanged(self) -> None:
+        empty = {"resourceType": "Patient", "id": "p0", "name": [{"family": ""}]}
+        variant, mutation_type = generate_fuzzy_variant(empty, rng=random.Random(0))
+        assert variant == empty
+        assert mutation_type in MUTATIONS
+
+
 class TestMutateDob:
     @pytest.mark.parametrize("error_type", DOB_ERROR_TYPES)
     def test_changes_birth_date_deterministically(self, error_type: str) -> None:
