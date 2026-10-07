@@ -48,7 +48,7 @@ Patient = Dict[str, Any]
 _nick_namer: NickNamer | None = None
 
 
-def _get_nick_namer() -> NickNamer:
+def get_nick_namer() -> NickNamer:
     global _nick_namer
     if _nick_namer is None:
         _nick_namer = NickNamer()
@@ -294,7 +294,7 @@ def substitute_nickname(
     value = _name_value(patient, "given", name_index=name_index)
     if not value:
         return patient
-    nicknames = {n for n in _get_nick_namer().nicknames_of(value.lower()) if n}
+    nicknames = {n for n in get_nick_namer().nicknames_of(value.lower()) if n}
     if not nicknames:
         return patient
     _set_name_value(

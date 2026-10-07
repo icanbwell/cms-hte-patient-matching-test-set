@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Sequence
 
+from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
 from export_inputs import load_profile, load_sample_and_donors
 from labeled_pairs import DEFAULT_SAMPLE_SIZE, generate_raw_pairs
@@ -129,6 +130,7 @@ def build_test_case_records(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
     frequency_lookup: FrequencyLookup = uniform_frequency,
 ) -> List[LabeledCaseRecord]:
@@ -162,6 +164,7 @@ def build_test_case_records(
         donors=donors,
         profile=profile,
         households=households,
+        exclusions=exclusions,
         seed=seed,
     ):
         rationale = format_rationale(dict(raw.strata))
@@ -212,10 +215,12 @@ if __name__ == "__main__":
     sample_size = int(os.environ.get("SAMPLE_SIZE", DEFAULT_SAMPLE_SIZE))
     # One shard only - see this module's and labeled_pairs.py's docstrings.
     patients, donors = load_sample_and_donors(sample_size)
+    exclusions = ExclusionPolicy()
     records = build_test_case_records(
         patients,
         donors=donors,
         profile=load_profile(),
+        exclusions=exclusions,
         frequency_lookup=researched_frequency,
     )
     output_path = Path(os.environ.get("OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH)))
@@ -227,3 +232,4 @@ if __name__ == "__main__":
         f"ONC patients (one shard, sampled to SAMPLE_SIZE={sample_size}) to "
         f"{output_path}"
     )
+    print(f"Excluded true-match pairs (case_exclusions.py): {exclusions.summary()}")

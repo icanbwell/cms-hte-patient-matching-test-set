@@ -203,8 +203,10 @@ real SSN or first+family+DOB.
   or extending this file" below re-run them. **The committed files are curated snapshots, not
   byte-for-byte regenerable outputs:**
   1. The committed positives were hand-filtered by BAI-1061 (317 rule-29-only positives removed).
-     No code reproduces that filter, so regenerating yields 11,539 positives instead of the
-     committed 11,222.
+     That filter is now code (`case_exclusions.py`, applied inside both generators), so
+     regenerating no longer needs a hand edit. It reproduces 316 of the 317 removals on the
+     pre-filter data (and drops 3 the hand filter kept), so the regenerated positive count is not
+     11,222. See the changelog entry below.
   2. BAI-1067 refreshed only the negatives (a negatives-only migration), so regenerating
      `sample_labeled_pairs.jsonl` reproduces the committed negatives but not the positives.
   3. The committed population tier was not refreshed for constructed households: regenerating
@@ -534,6 +536,20 @@ other true-match/hard-negative/special-population category is present at full sc
 
 ## Dataset changelog
 
+- **BAI-1061 (case exclusions)** - `case_exclusions.py` drops true-match pairs the CMS spec cannot
+  link, at generation time in `labeled_pairs.generate_raw_pairs` and
+  `population_cases.build_population_dataset`; negatives are never dropped. The first rule,
+  `rule_29_removed`, drops a pair when a DOB outside +/-1 day leaves removed rule 29 (First Name* +
+  Last Name* + Phone + ZIP) as the only link: names fuzzy (Damerau-Levenshtein <= 1, nickname-,
+  diacritic- and punctuation-insensitive), phone and ZIP equal, and none of the 12 DOB-free rules
+  (13-22, 25, 26) matching. Measured against the pre-filter data (`cf5aaa1^`): 316 of the 317 hand
+  removals reproduced, plus 3 pairs the hand filter kept. Phones follow the engine (10-digit NANP,
+  placeholders ignored), ZIP+4 must match exactly, names ignore whitespace and diacritics, and
+  nicknames come from the primary given name only.
+  At the default seed the export reports 336 pairs and 368 population candidates excluded. The
+  population top-up RNG is now seeded per query, so an exclusion cannot re-roll another query's pool. To add an
+  exclusion, register an `ExclusionRule` in `DEFAULT_RULES` (steps in the module docstring).
+
 - **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match
   pairs that could be the same person (shared real SSN, or identical first name + family + DOB) were
   removed. `::sibling` case ids changed, and a new `::household_constructed` id class was added
@@ -664,9 +680,9 @@ sharing, no SSN drops), so list those keys when supplying a profile.
 
 What this is not:
 
-- **Not the committed set.** These files are unfiltered for CMS rule 29 (BAI-1061 removed such positives
-  from the committed files by hand; no code reproduces that filter) and the new drift positives are not
-  yet verified against the CMS reference algorithm. Treat them as a release candidate.
+- **Not the committed set.** The rule-29 exclusion now applies here too (`case_exclusions.py`), but the
+  new drift positives are not yet verified against the CMS reference algorithm. Treat them as a release
+  candidate.
 - **Most households are unrelated real records at one address** (roommates, blended families whose
   surnames differ). The sample is too small to mine family structure; the report counts how many children
   were placed with a same-surname adult.

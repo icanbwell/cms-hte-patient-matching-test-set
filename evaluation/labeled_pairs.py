@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Sequence
 
+from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
 from hard_negatives import (
     mine_name_collision_negatives,
@@ -120,7 +121,7 @@ def _effective_profile(
     return (profile or DriftProfile()).without(*off)
 
 
-def generate_raw_pairs(
+def _generate_all_raw_pairs(
     patients: List[Patient],
     *,
     n_fuzzy_variants_per_patient: int = 1,
@@ -354,6 +355,66 @@ def generate_raw_pairs(
                     "category": institution_type,
                 },
             )
+
+
+def generate_raw_pairs(
+    patients: List[Patient],
+    *,
+    n_fuzzy_variants_per_patient: int = 1,
+    include_normalization_edge_cases: bool = True,
+    include_special_populations: bool = True,
+    include_compound_variants: bool = True,
+    n_compound_mutations: int = 2,
+    include_ssn_dropped: bool = True,
+    include_marriage_variant: bool = True,
+    include_phone_variant: bool = True,
+    include_sibling_negatives: bool = True,
+    include_name_collision_negatives: bool = True,
+    sibling_max_age_gap_years: int = 3,
+    household_constructed_max: int = DEFAULT_HOUSEHOLD_MAX_PAIRS,
+    placeholder_collision_max: int = 100,
+    name_collision_max_distance: int = 1,
+    institutional_group_size: int = 3,
+    donors: Sequence[Patient] = (),
+    profile: DriftProfile | None = None,
+    households: Sequence[Sequence[str]] = (),
+    exclusions: ExclusionPolicy | None = None,
+    seed: int = 0,
+) -> Iterator[RawPair]:
+    """Yield RawPairs (see `_generate_all_raw_pairs` for the categories) minus
+    the true-match pairs the exclusion policy drops (case_exclusions.py;
+    default: DEFAULT_RULES). Negatives are never dropped. Pass an
+    `ExclusionPolicy` to read its counts afterwards, or `no_exclusions()` to
+    keep every generated pair. The parameters are spelled out, not `**kwargs`,
+    so mypy checks every call."""
+    policy = exclusions if exclusions is not None else ExclusionPolicy()
+    for pair in _generate_all_raw_pairs(
+        patients,
+        n_fuzzy_variants_per_patient=n_fuzzy_variants_per_patient,
+        include_normalization_edge_cases=include_normalization_edge_cases,
+        include_special_populations=include_special_populations,
+        include_compound_variants=include_compound_variants,
+        n_compound_mutations=n_compound_mutations,
+        include_ssn_dropped=include_ssn_dropped,
+        include_marriage_variant=include_marriage_variant,
+        include_phone_variant=include_phone_variant,
+        include_sibling_negatives=include_sibling_negatives,
+        include_name_collision_negatives=include_name_collision_negatives,
+        sibling_max_age_gap_years=sibling_max_age_gap_years,
+        household_constructed_max=household_constructed_max,
+        placeholder_collision_max=placeholder_collision_max,
+        name_collision_max_distance=name_collision_max_distance,
+        institutional_group_size=institutional_group_size,
+        donors=donors,
+        profile=profile,
+        households=households,
+        seed=seed,
+    ):
+        if pair.is_true_match and policy.excludes(
+            pair.query_patient, pair.candidate_patient
+        ):
+            continue
+        yield pair
 
 
 if __name__ == "__main__":
