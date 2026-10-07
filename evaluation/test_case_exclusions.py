@@ -22,7 +22,7 @@ def _patient(id_: str = "p1", **overrides: Any) -> Dict[str, Any]:
         "id": id_,
         "name": [{"family": "Aamodt", "given": ["Allison"]}],
         "birthDate": "1976-03-24",
-        "telecom": [{"system": "phone", "value": "718-124-7797"}],
+        "telecom": [{"system": "phone", "value": "718-224-7797"}],
         "address": [{"line": ["571 Elton St"], "postalCode": "11208"}],
         "identifier": [],
     }
@@ -170,3 +170,96 @@ class TestGeneratorsApplyThePolicy:
                     case.query_patient, dataset.candidates[match_id]
                 )
         assert policy.counts["rule_29_removed"] > 0
+
+
+class TestEngineFidelity:
+    """Cases where the predicate must follow the engine's normalization."""
+
+    def _dropped(self, p, **overrides):
+        return only_matchable_by_removed_rule_29(
+            p, _variant(p, birthDate="1976-05-24", **overrides)
+        )
+
+    def test_dob_two_days_apart_is_outside_tolerance(self):
+        p = _patient()
+        assert only_matchable_by_removed_rule_29(p, _variant(p, birthDate="1976-03-26"))
+
+    def test_malformed_dob_fails_closed(self):
+        p = _patient()
+        assert only_matchable_by_removed_rule_29(p, _variant(p, birthDate="1976-13"))
+
+    def test_zip_plus_four_must_match_exactly(self):
+        p = _patient(address=[{"line": ["1 A St"], "postalCode": "10001-1111"}])
+        other = [{"line": ["1 A St"], "postalCode": "10001-2222"}]
+        assert not self._dropped(p, address=other)
+        assert self._dropped(p, address=list(p["address"]))
+
+    def test_placeholder_phone_is_not_a_shared_phone(self):
+        dummy = [{"system": "phone", "value": "555-555-5555"}]
+        p = _patient(telecom=dummy)
+        assert not self._dropped(p, telecom=list(dummy))
+
+    def test_phone_with_leading_country_code_matches(self):
+        p = _patient()
+        plus_one = [{"system": "phone", "value": "+1 718 224 7797"}]
+        assert self._dropped(p, telecom=plus_one)
+
+    def test_whitespace_in_names_is_ignored(self):
+        p = _patient(name=[{"family": "De La Cruz", "given": ["Allison"]}])
+        joined = [{"family": "DELACRUZ", "given": ["Allison"]}]
+        assert self._dropped(p, name=joined)
+
+    def test_transliterated_letters_match(self):
+        p = _patient(name=[{"family": "Soren", "given": ["Allison"]}])
+        slashed = [{"family": "Søren", "given": ["Allison"]}]
+        assert self._dropped(p, name=slashed)
+
+    def test_short_names_never_fuzzy_match(self):
+        p = _patient(name=[{"family": "Lee", "given": ["Allison"]}])
+        typo = [{"family": "Lea", "given": ["Allison"]}]
+        assert not self._dropped(p, name=typo)
+
+    def test_nickname_only_for_the_primary_given_name(self):
+        p = _patient(name=[{"family": "Smith", "given": ["Robert", "William"]}])
+        nick_of_secondary = [{"family": "Smith", "given": ["Wil"]}]
+        nick_of_primary = [{"family": "Smith", "given": ["Bob"]}]
+        assert not self._dropped(p, name=nick_of_secondary)
+        assert self._dropped(p, name=nick_of_primary)
+
+    def test_any_of_several_phones_can_be_the_shared_one(self):
+        p = _patient(
+            telecom=[
+                {"system": "phone", "value": "212-555-0100"},
+                {"system": "phone", "value": "718-224-7797"},
+            ]
+        )
+        other = [{"system": "phone", "value": "718-224-7797"}]
+        assert self._dropped(p, telecom=other)
+
+
+class TestPopulationExclusionIsolation:
+    def test_excluding_a_candidate_does_not_reroll_other_queries_pools(self):
+        patients = [
+            _patient(
+                f"p{i}",
+                name=[{"family": f"Familyname{i}", "given": ["Allison"]}],
+                birthDate=f"19{50 + i}-03-24",
+            )
+            for i in range(40)
+        ]
+        with_policy = build_population_dataset(
+            patients, pool_size=10, exclusions=ExclusionPolicy()
+        )
+        without = build_population_dataset(
+            patients, pool_size=10, exclusions=no_exclusions()
+        )
+        without_by_query = {c.query_id: c for c in without.cases}
+        untouched = [
+            c
+            for c in with_policy.cases
+            if set(c.expected_match_ids)
+            == set(without_by_query[c.query_id].expected_match_ids)
+        ]
+        assert untouched, "need at least one query the policy did not change"
+        for case in untouched:
+            assert case.candidate_ids == without_by_query[case.query_id].candidate_ids

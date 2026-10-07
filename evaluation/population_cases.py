@@ -149,7 +149,6 @@ def build_population_dataset(
     policy = exclusions if exclusions is not None else ExclusionPolicy()
 
     rng = random.Random(seed)
-    topup_rng = random.Random(f"{seed}:population_topup")
 
     candidates: Dict[str, Patient] = dict(by_id)
     pool_members: Dict[str, List[str]] = {pid: [] for pid in by_id}
@@ -318,7 +317,9 @@ def build_population_dataset(
                 for x in all_ids
                 if x != pid and x not in pool_seen[pid] and x not in excluded
             ]
-            topup_rng.shuffle(distractors)
+            # Per-query RNG so excluding one query's candidate cannot re-roll
+            # any other query's distractors.
+            random.Random(f"{seed}:population_topup:{pid}").shuffle(distractors)
             pool.extend(distractors[: pool_size - len(pool)])
         elif len(pool) > pool_size:
             # Never drop a true match to make room - trim decoys only.

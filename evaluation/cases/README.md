@@ -204,9 +204,9 @@ real SSN or first+family+DOB.
   byte-for-byte regenerable outputs:**
   1. The committed positives were hand-filtered by BAI-1061 (317 rule-29-only positives removed).
      That filter is now code (`case_exclusions.py`, applied inside both generators), so
-     regenerating no longer needs a hand edit. It reproduces 314 of the 317 removals on the
-     pre-filter data and also drops about 50 rule-29-only pairs the hand filter left in, so the
-     regenerated positive count is not 11,222. See the changelog entry below.
+     regenerating no longer needs a hand edit. It reproduces 316 of the 317 removals on the
+     pre-filter data (and drops 3 the hand filter kept), so the regenerated positive count is not
+     11,222. See the changelog entry below.
   2. BAI-1067 refreshed only the negatives (a negatives-only migration), so regenerating
      `sample_labeled_pairs.jsonl` reproduces the committed negatives but not the positives.
   3. The committed population tier was not refreshed for constructed households: regenerating
@@ -550,9 +550,12 @@ other true-match/hard-negative/special-population category is present at full sc
   `rule_29_removed`, drops a pair when a DOB outside +/-1 day leaves removed rule 29 (First Name* +
   Last Name* + Phone + ZIP) as the only link: names fuzzy (Damerau-Levenshtein <= 1, nickname-,
   diacritic- and punctuation-insensitive), phone and ZIP equal, and none of the 12 DOB-free rules
-  (13-22, 25, 26) matching. Measured against the pre-filter data (`cf5aaa1^`): 314 of the 317 hand
-  removals reproduced, plus 50 pairs the hand filter kept (48 of them unmatched by the current engine).
-  At the default seed the export reports 378 pairs and 413 population candidates excluded. To add an
+  (13-22, 25, 26) matching. Measured against the pre-filter data (`cf5aaa1^`): 316 of the 317 hand
+  removals reproduced, plus 3 pairs the hand filter kept. Phones follow the engine (10-digit NANP,
+  placeholders ignored), ZIP+4 must match exactly, names ignore whitespace and diacritics, and
+  nicknames come from the primary given name only.
+  At the default seed the export reports 336 pairs and 368 population candidates excluded. The
+  population top-up RNG is now seeded per query, so an exclusion cannot re-roll another query's pool. To add an
   exclusion, register an `ExclusionRule` in `DEFAULT_RULES` (steps in the module docstring).
 
 - **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match

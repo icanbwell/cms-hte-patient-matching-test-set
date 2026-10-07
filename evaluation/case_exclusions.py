@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Dict, Set, Tuple
 
-from mutations import _get_nick_namer
+from mutations import get_nick_namer
 
 Patient = Dict[str, Any]
 Predicate = Callable[[Patient, Patient], bool]
@@ -62,12 +62,19 @@ class ExclusionRule:
 # Field helpers (normalized value sets, mirroring the matching engine's
 # "any known value satisfies the field" semantics)
 # --------------------------------------------------------------------------
+# Letters NFKD leaves intact; the engine's unidecode transliterates them.
+_TRANSLITERATE = str.maketrans(
+    {"Ø": "O", "Ł": "L", "Đ": "D", "Æ": "AE", "Œ": "OE", "ß": "SS", "Þ": "TH"}
+)
+
+
 def _normalize_name(value: str) -> str:
-    """Upper-case, strip diacritics and punctuation, as the engine's name
-    normalizer does before comparing."""
-    decomposed = unicodedata.normalize("NFKD", value)
+    """Upper-case, fold diacritics and drop punctuation and all whitespace,
+    approximating the engine's ``normalize_text`` (which uses unidecode)."""
+    folded = value.upper().translate(_TRANSLITERATE)
+    decomposed = unicodedata.normalize("NFKD", folded)
     letters = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"[^A-Z0-9 ]", "", letters.upper()).strip()
+    return re.sub(r"[^A-Z0-9]", "", letters)
 
 
 def _names(patient: Patient, key: str) -> Set[str]:
@@ -83,20 +90,37 @@ def _names(patient: Patient, key: str) -> Set[str]:
 
 
 def _phones(patient: Patient) -> Set[str]:
-    digits = (
-        re.sub(r"\D", "", t.get("value") or "")
-        for t in patient.get("telecom") or []
-        if t.get("system") == "phone"
-    )
-    return {d[-10:] for d in digits if d}
+    """Usable phone numbers: 10-digit NANP shape (optional leading 1), not all
+    one digit. The engine drops placeholder and invalid numbers before
+    matching, so two such values must not count as a shared phone."""
+    out: Set[str] = set()
+    for t in patient.get("telecom") or []:
+        if t.get("system") != "phone":
+            continue
+        digits = re.sub(r"\D", "", t.get("value") or "")
+        if len(digits) == 11 and digits.startswith("1"):
+            digits = digits[1:]
+        if (
+            len(digits) == 10
+            and digits[0] in "23456789"
+            and digits[3] in "23456789"
+            and len(set(digits)) > 1
+        ):
+            out.add(digits)
+    return out
 
 
 def _zips(patient: Patient) -> Set[str]:
-    return {
-        str(a["postalCode"]).strip()[:5]
-        for a in patient.get("address") or []
-        if a.get("postalCode")
-    }
+    """Postal codes as the engine compares them: digits only, ZIP+4 kept as
+    XXXXX-XXXX, so 10001-1111 does not equal 10001-2222 or 10001."""
+    out: Set[str] = set()
+    for a in patient.get("address") or []:
+        digits = re.sub(r"[^\d]", "", str(a.get("postalCode") or ""))
+        if len(digits) == 9:
+            out.add(f"{digits[:5]}-{digits[5:]}")
+        elif digits:
+            out.add(digits)
+    return out
 
 
 def _damerau(a: str, b: str) -> int:
@@ -190,13 +214,18 @@ def _identifiers(patient: Patient) -> Dict[str, Set[str]]:
 
 
 def _first_names_with_nicknames(patient: Patient) -> Set[str]:
-    """Given names plus their known nicknames: the engine's normalizer attaches
-    nicknames to the patient and treats them as additional first-name values."""
-    givens = _names(patient, "given")
-    namer = _get_nick_namer()
-    return givens | {
-        n.upper() for g in givens for n in namer.nicknames_of(g.lower()) if n
-    }
+    """Given names plus nicknames of each name entry's primary (first) given
+    name, which is all the engine's normalizer attaches."""
+    names = _names(patient, "given")
+    namer = get_nick_namer()
+    for entry in patient.get("name") or []:
+        given = entry.get("given") or []
+        primary = _normalize_name(str(given[0])) if given and given[0] else ""
+        if primary:
+            names |= {
+                _normalize_name(n) for n in namer.nicknames_of(primary.lower()) if n
+            }
+    return names
 
 
 def _fields(patient: Patient) -> Dict[str, Set[str]]:
@@ -239,23 +268,28 @@ def only_matchable_by_removed_rule_29(query: Patient, candidate: Patient) -> boo
     link it.
 
     Rule 29 was ``First Name* + Last Name* + Phone + ZIP`` (no DOB; names fuzzy,
-    at most two fuzzy fields). The remaining DOB-using rules need a DOB within
-    +/-1 day, so only pairs outside that tolerance are considered; of those, a
-    pair is dropped unless one of the 12 DOB-free rules (13-22, 25, 26) still
-    links it. A pair that also differs in phone or ZIP never matched rule 29
-    and is kept.
+    at most two fuzzy fields). Only pairs whose DOB is outside +/-1 day are
+    considered: for those, every DOB-using rule fails, so the pair is dropped
+    unless one of the 12 DOB-free rules (13-22, 25, 26) still links it. A pair
+    with a DOB inside the tolerance is always kept, even if only rule 29 would
+    have linked it, because a rule that needs a DOB and one more differing
+    field is not decidable here. A pair that also differs in phone or ZIP never
+    matched rule 29 and is kept.
     """
     if _dob_within_tolerance(query, candidate):
         return False
-    return (
-        _fuzzy_equal(
-            _first_names_with_nicknames(query), _first_names_with_nicknames(candidate)
-        )
-        and _fuzzy_equal(_names(query, "family"), _names(candidate, "family"))
-        and bool(_phones(query) & _phones(candidate))
-        and bool(_zips(query) & _zips(candidate))
-        and not _matches_a_dob_free_rule(query, candidate)
+    first_match = _fuzzy_equal(
+        _first_names_with_nicknames(query), _first_names_with_nicknames(candidate)
     )
+    if not first_match:
+        return False
+    if not _fuzzy_equal(_names(query, "family"), _names(candidate, "family")):
+        return False
+    if not _phones(query) & _phones(candidate):
+        return False
+    if not _zips(query) & _zips(candidate):
+        return False
+    return not _matches_a_dob_free_rule(query, candidate)
 
 
 RULE_29_REMOVED = ExclusionRule(
