@@ -31,6 +31,7 @@ for this dataset copy, since there is no found duplication to contradict it.
 from __future__ import annotations
 
 import csv
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
@@ -43,6 +44,31 @@ _GENDER_MAP = {
     "F": "female",
     "U": "unknown",
 }
+
+
+# NANP exchange codes must start with 2-9. About 11% of ONC's synthetic phones
+# have an exchange starting with 1 (a few with 0), which `phonenumbers` and any
+# real validity check reject, so a matching engine silently drops the phone.
+_NANP_EXCHANGE_FIX = {"1": "2", "0": "3"}
+
+
+def make_nanp_valid(raw: str) -> str:
+    """Return `raw` with an invalid NANP exchange first digit (0/1) replaced.
+
+    Only the one digit changes, so formatting, the area code and the rest of the
+    number are preserved and the mapping is deterministic (the same input always
+    gives the same output, so records sharing a phone still share it). Strings
+    that are not a 10-digit number (optionally with a leading country code 1)
+    are returned unchanged.
+    """
+    positions = [m.start() for m in re.finditer(r"\d", raw)]
+    if len(positions) == 11 and raw[positions[0]] == "1":
+        positions = positions[1:]
+    if len(positions) != 10:
+        return raw
+    idx = positions[3]
+    fixed = _NANP_EXCHANGE_FIX.get(raw[idx])
+    return raw if fixed is None else raw[:idx] + fixed + raw[idx + 1 :]
 
 
 def _decode_sas_date(raw: str) -> str:
@@ -92,9 +118,13 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
     if row.get("DOB"):
         patient["birthDate"] = _decode_sas_date(row["DOB"])
     if row.get("PHONE"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE"]})
+        patient["telecom"].append(
+            {"system": "phone", "value": make_nanp_valid(row["PHONE"])}
+        )
     if row.get("PHONE2"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE2"]})
+        patient["telecom"].append(
+            {"system": "phone", "value": make_nanp_valid(row["PHONE2"])}
+        )
     if row.get("EMAIL"):
         patient["telecom"].append({"system": "email", "value": row["EMAIL"]})
     if row.get("ADDRESS1"):

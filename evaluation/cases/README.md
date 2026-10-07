@@ -40,7 +40,7 @@ The ONC 2017 Patient Matching Algorithm Challenge dataset: 9 alphabetically-shar
 | `SUFFIX` | `name[0].suffix` | |
 | `DOB` | `birthDate` | SAS-style day-offset from `1900-01-01` minus 2; decoded to an ISO date. Only set if the column is non-empty — the dataset's "Null" shard has intentionally-missing fields for incomplete-data testing, mirrored rather than raising |
 | `GENDER` | `gender` | `M`/`MALE`→`male`, `F`/`FEMALE`→`female`, anything else→`unknown` |
-| `PHONE`, `PHONE2`, `EMAIL` | `telecom[]` | `PHONE2` (session 14) is only ~15.1% populated in the vendored shard |
+| `PHONE`, `PHONE2`, `EMAIL` | `telecom[]` | `PHONE2` (session 14) is only ~15.1% populated in the vendored shard. Phones with an invalid NANP exchange first digit (0/1, ~11% of ONC phones) have that one digit remapped (`onc_loader.make_nanp_valid`) so a matching engine's phone validity check does not drop them |
 | `ADDRESS1`, `ADDRESS2`, `CITY`, `STATE`, `ZIP` | `address[0]` | `ADDRESS2` appended to `line` only if present |
 | `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn` |
 
