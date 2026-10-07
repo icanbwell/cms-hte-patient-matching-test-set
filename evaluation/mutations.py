@@ -70,6 +70,23 @@ def _rng(rng: random.Random | None) -> random.Random:
 DOB_ERROR_TYPES = ("day", "month", "year", "swap", "typo")
 
 
+def _can_swap_month_day(d: date) -> bool:
+    """True if transposing month and day gives a different, valid date."""
+    return d.day <= 12 and d.day != d.month
+
+
+def dob_swap_applicable(patient: Patient) -> bool:
+    """Whether a month/day transposition would actually change `patient`'s DOB.
+
+    False when `birthDate` is absent, the day is above 12 (it can't be a
+    month), or day == month (the swap is the identity).
+    """
+    raw = patient.get("birthDate")
+    if not raw:
+        return False
+    return _can_swap_month_day(date.fromisoformat(raw))
+
+
 def mutate_dob(
     patient: Patient, error_type: str = "random", *, rng: random.Random | None = None
 ) -> Patient:
@@ -103,7 +120,7 @@ def mutate_dob(
     elif error_type == "swap":
         # Month/day transposition - only meaningful when both are valid as the
         # other (day <= 12) and actually different (else it's a no-op mutation).
-        if d.day <= 12 and d.day != d.month:
+        if _can_swap_month_day(d):
             d = d.replace(month=d.day, day=d.month)
     elif error_type == "typo":
         d = _typo_digit(d, rng) or d
@@ -403,10 +420,16 @@ def generate_fuzzy_variant(
 
     Returns (mutated_patient, mutation_type_applied) so callers can record which
     mutation produced a given labeled pair (e.g. as rule_eval.LabeledPair.strata).
+    A random draw never yields a no-op `dob_swap` (see `dob_swap_applicable`).
     """
     rng = _rng(rng)
     if mutation_type == "random":
         mutation_type = rng.choice(list(MUTATIONS))
+        # A dob_swap draw for a patient whose DOB can't be transposed would be
+        # emitted as a labeled swap pair with an unchanged date. Redraw from the
+        # other mutations instead; an explicit "dob_swap" request is unchanged.
+        if mutation_type == "dob_swap" and not dob_swap_applicable(patient):
+            mutation_type = rng.choice([m for m in MUTATIONS if m != "dob_swap"])
     if mutation_type not in MUTATIONS:
         raise ValueError(f"Unknown mutation_type: {mutation_type!r}")
     return MUTATIONS[mutation_type](patient, rng), mutation_type

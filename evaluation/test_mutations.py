@@ -17,6 +17,7 @@ from mutations import (
     SSN_SYSTEM,
     abbreviate,
     count_changed_fields,
+    dob_swap_applicable,
     drop_letters,
     generate_compound_variant,
     generate_fuzzy_variant,
@@ -42,6 +43,61 @@ def _patient(**overrides):
     }
     base.update(overrides)
     return base
+
+
+class TestDobSwapApplicable:
+    @pytest.mark.parametrize(
+        "birth_date,expected",
+        [
+            ("2000-03-07", True),  # day 7 <= 12 and != month 3
+            ("2000-03-12", True),  # boundary: day 12 is still a valid month
+            ("2000-03-13", False),  # day 13 cannot be a month
+            ("1990-06-20", False),
+            ("2000-07-07", False),  # day == month: swap changes nothing
+            ("2000-12-12", False),
+        ],
+    )
+    def test_boundaries(self, birth_date: str, expected: bool) -> None:
+        assert dob_swap_applicable(_patient(birthDate=birth_date)) is expected
+
+    def test_missing_birth_date_is_not_applicable(self) -> None:
+        patient = _patient()
+        del patient["birthDate"]
+        assert dob_swap_applicable(patient) is False
+
+
+class TestRandomFuzzyVariantNeverEmitsNoopSwap:
+    """A pair labeled `dob_swap` must actually transpose the date."""
+
+    @pytest.mark.parametrize("birth_date", ["1990-06-20", "2000-07-07", "1975-11-28"])
+    def test_ineligible_patient_never_gets_a_dob_swap_label(
+        self, birth_date: str
+    ) -> None:
+        patient = _patient(birthDate=birth_date)
+        for seed in range(300):
+            _, mutation_type = generate_fuzzy_variant(patient, rng=random.Random(seed))
+            assert mutation_type != "dob_swap", f"seed {seed}"
+
+    def test_eligible_patient_still_gets_real_swaps(self) -> None:
+        patient = _patient(birthDate="2000-03-07")
+        swaps = []
+        for seed in range(300):
+            variant, mutation_type = generate_fuzzy_variant(
+                patient, rng=random.Random(seed)
+            )
+            if mutation_type == "dob_swap":
+                swaps.append(variant["birthDate"])
+        assert swaps, "dob_swap was never drawn for an eligible patient"
+        assert set(swaps) == {"2000-07-03"}
+
+    def test_explicit_dob_swap_request_is_still_honoured_as_a_noop(self) -> None:
+        """Only the random draw is gated; an explicit request keeps its contract."""
+        patient = _patient(birthDate="1990-06-20")
+        variant, mutation_type = generate_fuzzy_variant(
+            patient, "dob_swap", rng=random.Random(0)
+        )
+        assert mutation_type == "dob_swap"
+        assert variant["birthDate"] == "1990-06-20"
 
 
 class TestMutateDob:

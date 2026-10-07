@@ -58,7 +58,7 @@ transposition). 10 registered mutation types:
 | Mutation | What it does |
 |---|---|
 | `dob_day` / `dob_month` / `dob_year` | Shifts the DOB component by a small random offset (±1-3 days, ±1-2 months, ±1-2 years) |
-| `dob_swap` | Transposes month/day (e.g. `03/07` → `07/03`), only when both are valid as the other |
+| `dob_swap` | Transposes month/day (e.g. `03/07` → `07/03`), only when both are valid as the other. A random draw is only made for patients whose DOB can be transposed (day ≤ 12 and ≠ month; `dob_swap_applicable`), so every `dob_swap`-labeled pair has a real transposition. Before this, a draw for any other patient emitted a pair labeled `dob_swap` with an unchanged DOB (126 of 180 standalone swap pairs in 0.0.3) |
 | `dob_typo` | Substitutes one digit of the `YYYYMMDD` string, re-parsed to a valid calendar date |
 | `family_typo` | One random insert/delete/substitute edit on the family name |
 | `family_transpose` | Swaps one adjacent character pair in the family name |
