@@ -104,6 +104,16 @@ changed":
   surname that is not on the record, plus a donor address) is the better-founded composition. Only
   ~5.3% of the vendored ONC shard carries a mother's maiden name, so most `marriage_variant` rows
   change only the address (and the name is unchanged); the name swap is a small share by design.
+  **Caveat, a detectable tell:** the variant drops the `patient-mothersMaidenName` extension from the
+  target, and in exactly the rows where the surname changes the new surname equals that extension's value on
+  the source. A consumer that compares the target's family name to the source's mother's-maiden-name
+  extension, or that notices the target lost the extension, can recognize these matches without doing any
+  matching. In the committed files this affects 103 of the 2,000 `marriage_variant` pairs in
+  `realistic_labeled_pairs.jsonl` (117 of 2,000 in `sample_labeled_pairs.jsonl`); no other true-match
+  category drops that extension, so the artifact is specific to this scenario. Do not use the extension (or
+  strip it from both sides) when scoring a matcher, and treat `marriage_variant` surname-change results as
+  an upper bound for a matcher that reads it. The other ~95% of `marriage_variant` rows change only the
+  address and have no such tell.
 - **`phone_variant`** — swaps to the record's second phone number (ONC's `PHONE2` column,
   loaded by `onc_loader.py` starting session 14), modeling two genuinely different on-file phone
   numbers for one person. Only ~15.1% of the vendored ONC shard carries a `PHONE2` value — and of
@@ -311,18 +321,18 @@ Two JSON Lines files, split so a candidate shared across multiple queries' pools
 `population_candidates.jsonl` — one row per unique candidate:
 
 ```json
-{"id": "14065387::family_transpose", "patient": { "resourceType": "Patient", "...": "..." }}
+{"id": "8d6046d8c71c699d", "patient": { "resourceType": "Patient", "...": "..." }}
 ```
 
 `population_queries.jsonl` — one row per query:
 
 ```json
 {
-  "query_id": "14065387",
+  "query_id": "cfb6177ae2bd1e72",
   "query": { "resourceType": "Patient", "...": "..." },
-  "candidate_ids": ["14065387::family_transpose", "14065387::diacritic", "12311897", "..."],
-  "expected_match_ids": ["14065387::family_transpose", "14065387::diacritic"],
-  "rationale": "population/fuzzy_variant+normalization_edge_case"
+  "candidate_ids": ["a016e5d8c4649c0e", "37881a34f5756d3a", "5e667fca46b1f662", "..."],
+  "expected_match_ids": ["6729486562b9bfcf", "bef4e201401c28ce", "3111f2a34898876a", "..."],
+  "rationale": "population/address_move+compound_variant+fuzzy_variant+household_member_negative+marriage_variant+..."
 }
 ```
 
@@ -334,14 +344,13 @@ Two JSON Lines files, split so a candidate shared across multiple queries' pools
 | `expected_match_ids` | The subset of `candidate_ids` that are the same person as the query — **possibly empty** (a query with no known duplicate in the pool is a real, intentional case, not a bug). |
 | `rationale` | Which generation categories contributed to this pool. |
 
-A candidate id with no `::` suffix is an unmodified ONC-derived record (either the query's own
-population co-member, used as a distractor, or a mined hard-negative/household decoy). A `::`
-suffix marks a generated variant (`::family_transpose`, `::diacritic`, `::punctuation`, one of
-`mutations.MUTATIONS`' keys) or a constructed special-population candidate
-(`::household::constructed`, a same-surname record given its elder's ONC-sourced address, or
-`::institutional::<type>`, whose `address` is a fabricated, unambiguously-synthetic institutional
-address per `special_populations.py` — the underlying identity is still an ONC-derived, distinct
-record). **Known simplification, read before treating this tier as equivalent to
+Query and candidate ids in these files are opaque 16-hex hashes (see the id-hashing note above): they carry
+no variant suffix, so a candidate's role (unmodified ONC-derived record, generated variant, mined decoy, or
+constructed special-population candidate) cannot be read from its id. The raw `<ONC id>::<variant>` form is
+internal provenance and appears only as the pairwise `case_id`. Constructed special-population candidates
+(a household record given its elder's ONC-sourced address, or an institutional candidate whose `address` is a
+fabricated, unambiguously-synthetic institutional address per `special_populations.py`) are still
+ONC-derived, distinct identities. **Known simplification, read before treating this tier as equivalent to
 `labeled_pairs.py`'s institutional pairs:** `special_populations.construct_institutional_negatives()`
 fabricates the same address on *both* sides of a pair; this tier only injects the fabricated side
 into the decoy pool, so the query here keeps its ONC-sourced address. See `population_cases.py`'s module
@@ -555,6 +564,7 @@ other true-match/hard-negative/special-population category is present at full sc
 
 ### Dataset version 2 (BAI-1156)
 - Family adults (BAI-1160, second part): `family_adults.py` streams the shards for ONC-derived adults who share a surname with a child that has none and swaps 217 of them into the sample (dropping the same number of other adults from the same age band, so size and all age-band counts are unchanged), raising children with a same-surname adult 18 to 50 years older (with a home address) from 76 to 303 of 430 and, after household placement, 301 of 430 (70.0%; `audit.minors_with_same_surname_adult_share`, enforced, min 0.70, measured from the output by shared address, surname and age). The 70% target is a placeholder (`minors_with_same_surname_adult`, unsourced, Open Question 6) and a surname is only a proxy for a parent. Review fixes: (1) every adult who already covers a child is protected from the swap (the first version protected only surnames still needed, so 22 of 204 swapped-out adults, 27 by a count that lets blank surnames match, had covered a child); (2) an added parent must be 18 to 50 years older than the child (`household_assignment.MIN_PARENT_AGE_GAP`, `MAX_PARENT_AGE_GAP`, assumptions, not sourced), where the first version had no upper bound and added parents a median 52 years older (up to 91), including all 39 of the 85+ band; added parents are now a median 34 years older (18 to 50) and all are aged 18-64; household placement uses the same window; (3) an anchor or added adult needs a street address and postal code, since an adult without one cannot share an address with a child (without this 289 of 430 children shared an address with a same-surname adult even though 300 were placed with one); (4) the target is checked against the output, not just the generator's count. Reached 70.0% (301 of 430), exactly at the target: the sample-level share (303 of 430, 70.5%) loses two children to household size limits. The sample's membership changes substantially, so the realistic files change almost everywhere, and `twin_like_negative` falls from 6 to 3 pairwise rows (3 population queries) because the sample changed; none has variant first names.
+  Headroom follow-up (BAI-1160 review): the gate passed at exactly 0.70 (301 of 430) against its 0.70 floor, so any regeneration could have tripped it. The floor is unchanged; the generator now aims at the profile rate plus `export_realistic_dataset.FAMILY_ADULTS_HEADROOM` (0.05), i.e. 75%. At seed 0 it adds 239 adults (was 217), reaching 325 of 430 at sample level (75.6%) and 318 of 430 (73.95%) after household placement, as measured by the audited `minors_with_same_surname_adult_share` (was 301, 70.0%). The realistic files change again; the manifest records both `target_share` (0.70) and `generator_target_share` (0.75).
 - Age vintage (BAI-1161): the realistic set is built at `AS_OF = 2026-01-01`. Sampling still runs on ONC's own 2017 ages, then every sampled, donor and streamed decoy birth date is moved forward 9 years (month and day kept, 29 February becomes 28 February in a non-leap year), so ages and age-band shares are unchanged and ONC's youngest records are now infants. `manifest.as_of` is 2026-01-01, with `onc_as_of` and `dob_shift_years` added. The realistic gate measures ages at `AS_OF`; the committed curated files are not shifted and are audited at `ONC_AS_OF` (2017-01-01). Birth dates in `realistic_*` differ from the curated files' for the same ONC record, and the workgroup has not yet confirmed this choice (session_16 Open Question 7).
 - Family structure and same-day siblings (BAI-1160): household anchors that can take a same-surname child are chosen first, raising same-surname minors from 46 to 89 of 430 (the sample allows 91; `households.n_same_surname_possible` reports it). New `twin_like_negative` category (6 pairwise rows and 5 population queries when added; 3 and 3 after the family-adults change of the sample): same surname and birth date, first names 3 or more edits apart and not a nickname, initial or prefix truncation of one another, no near-identical SSN, and a shared phone or address (without one of those, a shared surname and birth date is a coincidence on a common surname, and such pairs are not emitted). These pairs may share a phone and address; they bypass the typo-duplicate guard and the audit's `probable_duplicate_negatives` detector by an explicit twin test. It is not a literal-twin case (see "Literal twins" above). `twin_like_negative` is a required category in the realistic gate. Review fix (BAI-1160): the first version tested only edit distance, so a nickname, initial or truncation pair (WILLIAM/BILL is 5 edits, J/JOHN 3, CHRIS/CHRISTOPHER 6) counted as twins, skipped the duplicate guard and became a negative shaped like a positive. `identity_guard.is_given_name_variant` now rejects those (equal, prefix/initial, or a pair in the `nicknames` table), `has_distinct_given_names` also rejects a pair where one record carries the other's first name as another given name or a nickname entry, and `is_probable_duplicate` flags same family name + same birth date + variant first names even with no shared phone. The SSN test is only a veto and applies when both records have a usable SSN; all 6 committed `twin_like_negative` rows have an SSN on at most one side, so a missing SSN decides nothing and the pair rests on the name test plus the shared phone or address. The audit's twin exemption no longer copies the generator: it has its own nickname table, and `twin_pairs_with_name_variants` (enforced, max 0) fails if a `twin_like_negative` row has variant first names by that table. Regenerating with the fixed rule left all 6 pairwise twin rows and 5 population twin queries unchanged and all committed files byte-identical (only `generator_fingerprint` in `realistic_manifest.json` changed): none of the 6 pairs was a variant.
 - Population queries now include searches with no true match and with exactly one (BAI-1159): `query_no_match` (0.10) and `query_single_match` (0.15) in `drift_profile.py` are placeholder shares, not measured. In the committed files 9% (curated) and 10% (realistic) of queries have 0 expected matches and 14% and 17% have 1; the rest keep every match (2 to 11). A query's `rationale` lists only the match categories whose candidates remain in its pool. `audit.zero_match_query_share` and `single_match_query_share` are enforced as minimums only (min 0.05 each, both tiers' populations): they fail if such queries all but disappear, but they do not check that the shares stay near the 0.10 and 0.15 placeholders, and no maximum is set. Run `evaluation/audit.py` for the achieved shares.
@@ -718,9 +728,9 @@ committed as the v1 release candidate, with `make audit-realistic` run in CI) fr
 | Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
 
 Measured on the generated set (seed 0): exact age bands; 2.65 patients per address (committed: 1.03);
-59% of patients share a phone and 55% an email (committed: 6% and 32%); 769 households, 301 of the 430
-children placed with a same-surname adult 18 to 50 years older at their address (70.0%, the placeholder target:
-217 ONC-derived same-surname adults were added to the sample, see `family_adults.py`; without them only 76 minors
+59% of patients share a phone and 55% an email (committed: 6% and 32%); 769 households, 318 of the 430
+children placed with a same-surname adult 18 to 50 years older at their address (73.95%; the placeholder target is 70%, the generator aims at 75% for headroom:
+239 ONC-derived same-surname adults were added to the sample, see `family_adults.py`; without them only 76 minors
 have one; the achieved share is audited as `minors_with_same_surname_adult_share`, enforced, min 0.70). Naive-baseline F1 on the population tier (as reported by `audit.py`):
 committed set phone-only 0.954 (best single field), address-only 0.845, multi-field margin 0.030;
 realistic set phone-only 0.848 (best single field), address-only 0.519, DOB-only 0.449, multi-field margin
@@ -740,8 +750,8 @@ What this is not:
   drift positives are not yet verified against the CMS reference algorithm; this is disclosed in
   `realistic_manifest.json` and below.
 - **Most households are unrelated ONC-derived records at one address** (roommates, blended families whose
-  surnames differ). 70% of children (301 of 430) share an address with a same-surname adult 18 to 50 years older, but only because
-  `family_adults.py` streams the shards and swaps 217 ONC-derived same-surname adults into the sample (dropping the
+  surnames differ). 74% of children (318 of 430) share an address with a same-surname adult 18 to 50 years older (placeholder floor 70%), but only because
+  `family_adults.py` streams the shards and swaps 239 ONC-derived same-surname adults into the sample (dropping the
   same number of other adults from the same age band, so the size and every age-band count are unchanged).
   The 70% target is a placeholder (`minors_with_same_surname_adult` in `drift_profile.py`), unsourced (Open
   Question 6), and a same-surname adult is only a proxy for a parent: mothers often have a different surname

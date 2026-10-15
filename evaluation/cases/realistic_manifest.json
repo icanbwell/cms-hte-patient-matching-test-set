@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "39126d87f2613b67753d9bb421706efa80dc922f743280e34aec59e25de5d874",
+  "generator_fingerprint": "5fffe181b21f1484870765177254717b78d0adf73889be654167330bd9612c01",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -30,8 +30,8 @@
   "sample_band_counts": {
     "0-17": 430,
     "18-64": 1224,
-    "65-84": 307,
-    "85+": 39
+    "85+": 39,
+    "65-84": 307
   },
   "onc_band_supply": {
     "0-17": 197270,
@@ -43,16 +43,17 @@
     "n_households": 769,
     "mean_size": 2.600780234070221,
     "n_minors": 430,
-    "n_same_surname_minors": 301,
-    "n_same_surname_possible": 304
+    "n_same_surname_minors": 318,
+    "n_same_surname_possible": 325
   },
   "family_adults": {
     "target_share": 0.7,
-    "n_added": 217,
+    "generator_target_share": 0.75,
+    "n_added": 239,
     "n_minors": 430,
     "minors_covered_before": 76,
-    "minors_covered_after": 303,
-    "share_achieved": 0.7046511627906977,
+    "minors_covered_after": 325,
+    "share_achieved": 0.7558139534883721,
     "parent_age_gap_bounds": [
       18,
       50
@@ -85,54 +86,54 @@
     "pairwise_per_kind_cap": 3,
     "yield_by_kind": {
       "twin": {
-        "queries": 3,
-        "kept": 3,
-        "seen": 3
+        "queries": 4,
+        "kept": 4,
+        "seen": 4
       },
       "dob_zip": {
-        "queries": 442,
-        "kept": 562,
-        "seen": 562
+        "queries": 443,
+        "kept": 574,
+        "seen": 574
       },
       "name": {
-        "queries": 733,
-        "kept": 2709,
-        "seen": 5047
+        "queries": 734,
+        "kept": 2722,
+        "seen": 5068
       },
       "sibling": {
-        "queries": 301,
-        "kept": 678,
-        "seen": 685
+        "queries": 314,
+        "kept": 652,
+        "seen": 656
       },
       "address": {
-        "queries": 1345,
-        "kept": 7968,
-        "seen": 278250
+        "queries": 1363,
+        "kept": 8037,
+        "seen": 326250
       },
       "phone": {
-        "queries": 56,
-        "kept": 56,
-        "seen": 56
+        "queries": 70,
+        "kept": 106,
+        "seen": 486
       },
       "email": {
-        "queries": 75,
-        "kept": 447,
-        "seen": 3950
+        "queries": 86,
+        "kept": 509,
+        "seen": 2424
       },
       "dob_only": {
         "queries": 1999,
-        "kept": 19961,
-        "seen": 59743
+        "kept": 19953,
+        "seen": 59653
       },
       "surname_zip": {
-        "queries": 843,
-        "kept": 4164,
-        "seen": 9260
+        "queries": 834,
+        "kept": 4161,
+        "seen": 8922
       }
     }
   },
-  "negative_share": 0.5589597434983968,
+  "negative_share": 0.560082583309139,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 30877,
+  "n_labeled_cases": 30999,
   "n_population_queries": 2000
 }
