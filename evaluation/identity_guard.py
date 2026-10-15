@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Set, Tuple
 
 from fhir_conformance import SSN_SYSTEM
+from mutations import get_nick_namer
 from text_distance import levenshtein_distance
 
 Patient = Dict[str, Any]
@@ -157,12 +158,30 @@ def is_probable_duplicate(a: Patient, b: Patient) -> bool:
     first_a, first_b = _first_name(a), _first_name(b)
     if first_a and first_a == first_b and a.get("birthDate") == b.get("birthDate"):
         return True
+    if _same_family_and_dob_with_variant_first_names(a, b):
+        return True
     key_a, key_b = identity_key_names(a), identity_key_names(b)
     return (
         key_a is not None
         and key_b is not None
         and levenshtein_distance(key_a, key_b, 1) <= 1
     )
+
+
+def _same_family_and_dob_with_variant_first_names(a: Patient, b: Patient) -> bool:
+    """Same family name and identical birth date, first names that are a
+    nickname, initial or prefix truncation of one another (WILLIAM / BILL,
+    J / JOHN, CHRIS / CHRISTOPHER): one person recorded two ways, whatever
+    contact details they share."""
+    if not (a.get("birthDate") and a.get("birthDate") == b.get("birthDate")):
+        return False
+    names_a, names_b = a.get("name") or [], b.get("name") or []
+    if not (names_a and names_b):
+        return False
+    family = normalize_token(names_a[0].get("family"))
+    if not family or family != normalize_token(names_b[0].get("family")):
+        return False
+    return is_given_name_variant(_first_name(a), _first_name(b))
 
 
 def identity_key_names(patient: Patient) -> str | None:
@@ -174,6 +193,120 @@ def identity_key_names(patient: Patient) -> str | None:
     first = normalize_token(given[0]) if given else ""
     family = normalize_token(names[0].get("family"))
     return f"{first} {family}" if first and family else None
+
+
+TWIN_MIN_GIVEN_NAME_DISTANCE = 3
+
+
+def _street_zip(patient: Patient) -> str:
+    addresses = patient.get("address") or []
+    if not addresses:
+        return ""
+    lines = addresses[0].get("line") or []
+    street = normalize_token(lines[0]) if lines else ""
+    zip_code = normalize_token(addresses[0].get("postalCode"))
+    return f"{street}|{zip_code}" if street and zip_code else ""
+
+
+def _shares_phone_or_address(a: Patient, b: Patient) -> bool:
+    if phone_set(a) & phone_set(b):
+        return True
+    address = _street_zip(a)
+    return bool(address) and address == _street_zip(b)
+
+
+def _given_tokens(patient: Patient) -> Set[str]:
+    """Normalized given-name tokens of the first name entry, plus any `use:
+    nickname` entry text; single letters are dropped (middle initials say
+    nothing about identity)."""
+    tokens: Set[str] = set()
+    names = patient.get("name") or []
+    for entry in names:
+        if entry is not names[0] and entry.get("use") != "nickname":
+            continue
+        for given in entry.get("given") or []:
+            tokens.add(normalize_token(given))
+        if entry.get("use") == "nickname":
+            tokens.add(normalize_token(entry.get("text")))
+    return {t for t in tokens if len(t) > 1}
+
+
+def _related_names(name: str) -> Set[str]:
+    namer = get_nick_namer()
+    return set(namer.nicknames_of(name)) | set(namer.canonicals_of(name))
+
+
+def is_given_name_variant(first_a: str, first_b: str) -> bool:
+    """True if two normalized first names can be the same name written two ways:
+    equal, an initial of the other (J / JOHN), a prefix truncation (CHRIS /
+    CHRISTOPHER), or a nickname/canonical pair in the `nicknames` table
+    (WILLIAM / BILL). Edit distance alone misses all three."""
+    if not (first_a and first_b):
+        return False
+    shorter, longer = sorted((first_a, first_b), key=len)
+    if longer.startswith(shorter):
+        return True
+    return first_b in _related_names(first_a) or first_a in _related_names(first_b)
+
+
+def has_distinct_given_names(a: Patient, b: Patient) -> bool:
+    """True only if the first given names are at least TWIN_MIN_GIVEN_NAME_DISTANCE
+    edits apart, are not variants of one another (`is_given_name_variant`), and
+    neither record carries the other's first name as another given name or a
+    nickname entry."""
+    first_a, first_b = _first_name(a), _first_name(b)
+    if not (first_a and first_b):
+        return False
+    if is_given_name_variant(first_a, first_b):
+        return False
+    if (
+        levenshtein_distance(first_a, first_b, TWIN_MIN_GIVEN_NAME_DISTANCE - 1)
+        < TWIN_MIN_GIVEN_NAME_DISTANCE
+    ):
+        return False
+    if first_b in _given_tokens(a) or first_a in _given_tokens(b):
+        return False
+    return not any(
+        is_given_name_variant(token_a, token_b)
+        for token_a in _given_tokens(a)
+        for token_b in _given_tokens(b)
+        if token_a == first_a or token_b == first_b
+    )
+
+
+def is_twin_pair(a: Patient, b: Patient) -> bool:
+    """True if a and b look like twins (or other same-day siblings): the same
+    family name and the same birth date, clearly different first names, no SSN
+    that matches or is one edit away, and a shared phone or address (what makes
+    them siblings and not a coincidence on a common surname).
+
+    "Clearly different" means `has_distinct_given_names`: 3+ edits apart and not
+    a nickname, initial or prefix truncation of one another. Those variants
+    (WILLIAM / BILL, J / JOHN, CHRIS / CHRISTOPHER) are one person recorded two
+    ways, so they are not twins and fall through to the duplicate guard.
+
+    The SSN check is a veto, not evidence of twinhood: it applies only when both
+    records have a usable SSN (a match or near match rules the pair out). When
+    either side has none (every committed `twin_like_negative` row) the pair
+    stands or falls on the name test above plus the shared phone or address, so
+    a missing SSN is never read as "different people"."""
+    dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
+    names_a, names_b = a.get("name") or [], b.get("name") or []
+    if not (dob_a and dob_a == dob_b and names_a and names_b):
+        return False
+    family_a = normalize_token(names_a[0].get("family"))
+    if not family_a or family_a != normalize_token(names_b[0].get("family")):
+        return False
+    if not has_distinct_given_names(a, b):
+        return False
+    ssn_a, ssn_b = ssn_of(a), ssn_of(b)
+    if (
+        ssn_a is not None
+        and ssn_b is not None
+        and levenshtein_distance(ssn_a, ssn_b, 1) <= 1
+    ):
+        return False
+    return _shares_phone_or_address(a, b)
 
 
 def looks_like_same_person(a: Patient, b: Patient) -> bool:

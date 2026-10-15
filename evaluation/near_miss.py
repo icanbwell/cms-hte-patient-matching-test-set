@@ -32,6 +32,7 @@ from identity_guard import (
     identity_key_names,
     is_possible_same_person,
     is_probable_duplicate,
+    is_twin_pair,
     normalize_token,
     phone_set,
 )
@@ -46,6 +47,7 @@ DEFAULT_POOL_PER_KIND_CAP = 8
 
 # Priority order: a record qualifying under several kinds is filed under the first.
 KINDS: Tuple[str, ...] = (
+    "twin",
     "dob_zip",
     "name",
     "sibling",
@@ -57,6 +59,7 @@ KINDS: Tuple[str, ...] = (
 )
 
 PAIR_TYPE_BY_KIND: Dict[str, str] = {
+    "twin": "twin_like_negative",
     "dob_zip": "hard_negative",
     "name": "name_collision_negative",
     "sibling": "sibling_negative",
@@ -163,6 +166,7 @@ class _QueryIndex:
         self._phone: Dict[str, List[str]] = defaultdict(list)
         self._email: Dict[str, List[str]] = defaultdict(list)
         self._dob: Dict[str, List[str]] = defaultdict(list)
+        self._family_dob: Dict[Tuple[str, str], List[str]] = defaultdict(list)
         for query_id, query in self.queries.items():
             dob, zip_, family, street = (
                 _dob(query),
@@ -186,6 +190,8 @@ class _QueryIndex:
                 self._email[email].append(query_id)
             if dob:
                 self._dob[dob].append(query_id)
+            if dob and family:
+                self._family_dob[(family, dob)].append(query_id)
 
     def keys_hit(self, record: Patient) -> Dict[str, Set[str]]:
         """query id -> the key families the record shares with that query."""
@@ -219,6 +225,9 @@ class _QueryIndex:
         if dob:
             for query_id in self._dob.get(dob, ()):
                 hit[query_id].add("dob")
+        if dob and family:
+            for query_id in self._family_dob.get((family, dob), ()):
+                hit[query_id].add("twin")
         return hit
 
 
@@ -227,6 +236,8 @@ def _classify(
 ) -> Tuple[str, Dict[str, str]] | None:
     same_family = _family(query) == _family(record)
     same_first = _first(query) == _first(record)
+    if "twin" in keys and is_twin_pair(query, record):
+        return "twin", {"family_name": _raw_family(record), "birthDate": _dob(record)}
     if "dob_zip" in keys and not same_family:
         return "dob_zip", {"postalCode": _raw_zip(record), "birthDate": _dob(record)}
     if "name" in keys and _dob(query) != _dob(record) and _zip(query) != _zip(record):
@@ -255,6 +266,10 @@ def _classify(
 
 
 def _same_person_as(query: Patient, record: Patient) -> bool:
+    if is_twin_pair(query, record):
+        # Same surname and birth date but unmistakably different first names and
+        # no near-identical SSN: a twin, which may share a phone and address.
+        return False
     return is_possible_same_person(query, record) or is_probable_duplicate(
         query, record
     )

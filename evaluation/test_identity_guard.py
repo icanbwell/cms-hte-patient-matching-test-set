@@ -8,9 +8,12 @@ import pytest
 from identity_guard import (
     SSN_SYSTEM,
     ProbableDuplicateIndex,
+    has_distinct_given_names,
     identity_key,
+    is_given_name_variant,
     is_possible_same_person,
     is_probable_duplicate,
+    is_twin_pair,
     looks_like_same_person,
     normalize_phone,
     normalize_token,
@@ -292,6 +295,166 @@ class TestProbableDuplicateIndex:
     def test_unrelated_records_match_nothing(self):
         people = self._people()
         assert ProbableDuplicateIndex(people).matching_ids(people[4]) == set()
+
+
+class TestIsTwinPair:
+    def _twins(self):
+        a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn="892-39-5115")
+        b = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn="601-22-7788")
+        for p in (a, b):
+            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        return a, b
+
+    def test_same_surname_and_birth_date_with_different_first_names(self):
+        a, b = self._twins()
+        assert is_twin_pair(a, b)
+
+    def test_a_shared_phone_is_what_the_duplicate_guard_would_have_rejected(self):
+        a, b = self._twins()
+        assert is_probable_duplicate(a, b)
+        assert is_twin_pair(a, b)
+
+    def test_a_shared_address_without_a_shared_phone_is_enough(self):
+        a, b = self._twins()
+        address = [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ]
+        for p in (a, b):
+            p["telecom"] = []
+            p["address"] = [dict(address[0])]
+        assert is_twin_pair(a, b)
+
+    def test_sharing_neither_phone_nor_address_is_a_coincidence_not_a_twin(self):
+        a, b = self._twins()
+        a["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        b["telecom"] = [{"system": "phone", "value": "212-555-0199"}]
+        assert not is_twin_pair(a, b)
+
+    def test_a_first_name_typo_is_not_a_twin(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        assert not is_twin_pair(a, _patient("b", "Katharine", "Smith", "1980-06-15"))
+
+    def test_a_different_birth_date_or_surname_is_not_a_twin(self):
+        a, _ = self._twins()
+        assert not is_twin_pair(a, _patient("b", "Beatriz", "Rivera", "2010-03-05"))
+        assert not is_twin_pair(a, _patient("b", "Beatriz", "Lopez", "2010-03-04"))
+
+    def test_a_matching_or_near_identical_ssn_is_not_a_twin(self):
+        a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn="892-39-5115")
+        same = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn="892-39-5115")
+        typo = _patient("c", "Beatriz", "Rivera", "2010-03-04", ssn="892-39-5116")
+        assert not is_twin_pair(a, same)
+        assert not is_twin_pair(a, typo)
+
+    def test_missing_names_or_dates_are_not_twins(self):
+        a, b = self._twins()
+        b["name"] = []
+        assert not is_twin_pair(a, b)
+
+
+VARIANT_PAIRS = [
+    ("William", "Bill"),
+    ("Robert", "Bob"),
+    ("Elizabeth", "Liz"),
+    ("J", "John"),
+    ("John", "J"),
+    ("Chris", "Christopher"),
+    ("Christopher", "Chris"),
+    ("Jon", "Jonathan"),
+]
+
+
+class TestGivenNameVariants:
+    @pytest.mark.parametrize("a,b", VARIANT_PAIRS)
+    def test_nickname_initial_and_truncation_pairs_are_variants(self, a, b):
+        assert is_given_name_variant(normalize_token(a), normalize_token(b))
+
+    @pytest.mark.parametrize(
+        "a,b", [("Ana", "Beatriz"), ("Jacob", "Joshua"), ("Amber", "Joellen")]
+    )
+    def test_clearly_different_names_are_not_variants(self, a, b):
+        assert not is_given_name_variant(normalize_token(a), normalize_token(b))
+
+
+class TestTwinPairRejectsNameVariants:
+    """Edit distance alone passed these (William/Bill is 5 edits), so a pair of
+    one person recorded twice skipped the duplicate guard and became a negative."""
+
+    def _pair(self, first_a, first_b, *, ssn_a=None, ssn_b=None):
+        a = _patient("a", first_a, "Rivera", "1990-01-02", ssn=ssn_a)
+        b = _patient("b", first_b, "Rivera", "1990-01-02", ssn=ssn_b)
+        for p in (a, b):
+            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        return a, b
+
+    @pytest.mark.parametrize("first_a,first_b", VARIANT_PAIRS)
+    def test_variant_pairs_are_not_twins_and_hit_the_duplicate_guard(
+        self, first_a, first_b
+    ):
+        a, b = self._pair(first_a, first_b)
+        assert not is_twin_pair(a, b)
+        assert is_probable_duplicate(a, b)
+        assert looks_like_same_person(a, b)
+
+    def test_variant_pairs_sharing_only_an_address_still_hit_the_duplicate_guard(
+        self,
+    ):
+        a, b = self._pair("William", "Bill")
+        address = {"line": ["1 Main St"], "postalCode": "10001"}
+        for p in (a, b):
+            p["telecom"] = []
+            p["address"] = [dict(address)]
+        assert not is_twin_pair(a, b)
+        assert is_probable_duplicate(a, b)
+
+    def test_a_nickname_entry_or_second_given_name_equal_to_the_other_first_name(
+        self,
+    ):
+        a, b = self._pair("Ana", "Beatriz")
+        b["name"][0]["given"] = ["Beatriz", "Ana"]
+        assert not has_distinct_given_names(a, b)
+        a, b = self._pair("Ana", "Beatriz")
+        a["name"].append({"use": "nickname", "text": "Bea"})
+        assert not has_distinct_given_names(a, b)
+        assert not is_twin_pair(a, b)
+
+    def test_a_shared_middle_initial_does_not_hide_a_real_twin(self):
+        a, b = self._pair("Joellen", "Amber")
+        a["name"][0]["given"] = ["Joellen", "L"]
+        b["name"][0]["given"] = ["Amber", "L"]
+        assert is_twin_pair(a, b)
+
+    def test_genuinely_different_names_are_still_twins(self):
+        a, b = self._pair("Ana", "Beatriz")
+        assert is_twin_pair(a, b)
+
+
+class TestTwinPairSsnEvidence:
+    """The SSN check is a veto that only works when both sides have an SSN."""
+
+    def _pair(self, ssn_a, ssn_b):
+        a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn=ssn_a)
+        b = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn=ssn_b)
+        for p in (a, b):
+            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        return a, b
+
+    def test_two_different_ssns_are_twins(self):
+        assert is_twin_pair(*self._pair("892-39-5115", "601-22-7788"))
+
+    def test_one_or_both_missing_ssns_decide_nothing_either_way(self):
+        assert is_twin_pair(*self._pair("892-39-5115", None))
+        assert is_twin_pair(*self._pair(None, None))
+
+    def test_a_missing_ssn_does_not_rescue_a_name_variant(self):
+        a, b = self._pair(None, "601-22-7788")
+        b["name"][0]["given"] = ["Anabel"]
+        assert not is_twin_pair(a, b)
+
+    def test_a_missing_ssn_without_a_shared_contact_is_not_a_twin(self):
+        a, b = self._pair(None, None)
+        b["telecom"] = [{"system": "phone", "value": "212-555-0199"}]
+        assert not is_twin_pair(a, b)
 
 
 class TestSurnameChangeLooksLikeADuplicate:

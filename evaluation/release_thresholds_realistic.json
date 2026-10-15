@@ -16,6 +16,7 @@
   "all_yes_f1": {"max": 0.70, "status": "enforced"},
   "pairwise_two_of_three_f1": {"max": 0.95, "status": "tracked"},
   "probable_duplicate_negatives": {"max": 0, "status": "enforced"},
+  "twin_pairs_with_name_variants": {"max": 0, "status": "enforced"},
   "missing_hard_negative_categories": {"max": 0, "status": "enforced"},
   "decoy_no_overlap_rate": {"max": 0.5, "status": "enforced"}
 }

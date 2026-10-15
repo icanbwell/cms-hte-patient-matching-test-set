@@ -60,6 +60,7 @@ class HouseholdReport:
     mean_size: float
     n_minors: int
     n_same_surname_minors: int
+    n_same_surname_possible: int
 
 
 @dataclass(frozen=True)
@@ -207,9 +208,35 @@ def assign_households(
             f"{len(sizes)} households of mean size {len(people) / max(len(sizes), 1):.2f}"
         )
 
-    rng.shuffle(adults)
+    # Anchors that can take a same-surname child come first and get the largest
+    # households, so family-structured households are as common as the sample
+    # allows rather than a matter of which adults a shuffle happened to pick.
+    minors_by_family: Dict[str, List[int]] = {}
+    for minor in minors:
+        if _family(people[minor]):
+            minors_by_family.setdefault(_family(people[minor]), []).append(minor)
+    matchable = [
+        a
+        for a in adults
+        if ages[a] is not None
+        and any(
+            (ages[a] or 0) - (ages[m] or 0) >= MIN_PARENT_AGE_GAP
+            for m in minors_by_family.get(_family(people[a]), ())
+        )
+    ]
+    same_family_adults: Dict[str, List[int]] = {}
+    for a in adults:
+        if _family(people[a]):
+            same_family_adults.setdefault(_family(people[a]), []).append(a)
+    matchable_set = set(matchable)
+    others = [a for a in adults if a not in matchable_set]
+    rng.shuffle(matchable)
+    rng.shuffle(others)
+    adults = matchable + others
+    sizes = sorted(sizes, reverse=True)
     anchors = adults[: len(sizes)]
     spare_adults = adults[len(sizes) :]
+    rng.shuffle(spare_adults)
     members: List[List[int]] = [[a] for a in anchors]
     free = [size - 1 for size in sizes]
 
@@ -262,11 +289,20 @@ def assign_households(
         if (ages[index] or 0) < UNDER_13 and rng.random() < ssn_absent:
             _drop_ssn(people[index])
 
+    possible = sum(
+        1
+        for m in minors
+        if any(
+            (ages[a] or 0) - (ages[m] or 0) >= MIN_PARENT_AGE_GAP
+            for a in same_family_adults.get(_family(people[m]), ())
+        )
+    )
     report = HouseholdReport(
         n_households=len(sizes),
         mean_size=len(people) / len(sizes) if sizes else 0.0,
         n_minors=len(minors),
         n_same_surname_minors=same_surname,
+        n_same_surname_possible=possible,
     )
     return HouseholdResult(
         patients=people,

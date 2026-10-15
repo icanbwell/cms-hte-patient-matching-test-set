@@ -175,6 +175,127 @@ def _dob_close(a: str, b: str, limit: int, allow_swap: bool) -> bool:
     )
 
 
+# The audit's own list of first names that are one name written two ways. It is
+# hand-written and deliberately NOT the generator's `nicknames` table: the guard's
+# twin rule once passed WILLIAM/BILL, J/JOHN and CHRIS/CHRISTOPHER because edit
+# distance alone cannot see them, and a copy of the same rule would have passed
+# them too. Each group is a set of names that count as the same first name.
+_AUDIT_NAME_GROUPS: Tuple[FrozenSet[str], ...] = tuple(
+    frozenset(group.split())
+    for group in (
+        "william will willy willie bill billy",
+        "robert rob robby bob bobby bert",
+        "richard rich richie rick ricky dick",
+        "james jim jimmy jamie",
+        "john jon johnny jack",
+        "joseph joe joey",
+        "thomas tom tommy",
+        "charles charlie chuck chas",
+        "christopher chris kit",
+        "daniel dan danny",
+        "matthew matt",
+        "anthony tony",
+        "michael mike mick mickey",
+        "edward ed eddie ted teddy ned",
+        "david dave davey",
+        "steven stephen steve stevie",
+        "kenneth ken kenny",
+        "timothy tim timmy",
+        "benjamin ben benny",
+        "samuel sam sammy",
+        "nicholas nick nicky",
+        "alexander alex al xander",
+        "jonathan jon john",
+        "elizabeth liz lizzie beth betty betsy eliza libby",
+        "katherine catherine kathryn kate katie kathy kat cathy",
+        "margaret maggie meg peggy marge",
+        "patricia pat patty trish tricia",
+        "jennifer jen jenny",
+        "jessica jess jessie",
+        "deborah debra deb debbie",
+        "susan sue susie suzy",
+        "rebecca becky becca",
+        "victoria vicky vicki tori",
+        "barbara barb barbie",
+        "dorothy dot dottie dolly",
+        "christine christina chris christy tina",
+        "stephanie steph stephie",
+        "samantha sam sammy",
+        "amanda mandy",
+        "abigail abby gail",
+    )
+)
+
+
+def _audit_same_first_name(a: str, b: str) -> bool:
+    """True if two normalized first names are equal, an initial or prefix
+    truncation of one another (J/JOHN, CHRIS/CHRISTOPHER), or in one of the
+    audit's own nickname groups (WILLIAM/BILL)."""
+    if not (a and b):
+        return False
+    shorter, longer = sorted((a, b), key=len)
+    if longer.startswith(shorter):
+        return True
+    return any(a in group and b in group for group in _AUDIT_NAME_GROUPS)
+
+
+def _audit_twins(a: Patient, b: Patient) -> bool:
+    """Same family name and birth date, first names that are 3+ edits apart AND
+    not the same name written two ways (`_audit_same_first_name`), no
+    near-identical SSN, and a shared phone or address: a twin or same-day
+    sibling, so not one person recorded twice. Independent of the generator's
+    version, including its nickname table."""
+    names_a, names_b = a.get("name") or [], b.get("name") or []
+    dob = str(a.get("birthDate") or "")
+    if not (dob and dob == str(b.get("birthDate") or "") and names_a and names_b):
+        return False
+    family = normalize_token(names_a[0].get("family"))
+    if not family or family != normalize_token(names_b[0].get("family")):
+        return False
+    first_a, first_b = _audit_first(a), _audit_first(b)
+    if not (first_a and first_b) or _audit_same_first_name(first_a, first_b):
+        return False
+    if _levenshtein(first_a, first_b, 2) <= 2:
+        return False
+    ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
+    if ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1:
+        return False
+    return bool(_audit_phones(a) & _audit_phones(b)) or _audit_same_address(a, b)
+
+
+def twin_pairs_with_name_variants(pair_rows: Sequence[Row]) -> List[str]:
+    """`twin_like_negative` rows whose first names are one name written two ways
+    (nickname, initial or prefix truncation, by the audit's own list). Such a
+    pair is a duplicate shaped like a positive, not a twin. Must be empty."""
+    flagged = []
+    for r in pair_rows:
+        if r["expected_match"] or category_of(r["rationale"]) != "twin_like_negative":
+            continue
+        if _audit_same_first_name(_audit_first(r["source"]), _audit_first(r["target"])):
+            flagged.append(r["case_id"])
+    return flagged
+
+
+def _audit_address(p: Patient) -> str:
+    addresses = p.get("address") or []
+    if not addresses:
+        return ""
+    lines = addresses[0].get("line") or []
+    street = normalize_token(lines[0]) if lines else ""
+    zip_code = normalize_token(addresses[0].get("postalCode"))
+    return f"{street}|{zip_code}" if street and zip_code else ""
+
+
+def _audit_same_address(a: Patient, b: Patient) -> bool:
+    address = _audit_address(a)
+    return bool(address) and address == _audit_address(b)
+
+
+def _audit_family(p: Patient) -> str:
+    names = p.get("name") or []
+    return normalize_token(names[0].get("family")) if names else ""
+
+
 def _audit_first(p: Patient) -> str:
     names = p.get("name") or []
     given = (names[0].get("given") or []) if names else []
@@ -182,6 +303,8 @@ def _audit_first(p: Patient) -> str:
 
 
 def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
+    if _audit_twins(a, b):
+        return False
     ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
     if ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1:
         return True
@@ -192,6 +315,16 @@ def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
     # surname change that no SSN or phone survived.
     first = _audit_first(a)
     if first and first == _audit_first(b) and dob_a and dob_a == dob_b:
+        return True
+    # Same family name and birth date with first names that are one name written
+    # two ways (WILLIAM/BILL): one person, whatever contact details they share.
+    if (
+        dob_a
+        and dob_a == dob_b
+        and _audit_family(a)
+        and _audit_family(a) == _audit_family(b)
+        and _audit_same_first_name(first, _audit_first(b))
+    ):
         return True
     name_a, name_b = _audit_name(a), _audit_name(b)
     return bool(
@@ -347,6 +480,7 @@ REQUIRED_HARD_NEGATIVE_CATEGORIES = (
     "name_collision_negative",
     "sibling_negative",
     "near_miss_negative",
+    "twin_like_negative",
 )
 
 _OVERLAP_FEATURES = ("ssn", "dob", "family", "given", "address", "phone", "email")
@@ -559,6 +693,7 @@ def build_report(
         "probable_duplicate_negatives": probable_duplicate_negatives(
             pair_rows, query_rows, candidates
         ),
+        "twin_pairs_with_name_variants": twin_pairs_with_name_variants(pair_rows),
         "identical_positive_pairs": identical_positive_pairs(
             pair_rows, query_rows, candidates
         ),

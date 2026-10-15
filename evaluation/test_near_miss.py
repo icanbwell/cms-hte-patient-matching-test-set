@@ -300,3 +300,35 @@ class TestLimitPerKind:
     def test_a_cap_above_the_group_size_keeps_everything(self):
         misses = self._misses()
         assert limit_per_kind(misses, 99, seed=0) == misses
+
+
+class TestTwinKind:
+    def test_a_same_day_sibling_sharing_phone_and_address_is_a_twin(self):
+        query = _p("q", "ANA", "RIVERA", "2010-03-04", phone="212-555-0101")
+        twin = _p("t", "BEATRIZ", "RIVERA", "2010-03-04", phone="212-555-0101")
+        result = _find([twin], queries=(query,))
+        assert _kinds(result) == {("t", "twin")}
+        assert result.near_misses[0].pair_type == "twin_like_negative"
+
+    def test_the_twin_survives_the_duplicate_guard_that_a_non_twin_would_not(self):
+        query = _p("q", "ANA", "RIVERA", "2010-03-04", phone="212-555-0101")
+        typo = _p("t", "ANNA", "RIVERA", "2010-03-04", phone="212-555-0101")
+        assert _kinds(_find([typo], queries=(query,))) == set()
+
+    def test_a_twin_with_a_matching_ssn_is_rejected_as_the_same_person(self):
+        query = _p("q", "ANA", "RIVERA", "2010-03-04", ssn="892-39-5115")
+        same = _p("t", "BEATRIZ", "RIVERA", "2010-03-04", ssn="892-39-5115")
+        assert _kinds(_find([same], queries=(query,))) == set()
+
+    def test_same_surname_and_birth_date_sharing_nothing_is_not_a_twin(self):
+        query = _p("q", "ANA", "RIVERA", "2010-03-04", phone="212-555-0101")
+        elsewhere = _p(
+            "t",
+            "BEATRIZ",
+            "RIVERA",
+            "2010-03-04",
+            zip_="90210",
+            street="9 ELM ST",
+            phone="212-555-0199",
+        )
+        assert ("t", "twin") not in _kinds(_find([elsewhere], queries=(query,)))
