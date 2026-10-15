@@ -114,7 +114,7 @@ def mine_shared_address_hard_negatives(
     return candidates
 
 
-def _full_name(patient: Patient) -> str:
+def _upper_full_name(patient: Patient) -> str:
     names = patient.get("name") or []
     if not names:
         return ""
@@ -168,7 +168,7 @@ def mine_name_collision_negatives(
     candidates: List[HardNegativeCandidate] = []
     for group in buckets.values():
         entries = sorted(
-            ((patient, _full_name(patient)) for patient in group),
+            ((patient, _upper_full_name(patient)) for patient in group),
             key=lambda entry: len(entry[1]),
         )
         n = len(entries)
