@@ -197,7 +197,7 @@ SSN or first+family+DOB.
   (added to its pool first, so trimming logic below can never drop them); its **decoy pool** is
   its mined hard-negative/household/sibling/name-collision/institutional candidates, deduplicated against a per-query
   "already in this pool" set. If the pool is still under `pool_size` (default 40) after that, it's
-  topped up with randomly-shuffled distractors from the rest of the sample; if it's over, only
+  topped up with randomly-shuffled distractors from the rest of the sample (never an exact same-person match or a probable typo duplicate of the query, via `ProbableDuplicateIndex`); if it's over, only
   decoys are trimmed — true matches are never dropped to make room. Institutional decoys are
   namespaced as `{candidate_id}::institutional::{institution_type}` in the shared candidate
   registry specifically so they don't collide with that same person's plain, address-intact record
@@ -546,6 +546,7 @@ other true-match/hard-negative/special-population category is present at full sc
 ## Dataset changelog
 
 ### Dataset version 2 (BAI-1156)
+- The population top-up now excludes probable typo duplicates of the query, not only exact same-person matches (BAI-1164). The remaining known gap is the heuristic itself: a duplicate with no SSN on either side and two or more edits in both name and birth date still passes.
 - Dataset version 2 applies to every file in this directory, curated (`sample_labeled_pairs.jsonl`, `population_*.jsonl`) and realistic (`realistic_*`); only `realistic_manifest.json` carries the number. It is the data-format version and is independent of the package version in `pyproject.toml` and of git tags; the realistic files are the v1 release candidate of the benchmark.
 - Ids are opaque and pools are shuffled (see "The file format"). Before this, every true match had `source.id == target.id` and every population pool listed its true matches first, so either alone scored F1 1.0 (found in adversarial review of this PR; the same pattern existed in version 1 of the data).
 - Case ids changed for many rows of the curated sample: of the 14,201 ids on `main`, 3,435 are gone and 3,529 are new (10,766 are unchanged). Cause: variants were drawn from one RNG shared by all patients, so the loader's changes to which fields exist shifted every later patient's draws. Variants now come from a per-patient RNG (`<seed>:variants:<ONC id>`), so a patient's case ids no longer depend on any other patient and the same id names the same variant in both tiers. Re-pin by id only against version 2 or later.

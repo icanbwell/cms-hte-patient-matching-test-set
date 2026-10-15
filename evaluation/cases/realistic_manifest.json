@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "72f98a82a2b278b44e5864157ebc896b07fc627413697f702da2dff3bc4bb9de",
+  "generator_fingerprint": "3eac7c1466d9225a924648fe7c48b00ac3f23d7190786ce2d26353c4da4ab9b9",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,

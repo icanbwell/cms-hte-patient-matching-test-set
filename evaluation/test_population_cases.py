@@ -28,6 +28,27 @@ def _patient(id_: str, family: str = "Smith", given: str | None = None):
     }
 
 
+class TestTopUpExcludesProbableDuplicates:
+    def test_a_typo_duplicate_of_the_query_is_never_a_distractor(self):
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn"}
+        query = {
+            **_patient("q", "Benally", "Eugene"),
+            "identifier": [{**ssn, "value": "892-39-5115"}],
+        }
+        duplicate = {
+            **_patient("dup", "Lopez", "Maria"),
+            "birthDate": "1999-09-09",
+            "identifier": [{**ssn, "value": "892-39-5116"}],
+        }
+        others = [_patient(f"o{i}", f"Name{i}", f"Given{i}") for i in range(6)]
+        dataset = build_population_dataset(
+            [query, duplicate, *others], pool_size=40, seed=0
+        )
+        case = next(c for c in dataset.cases if c.query_id == "q")
+        assert "dup" not in case.candidate_ids
+        assert any(c.startswith("o") for c in case.candidate_ids)
+
+
 class TestBuildPopulationDataset:
     def test_every_case_query_id_maps_to_input_patient(self):
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]

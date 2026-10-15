@@ -7,6 +7,7 @@ from typing import Any, Dict
 import pytest
 from identity_guard import (
     SSN_SYSTEM,
+    ProbableDuplicateIndex,
     identity_key,
     is_possible_same_person,
     is_probable_duplicate,
@@ -258,6 +259,39 @@ class TestLooksLikeSamePerson:
     def test_false_for_different_people(self):
         other = _patient("b", "Maria", "Lopez", "1999-09-09")
         assert not looks_like_same_person(_patient("a"), other)
+
+
+class TestProbableDuplicateIndex:
+    def _people(self):
+        return [
+            _patient("a", "Eugene", "Benally", "1971-01-01", ssn="892-39-5115"),
+            _patient(
+                "b", "Maria", "Lopez", "1999-09-09", ssn="892-39-5116"
+            ),  # SSN typo of a
+            _patient("c", "Eugene", "Benally", "1971-01-02"),  # name + DOB typo of a
+            _patient("d", "Eugene", "Benally", "1971-02-01"),  # month/day swap of a
+            _patient("e", "Ana", "Rivera", "1985-05-05"),
+            _patient("f", "Omar", "Haddad", "1962-12-25"),
+        ]
+
+    def test_agrees_with_comparing_every_pair(self):
+        people = self._people()
+        index = ProbableDuplicateIndex(people)
+        for patient in people:
+            expected = {
+                o["id"]
+                for o in people
+                if o["id"] != patient["id"] and is_probable_duplicate(patient, o)
+            }
+            assert index.matching_ids(patient) == expected
+
+    def test_finds_the_ssn_typo_the_name_check_would_miss(self):
+        index = ProbableDuplicateIndex(self._people())
+        assert "b" in index.matching_ids(self._people()[0])
+
+    def test_unrelated_records_match_nothing(self):
+        people = self._people()
+        assert ProbableDuplicateIndex(people).matching_ids(people[4]) == set()
 
 
 class TestSurnameChangeLooksLikeADuplicate:
