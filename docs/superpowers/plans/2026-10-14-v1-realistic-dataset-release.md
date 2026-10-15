@@ -21,7 +21,7 @@
 - No fabricated attributes: no `telecom.use` or `period` on base records. `rank` is derivable from column order and is emitted.
 - Values copied from ONC are not normalized (case and punctuation preserved).
 - MOTHERS_MAIDEN_NAME maps to the extension `http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName` (decided), never to a `name` entry.
-- No fabricated identities: every decoy is a real ONC record that passes `identity_guard.is_possible_same_person` against its query and is not in the sample or donor pool.
+- No fabricated identities: every decoy is a ONC-derived record that passes `identity_guard.is_possible_same_person` against its query and is not in the sample or donor pool.
 - Memory: one shard in memory at a time. The finder streams; it never builds a 1M-record list.
 - Tier parity: every category present in the pairwise file is also present in the population file (`audit.tier_parity_gap` stays 0).
 - Commit messages start with `BAI-1156 `. No AI-attribution trailer. Branch: `IQ-BAI-1156`.
@@ -1068,7 +1068,7 @@ Edit distance <= 1 on names uses a deletion neighborhood: a query registers its
 name and every single-character deletion, a record looks up the same set, and
 a hit is verified with a real edit-distance check.
 
-Decoys are real ONC records, never fabricated, and are never the query, never
+Decoys are ONC-derived records, never fabricated, and are never the query, never
 in `exclude_ids` (the sample and donor ids), and never
 `is_possible_same_person` as the query. Per (query, kind) at most
 `per_kind_cap` decoys are kept, by seeded reservoir sampling, so a common DOB

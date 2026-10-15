@@ -24,6 +24,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Sequence, Tup
 
 from fhir_conformance import violations
 from identity_guard import (
+    US_PHONE_DIGITS,
     is_placeholder_ssn,
     is_possible_same_person,
     normalize_phone,
@@ -129,8 +130,8 @@ def _levenshtein(a: str, b: str, limit: int) -> int:
     return row[-1]
 
 
-# Thresholds of the audit's own duplicate detector (independent of the guard's).
-_PHONE_DIGITS = 10
+# Thresholds of the audit's own duplicate detector (independent of the guard's;
+# the phone length is the one shared constant, since it is a fact about US numbers).
 _ISO_DATE_LENGTH = 10
 _DUPLICATE_NAME_EDITS = 2
 _DUPLICATE_DOB_EDITS = 1
@@ -147,7 +148,7 @@ def _audit_ssn(p: Patient) -> str | None:
 
 
 def _audit_phones(p: Patient) -> FrozenSet[str]:
-    return frozenset(v for v in _phones(p) if len(v) == _PHONE_DIGITS)
+    return frozenset(v for v in _phones(p) if len(v) == US_PHONE_DIGITS)
 
 
 def _audit_name(p: Patient) -> str:
