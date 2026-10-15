@@ -47,6 +47,7 @@ from export_test_dataset import (
     build_test_case_records,
     write_jsonl,
 )
+from family_adults import add_family_adults
 from household_assignment import assign_households
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
 from near_miss import (
@@ -105,7 +106,7 @@ def generator_fingerprint() -> str:
 CAVEATS: List[str] = [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address; only about a fifth of minors live with a same-surname adult (see households.n_same_surname_minors and n_same_surname_possible)",
+    "households are mostly unrelated real records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds real adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)",
 ]
 
 
@@ -144,7 +145,18 @@ def generate_realistic(
     # donors and streamed decoys alike, so birth-date keys still line up) is then
     # moved forward so the same people have the same ages as of AS_OF.
     sample = stratified_sample(batches, sample_size, donor_n=donor_size, seed=seed)
-    sample_patients = [shift_birth_date(p, DOB_SHIFT_YEARS) for p in sample.patients]
+    family = None
+    sampled = sample.patients
+    if decoy_batches is not None and profile.rate("minors_with_same_surname_adult") > 0:
+        family = add_family_adults(
+            sample.patients,
+            decoy_batches,
+            target_share=profile.rate("minors_with_same_surname_adult"),
+            exclude_ids={d["id"] for d in sample.donors},
+            seed=seed,
+        )
+        sampled = family.patients
+    sample_patients = [shift_birth_date(p, DOB_SHIFT_YEARS) for p in sampled]
     donors = [shift_birth_date(d, DOB_SHIFT_YEARS) for d in sample.donors]
     housed = assign_households(sample_patients, profile=profile, seed=seed)
     near_result = None
@@ -204,6 +216,17 @@ def generate_realistic(
         "sample_band_counts": counts,
         "onc_band_supply": sample.supply,
         "households": asdict(housed.report),
+        "family_adults": (
+            {
+                "target_share": profile.rate("minors_with_same_surname_adult"),
+                "n_added": family.n_added,
+                "n_minors": family.n_minors,
+                "minors_covered_before": family.n_covered_before,
+                "minors_covered_after": family.n_covered_after,
+            }
+            if family is not None
+            else None
+        ),
         "profile_source": profile.source,
         "profile_rates": dict(profile.rates),
         "near_miss": {

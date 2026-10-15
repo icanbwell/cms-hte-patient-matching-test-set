@@ -43,7 +43,7 @@ Patient = Dict[str, Any]
 SIBLING_MAX_AGE_GAP_YEARS = 3
 DEFAULT_PER_KIND_CAP = 3
 # Pool decoys are cheap (a candidate, not a labeled case), so the population tier keeps more.
-DEFAULT_POOL_PER_KIND_CAP = 8
+DEFAULT_POOL_PER_KIND_CAP = 10
 
 # Priority order: a record qualifying under several kinds is filed under the first.
 KINDS: Tuple[str, ...] = (

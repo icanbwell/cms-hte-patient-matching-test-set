@@ -83,6 +83,17 @@ def test_birth_dates_are_shifted_so_infants_exist_at_the_release_vintage(realist
     assert all(a is None or a >= 0 for a in ages)
 
 
+def test_family_adults_never_lower_the_share_of_children_with_a_same_surname_adult(
+    realistic,
+):
+    dataset, _ = realistic
+    family = dataset.manifest["family_adults"]
+    assert family is not None
+    assert family["minors_covered_after"] >= family["minors_covered_before"]
+    assert family["target_share"] == 0.7
+    assert sum(dataset.manifest["sample_band_counts"].values()) == SAMPLE
+
+
 def test_households_reach_roughly_the_target_size(realistic):
     dataset, _ = realistic
     assert dataset.manifest["households"]["mean_size"] == pytest.approx(2.5, abs=0.4)
@@ -170,7 +181,7 @@ def test_manifest_reports_near_miss_yield_and_negative_share(realistic):
         "name",
         "dob_only",
     }
-    assert manifest["near_miss"]["per_kind_cap"] == 8
+    assert manifest["near_miss"]["per_kind_cap"] == 10
     assert manifest["near_miss"]["pairwise_per_kind_cap"] == 3
     assert manifest["negative_share"] >= 0.45
     assert manifest["n_positives_dropped"] >= 0

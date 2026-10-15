@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "6ff0349f4e5ca479d2de085969fb8b7389c30a796019d02ce6ad4d167cf1b594",
+  "generator_fingerprint": "0af948f6bd3e242a7cccbd2908bc03d63c79bf64b7204f4367595f8b2fdd2bfe",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -11,7 +11,7 @@
   "caveats": [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address; only about a fifth of minors live with a same-surname adult (see households.n_same_surname_minors and n_same_surname_possible)"
+    "households are mostly unrelated real records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds real adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)"
   ],
   "age_band_targets": {
     "0-17": 0.215,
@@ -29,8 +29,8 @@
   },
   "sample_band_counts": {
     "18-64": 1224,
-    "65-84": 307,
     "0-17": 430,
+    "65-84": 307,
     "85+": 39
   },
   "onc_band_supply": {
@@ -43,8 +43,15 @@
     "n_households": 769,
     "mean_size": 2.600780234070221,
     "n_minors": 430,
-    "n_same_surname_minors": 89,
-    "n_same_surname_possible": 91
+    "n_same_surname_minors": 300,
+    "n_same_surname_possible": 302
+  },
+  "family_adults": {
+    "target_share": 0.7,
+    "n_added": 204,
+    "n_minors": 430,
+    "minors_covered_before": 91,
+    "minors_covered_after": 302
   },
   "profile_source": "PLACEHOLDER rates, not measured; supply the workgroup's measured cross-organization disagreement rates via a profile JSON file",
   "profile_rates": {
@@ -62,61 +69,62 @@
     "household_shared_email": 0.5,
     "minor_ssn_absent": 0.7,
     "query_no_match": 0.1,
-    "query_single_match": 0.15
+    "query_single_match": 0.15,
+    "minors_with_same_surname_adult": 0.7
   },
   "near_miss": {
-    "per_kind_cap": 8,
+    "per_kind_cap": 10,
     "pairwise_per_kind_cap": 3,
     "yield_by_kind": {
       "twin": {
-        "queries": 5,
+        "queries": 6,
         "kept": 6,
         "seen": 6
       },
       "dob_zip": {
-        "queries": 449,
-        "kept": 589,
-        "seen": 589
+        "queries": 459,
+        "kept": 574,
+        "seen": 574
       },
       "name": {
-        "queries": 704,
-        "kept": 2464,
-        "seen": 5056
+        "queries": 700,
+        "kept": 2666,
+        "seen": 4933
       },
       "sibling": {
-        "queries": 298,
-        "kept": 665,
-        "seen": 697
+        "queries": 271,
+        "kept": 647,
+        "seen": 663
       },
       "address": {
-        "queries": 1341,
-        "kept": 6626,
-        "seen": 273916
+        "queries": 1383,
+        "kept": 7799,
+        "seen": 443753
       },
       "phone": {
-        "queries": 56,
-        "kept": 56,
-        "seen": 56
+        "queries": 49,
+        "kept": 49,
+        "seen": 49
       },
       "email": {
-        "queries": 121,
-        "kept": 775,
-        "seen": 5742
+        "queries": 90,
+        "kept": 612,
+        "seen": 2823
       },
       "dob_only": {
-        "queries": 2000,
-        "kept": 15981,
-        "seen": 60199
+        "queries": 1999,
+        "kept": 19949,
+        "seen": 60032
       },
       "surname_zip": {
-        "queries": 795,
-        "kept": 3592,
-        "seen": 9612
+        "queries": 791,
+        "kept": 3897,
+        "seen": 9120
       }
     }
   },
-  "negative_share": 0.5573319355261434,
+  "negative_share": 0.5573968752042884,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 30524,
+  "n_labeled_cases": 30594,
   "n_population_queries": 2000
 }
