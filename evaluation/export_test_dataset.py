@@ -38,6 +38,7 @@ from drift_profile import DriftProfile
 from export_inputs import load_profile, load_sample_and_donors
 from fhir_conformance import export_ready
 from labeled_pairs import DEFAULT_SAMPLE_SIZE, generate_raw_pairs
+from near_miss import NearMiss
 
 Patient = Dict[str, Any]
 FrequencyLookup = Callable[[str], float]
@@ -131,6 +132,7 @@ def build_test_case_records(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
     frequency_lookup: FrequencyLookup = uniform_frequency,
@@ -165,6 +167,7 @@ def build_test_case_records(
         donors=donors,
         profile=profile,
         households=households,
+        near_misses=near_misses,
         exclusions=exclusions,
         seed=seed,
     ):

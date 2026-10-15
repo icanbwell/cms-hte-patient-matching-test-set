@@ -60,6 +60,7 @@ from mutations import (
     generate_compound_variant,
     generate_fuzzy_variant,
 )
+from near_miss import NearMiss
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
 from placeholders import COLLISION_FIELDS, construct_placeholder_collision_negatives
@@ -139,6 +140,7 @@ def _generate_all_raw_pairs(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     seed: int = 0,
 ) -> Iterator[RawPair]:
     """Yield RawPairs from ONC patients: fuzzy-variant true-matches,
@@ -246,6 +248,19 @@ def _generate_all_raw_pairs(
                     **name_candidate.shared_fields,
                 },
             )
+
+    for miss in near_misses:
+        yield RawPair(
+            pair_id=f"{miss.query_id}::{miss.decoy['id']}::near_miss::{miss.kind}",
+            query_patient=miss.query,
+            candidate_patient=miss.decoy,
+            is_true_match=False,
+            strata={
+                "pair_type": miss.pair_type,
+                "found_by": "near_miss",
+                **miss.shared_fields,
+            },
+        )
 
     if not include_special_populations:
         return
@@ -372,6 +387,7 @@ def generate_raw_pairs(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
 ) -> Iterator[RawPair]:
@@ -401,6 +417,7 @@ def generate_raw_pairs(
         donors=donors,
         profile=profile,
         households=households,
+        near_misses=near_misses,
         seed=seed,
     ):
         if pair.is_true_match and policy.excludes(

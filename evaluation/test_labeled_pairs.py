@@ -13,6 +13,7 @@ from typing import Any
 from drift_profile import DriftProfile
 from labeled_pairs import generate_raw_pairs
 from mutations import SSN_SYSTEM, count_changed_fields
+from near_miss import NearMiss
 from scenarios import REGISTRY
 from support_patients import drift_donors, drift_population
 
@@ -312,6 +313,32 @@ class TestGenerateRawPairs:
             generate_raw_pairs([elder, younger], seed=0, household_constructed_max=0)
         )
         assert not [p for p in pairs if p.strata.get("address_source")]
+
+    def test_near_misses_are_emitted_as_negative_pairs_in_their_own_category(
+        self,
+    ) -> None:
+        query = _patient("p1")
+        decoy = _patient("d1", family="Jones", given="Robert")
+        miss = NearMiss(
+            query=query,
+            decoy=decoy,
+            kind="dob_only",
+            shared_fields={"shared": "birthDate"},
+        )
+        pairs = [
+            p
+            for p in generate_raw_pairs([query], near_misses=[miss], seed=0)
+            if "::near_miss::" in p.pair_id
+        ]
+        assert len(pairs) == 1
+        assert pairs[0].pair_id == "p1::d1::near_miss::dob_only"
+        assert pairs[0].is_true_match is False
+        assert pairs[0].candidate_patient is decoy
+        assert dict(pairs[0].strata) == {
+            "pair_type": "near_miss_negative",
+            "found_by": "near_miss",
+            "shared": "birthDate",
+        }
 
 
 class TestDriftScenariosPerProvisionTier:
