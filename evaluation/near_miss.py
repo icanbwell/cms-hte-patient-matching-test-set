@@ -267,6 +267,23 @@ def _same_person_as(query: Patient, record: Patient) -> bool:
     )
 
 
+def _reservoir_offer(
+    pool: List[NearMiss],
+    miss: NearMiss,
+    seen_count: int,
+    cap: int,
+    rng: random.Random,
+) -> None:
+    """Algorithm-R step: keep `miss` (the `seen_count`-th candidate for its
+    slot) in `pool` with probability `cap / seen_count` once the pool is full."""
+    if len(pool) < cap:
+        pool.append(miss)
+        return
+    position = rng.randrange(seen_count)
+    if position < cap:
+        pool[position] = miss
+
+
 def _interleave(per_kind: Mapping[str, List[NearMiss]]) -> List[NearMiss]:
     ordered = {
         kind: sorted(per_kind.get(kind, []), key=lambda m: str(m.decoy["id"]))
@@ -319,13 +336,9 @@ def find_near_misses(
                 miss = NearMiss(
                     query=query, decoy=record, kind=kind, shared_fields=shared
                 )
-                pool = kept[slot]
-                if len(pool) < per_kind_cap:
-                    pool.append(miss)
-                else:
-                    position = rngs[query_id].randrange(seen[slot])
-                    if position < per_kind_cap:
-                        pool[position] = miss
+                _reservoir_offer(
+                    kept[slot], miss, seen[slot], per_kind_cap, rngs[query_id]
+                )
     near_misses: List[NearMiss] = []
     for query_id in sorted(index.queries):
         near_misses.extend(
