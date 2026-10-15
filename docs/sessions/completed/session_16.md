@@ -15,7 +15,7 @@ which pass the realism floors, are git-ignored, so a clone only gets the committ
 them; (2) the realistic set has almost no hard negatives; (3) the pairwise tier is so
 positive-heavy that always answering "match" scores about 98% F1; (4) the ONC-to-FHIR loader emits
 non-conformant `Patient` resources. We fix (2) and (3) with one mechanism, a streaming
-**reverse-blocking near-miss finder** that finds real ONC decoys for the sampled queries across all
+**reverse-blocking near-miss finder** that finds ONC-derived decoys for the sampled queries across all
 shards, and reuse it for the "harder decoys" enhancement. We fix (4) in `onc_loader.py` plus a
 conformance test. We resolve (1) by committing the realistic set as the v1 release, gated in CI.
 
@@ -40,7 +40,7 @@ across the whole ONC population rather than inside a 2,000-record sample.
 
 ## Constraints
 
-- **No fabricated identities** (CLAUDE.md, Design Principle): decoys are real ONC records; any
+- **No fabricated identities** (CLAUDE.md, Design Principle): decoys are ONC-derived records; any
   constructed field is tagged and sliceable (carried over from session 15).
 - **Memory & scale:** no 1M-record in-memory list; one shard at a time. The existing
   `mine_name_collision_negatives` is effectively O(n²) per bucket (measured ~142s at n=16,000 in its
@@ -314,7 +314,7 @@ once PR 4 lands; (b) share measured disagreement and share rates now, which clos
 | Benefit | Cost |
 |---|---|
 | Hard negatives, harder decoys and family structure from one mechanism | One more streaming pass over all shards (about a minute) and a new module to maintain |
-| Decoys are real ONC records, so no fabricated identities | Natural yield per kind is data-dependent; some kinds (for example `address`) may be thin and need a cap or a tagged constructed fallback |
+| Decoys are ONC-derived records, so no fabricated identities | Natural yield per kind is data-dependent; some kinds (for example `address`) may be thin and need a cap or a tagged constructed fallback |
 | Conformant resources | Resource shape changes, so consumers pinned to the old shape (`given` including aliases, second `name`) must re-run; a documented changelog covers it |
 | Near-miss pools give realistic FDR | FDR/precision on the new pools are not comparable to numbers from the previous release |
 | Committed realistic set matches what a clone gets | Repo grows by ~51 MB and a CI gate has to stay green |
