@@ -16,6 +16,7 @@ jobs:
       - run: uv sync
       - run: uv run pytest .
       - run: make audit
+      - run: make audit-realistic
 
   lint:
     runs-on: ubuntu-latest
