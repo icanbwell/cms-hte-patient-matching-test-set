@@ -7,6 +7,13 @@ them to reach a target share of children with a same-surname adult, and drops th
 same number of other adults from the same age band, so the sample size and every
 age-band count are unchanged and the age-band gate still holds.
 
+An added adult must have a street address and postal code (so a child can share it) and be a plausible parent: 18 to 50 years older than the child
+(`household_assignment.is_plausible_parent_gap`; without the upper bound the
+first version added "parents" a median 52 years older, every one of the 85+ band).
+An adult who already covers a child is never swapped out, whichever surname that
+is. If the age window makes the target unreachable the result reports the share
+actually reached; it is never padded.
+
 A same-surname adult is only a proxy for a parent: mothers often have a different
 surname, and the relationship is assumed, not known. The target is a placeholder
 (`minors_with_same_surname_adult` in drift_profile.py), not a measured share.
@@ -21,9 +28,9 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, Iterable, List, Sequence, Set
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set
 
-from household_assignment import ADULT, MIN_PARENT_AGE_GAP
+from household_assignment import ADULT, has_home_address, is_plausible_parent_gap
 from identity_guard import normalize_token
 from population_sampling import age_of
 from population_targets import ONC_AS_OF
@@ -40,6 +47,7 @@ class FamilyAdultsResult:
     n_covered_before: int
     n_covered_after: int
     n_minors: int
+    added_parent_age_gaps: List[int]
 
 
 def _family(patient: Patient) -> str:
@@ -52,12 +60,12 @@ def _band_of_adult(age: int) -> str:
 
 
 def _is_covered(minor_age: int, adult_ages: Sequence[int]) -> bool:
-    return any(a - minor_age >= MIN_PARENT_AGE_GAP for a in adult_ages)
+    return any(is_plausible_parent_gap(a - minor_age) for a in adult_ages)
 
 
 def find_adult_candidates(
     batches: Iterable[Sequence[Patient]],
-    needed: Dict[str, int],
+    needed: Mapping[str, Sequence[int]],
     *,
     exclude_ids: Set[str],
     per_surname_cap: int,
@@ -65,9 +73,9 @@ def find_adult_candidates(
     as_of: date = ONC_AS_OF,
 ) -> Dict[str, List[Patient]]:
     """Stream `batches` once and keep, per surname in `needed`, up to
-    `per_surname_cap` ONC-derived adults old enough to be a parent of that surname's
-    youngest uncovered child (`needed` maps surname -> that child's age). Kept by
-    seeded reservoir sampling."""
+    `per_surname_cap` ONC-derived adults who are a plausible parent (18 to 50 years
+    older) of at least one of that surname's uncovered children (`needed` maps
+    surname -> those children's ages). Kept by seeded reservoir sampling."""
     kept: Dict[str, List[Patient]] = {s: [] for s in needed}
     seen: Dict[str, int] = {s: 0 for s in needed}
     rngs = {s: random.Random(f"{seed}:family_adults:{s}") for s in needed}
@@ -76,8 +84,14 @@ def find_adult_candidates(
             surname = _family(record)
             if surname not in needed or str(record.get("id")) in exclude_ids:
                 continue
+            if not has_home_address(record):
+                continue  # could not share an address with the child
             age = age_of(record, as_of)
-            if age is None or age < max(ADULT, needed[surname] + MIN_PARENT_AGE_GAP):
+            if (
+                age is None
+                or age < ADULT
+                or not any(is_plausible_parent_gap(age - c) for c in needed[surname])
+            ):
                 continue
             seen[surname] += 1
             pool = kept[surname]
@@ -111,7 +125,7 @@ def add_family_adults(
     adults = [i for i, a in enumerate(ages) if a is None or a >= ADULT]
     adult_ages_by_family: Dict[str, List[int]] = {}
     for i in adults:
-        if ages[i] is not None and _family(people[i]):
+        if ages[i] is not None and _family(people[i]) and has_home_address(people[i]):
             adult_ages_by_family.setdefault(_family(people[i]), []).append(ages[i] or 0)
 
     def covered(i: int) -> bool:
@@ -124,15 +138,14 @@ def add_family_adults(
     wanted = math.ceil(target_share * len(minors)) - n_covered_before
     if wanted <= 0 or not minors:
         return FamilyAdultsResult(
-            people, 0, n_covered_before, n_covered_before, len(minors)
+            people, 0, n_covered_before, n_covered_before, len(minors), []
         )
 
     rng = random.Random(f"{seed}:family_adults")
     uncovered = [i for i in minors if _family(people[i]) and not covered(i)]
-    needed: Dict[str, int] = {}
+    needed: Dict[str, List[int]] = {}
     for i in uncovered:
-        family = _family(people[i])
-        needed[family] = min(needed.get(family, 99), ages[i] or 0)
+        needed.setdefault(_family(people[i]), []).append(ages[i] or 0)
     candidates = find_adult_candidates(
         batches_factory(),
         needed,
@@ -143,7 +156,24 @@ def add_family_adults(
     )
 
     rng.shuffle(uncovered)
-    protected = {i for i in adults if _family(people[i]) in needed}
+    # Never swap out an adult who already covers a child (any surname), nor one
+    # who shares a surname with an uncovered child.
+    minor_ages_by_family: Dict[str, List[int]] = {}
+    for i in minors:
+        if _family(people[i]):
+            minor_ages_by_family.setdefault(_family(people[i]), []).append(ages[i] or 0)
+    protected = {
+        i
+        for i in adults
+        if _family(people[i]) in needed
+        or (
+            ages[i] is not None
+            and any(
+                is_plausible_parent_gap((ages[i] or 0) - c)
+                for c in minor_ages_by_family.get(_family(people[i]), ())
+            )
+        )
+    }
     victims_by_band: Dict[str, List[int]] = {}
     for i in adults:
         if i not in protected and ages[i] is not None:
@@ -153,6 +183,7 @@ def add_family_adults(
 
     removed: Set[int] = set()
     added: List[Patient] = []
+    added_gaps: List[int] = []
     newly_covered = 0
     used: Set[str] = set()
     for i in uncovered:
@@ -166,7 +197,7 @@ def add_family_adults(
             c
             for c in candidates.get(family, ())
             if str(c["id"]) not in used
-            and (age_of(c, as_of) or 0) - (ages[i] or 0) >= MIN_PARENT_AGE_GAP
+            and is_plausible_parent_gap((age_of(c, as_of) or 0) - (ages[i] or 0))
         ]
         if not pool:
             continue
@@ -178,6 +209,7 @@ def add_family_adults(
         removed.add(victims.pop())
         used.add(str(adult["id"]))
         added.append(adult)
+        added_gaps.append((age_of(adult, as_of) or 0) - (ages[i] or 0))
         newly_covered += 1
 
     kept = [p for index, p in enumerate(people) if index not in removed]
@@ -185,7 +217,7 @@ def add_family_adults(
     rng.shuffle(result)
     n_after = _count_covered(result, as_of)
     return FamilyAdultsResult(
-        result, len(added), n_covered_before, n_after, len(minors)
+        result, len(added), n_covered_before, n_after, len(minors), added_gaps
     )
 
 
@@ -194,7 +226,7 @@ def covered_by_added(
 ) -> bool:
     return any(
         _family(a) == family
-        and (age_of(a, as_of) or 0) - minor_age >= MIN_PARENT_AGE_GAP
+        and is_plausible_parent_gap((age_of(a, as_of) or 0) - minor_age)
         for a in added
     )
 
@@ -203,7 +235,7 @@ def _count_covered(patients: Sequence[Patient], as_of: date) -> int:
     ages = [age_of(p, as_of) for p in patients]
     adult_ages: Dict[str, List[int]] = {}
     for p, a in zip(patients, ages):
-        if a is not None and a >= ADULT and _family(p):
+        if a is not None and a >= ADULT and _family(p) and has_home_address(p):
             adult_ages.setdefault(_family(p), []).append(a)
     return sum(
         1

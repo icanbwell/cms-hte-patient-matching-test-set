@@ -621,6 +621,50 @@ def shared_contact_rate(patients: Sequence[Patient], system: str) -> float:
     return shared / len(with_contact)
 
 
+# The audit's own parent age window for `minors_with_same_surname_adult_share`.
+# Written out here on purpose rather than imported from household_assignment, so a
+# change to the generator's window cannot silently loosen the audit; a test pins
+# the two together.
+_PARENT_MIN_GAP = 18
+_PARENT_MAX_GAP = 50
+_ADULT_AGE = 18
+
+
+def minors_with_same_surname_adult_share(
+    patients: Sequence[Patient], as_of: date
+) -> float:
+    """Share of children (under 18 at `as_of`) who live, by shared street address
+    and ZIP, with an adult of the same surname 18 to 50 years older: the realistic
+    set's "family structure" claim, measured on the output rather than assumed
+    from the generator's target. Children without a surname or an address count
+    in the denominator (they cannot be shown to live with anyone). NaN when there
+    are no children. A same-surname adult is a proxy for a parent, not a known
+    one."""
+    born: List[Tuple[Patient, int]] = []
+    for p in patients:
+        try:
+            born.append((p, as_of.year - int(str(p.get("birthDate") or "")[:4])))
+        except ValueError:
+            continue
+    adult_ages_by_home: Dict[Tuple[str, str], List[int]] = defaultdict(list)
+    for p, age in born:
+        home = (_audit_family(p), _audit_address(p))
+        if age >= _ADULT_AGE and all(home):
+            adult_ages_by_home[home].append(age)
+    children = [(p, age) for p, age in born if age < _ADULT_AGE]
+    if not children:
+        return float("nan")
+    housed = 0
+    for p, age in children:
+        home = (_audit_family(p), _audit_address(p))
+        if all(home) and any(
+            _PARENT_MIN_GAP <= adult - age <= _PARENT_MAX_GAP
+            for adult in adult_ages_by_home.get(home, ())
+        ):
+            housed += 1
+    return housed / len(children)
+
+
 def age_band_shares(
     patients: Sequence[Patient], as_of: date = ONC_AS_OF
 ) -> Dict[str, float]:
@@ -721,6 +765,9 @@ def build_report(
         "shared_email_rate": shared_contact_rate(patients, "email"),
         "age_band_shares": age_band_shares(patients, as_of),
         "age_band_max_error": age_band_max_error(patients, as_of),
+        "minors_with_same_surname_adult_share": minors_with_same_surname_adult_share(
+            patients, as_of
+        ),
         "baseline_f1": f1s,
         "best_single_field_f1": best_single,
         "multi_field_margin": f1s[MULTI_FIELD_BASELINE_NAME] - best_single,

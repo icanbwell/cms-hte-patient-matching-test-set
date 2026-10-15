@@ -16,6 +16,7 @@ from audit import (
     identical_positive_pairs,
     match_count_share,
     matches_first_rate,
+    minors_with_same_surname_adult_share,
     missing_hard_negative_categories,
     negative_share,
     pairwise_two_of_three_f1,
@@ -30,6 +31,7 @@ from audit import (
     twin_pairs_with_name_variants,
 )
 from fhir_conformance import export_ready
+from household_assignment import MAX_PARENT_AGE_GAP, MIN_PARENT_AGE_GAP
 from identity_guard import SSN_SYSTEM
 
 
@@ -529,6 +531,62 @@ class TestTwinNameVariants:
         rows = self._rows("William", "Bill")
         rows[0]["rationale"] = "hard_negative"
         assert twin_pairs_with_name_variants(rows) == []
+
+
+class TestMinorsWithSameSurnameAdultShare:
+    AS_OF = date(2026, 1, 1)
+
+    def _family(self, parent_birth_year, child_birth_year=2016, same_street=True):
+        parent = _patient("a", "Ana", "Rivera", dob=f"{parent_birth_year}-05-05")
+        child = _patient(
+            "c",
+            "Cleo",
+            "Rivera",
+            dob=f"{child_birth_year}-05-05",
+            street="1 Main St" if same_street else "9 Other Rd",
+        )
+        return [parent, child]
+
+    def test_a_child_with_a_same_surname_same_address_parent_age_adult_counts(self):
+        assert minors_with_same_surname_adult_share(self._family(1990), self.AS_OF) == 1
+
+    @pytest.mark.parametrize(
+        "parent_birth_year", [2005, 1950]
+    )  # 4 years older / 66 years older than a 2016 child
+    def test_an_adult_outside_18_to_50_years_older_does_not_count(
+        self, parent_birth_year
+    ):
+        share = minors_with_same_surname_adult_share(
+            self._family(parent_birth_year), self.AS_OF
+        )
+        assert share == 0
+
+    def test_a_different_address_or_surname_does_not_count(self):
+        assert (
+            minors_with_same_surname_adult_share(
+                self._family(1990, same_street=False), self.AS_OF
+            )
+            == 0
+        )
+        people = self._family(1990)
+        people[0]["name"][0]["family"] = "Lopez"
+        assert minors_with_same_surname_adult_share(people, self.AS_OF) == 0
+
+    def test_children_without_a_home_are_counted_as_not_housed(self):
+        people = self._family(1990)
+        people.append(_patient("d", "Dan", "Okafor", dob="2015-01-01"))
+        assert minors_with_same_surname_adult_share(people, self.AS_OF) == 0.5
+
+    def test_no_children_is_nan_and_the_window_matches_the_generators(self):
+        assert math.isnan(
+            minors_with_same_surname_adult_share(self._family(1990)[:1], self.AS_OF)
+        )
+        from audit import _PARENT_MAX_GAP, _PARENT_MIN_GAP
+
+        assert (_PARENT_MIN_GAP, _PARENT_MAX_GAP) == (
+            MIN_PARENT_AGE_GAP,
+            MAX_PARENT_AGE_GAP,
+        )
 
 
 class TestIdenticalPositivePairs:

@@ -8,6 +8,7 @@
   "single_match_query_share": {"min": 0.05, "status": "enforced"},
   "tier_parity_gap": {"max": 0, "status": "enforced"},
   "age_band_max_error": {"max": 0.01, "status": "enforced"},
+  "minors_with_same_surname_adult_share": {"min": 0.70, "status": "enforced"},
   "people_per_address": {"min": 2.0, "status": "enforced"},
   "shared_phone_rate": {"min": 0.4, "status": "enforced"},
   "best_single_field_f1": {"max": 0.9, "status": "enforced"},

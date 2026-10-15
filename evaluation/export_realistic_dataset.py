@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import statistics
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Sequence
@@ -48,7 +49,11 @@ from export_test_dataset import (
     write_jsonl,
 )
 from family_adults import add_family_adults
-from household_assignment import assign_households
+from household_assignment import (
+    MAX_PARENT_AGE_GAP,
+    MIN_PARENT_AGE_GAP,
+    assign_households,
+)
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
 from near_miss import (
     DEFAULT_PER_KIND_CAP,
@@ -106,7 +111,7 @@ def generator_fingerprint() -> str:
 CAVEATS: List[str] = [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated ONC-derived records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds ONC-derived adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)",
+    "households are mostly unrelated ONC-derived records placed at one address; about 70% of minors live with a same-surname adult 18 to 50 years older only because family_adults.py adds ONC-derived adults to the sample to reach a placeholder target (a surname is a proxy for a parent, not a known parent; the audit's minors_with_same_surname_adult_share measures the achieved share on the output)",
 ]
 
 
@@ -223,6 +228,21 @@ def generate_realistic(
                 "n_minors": family.n_minors,
                 "minors_covered_before": family.n_covered_before,
                 "minors_covered_after": family.n_covered_after,
+                "share_achieved": (
+                    family.n_covered_after / family.n_minors if family.n_minors else 0.0
+                ),
+                "parent_age_gap_bounds": [MIN_PARENT_AGE_GAP, MAX_PARENT_AGE_GAP],
+                "added_parent_age_gap_min": min(
+                    family.added_parent_age_gaps, default=None
+                ),
+                "added_parent_age_gap_median": (
+                    statistics.median(family.added_parent_age_gaps)
+                    if family.added_parent_age_gaps
+                    else None
+                ),
+                "added_parent_age_gap_max": max(
+                    family.added_parent_age_gaps, default=None
+                ),
             }
             if family is not None
             else None

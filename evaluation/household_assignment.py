@@ -51,7 +51,20 @@ Patient = Dict[str, Any]
 MAX_HOUSEHOLD_SIZE = 6
 UNDER_13 = 13
 ADULT = 18
+# A same-surname adult counts as a plausible parent of a child only when 18 to 50
+# years older. 18: the youngest age at which an adult is counted (ADULT). 50: a
+# parent more than 50 years older than the child is a grandparent or great-
+# grandparent at best (a mother giving birth at 50 is already rare), so surname
+# alone would not suggest a parent. The bounds are this generator's assumption,
+# not a sourced demographic figure; every household and family-adult check uses
+# `is_plausible_parent_gap`, so they cannot drift apart.
 MIN_PARENT_AGE_GAP = 18
+MAX_PARENT_AGE_GAP = 50
+
+
+def is_plausible_parent_gap(gap_years: int) -> bool:
+    """True if an adult `gap_years` older than a child could be that child's parent."""
+    return MIN_PARENT_AGE_GAP <= gap_years <= MAX_PARENT_AGE_GAP
 
 
 @dataclass(frozen=True)
@@ -127,6 +140,16 @@ def household_sizes(
 def _family(patient: Patient) -> str:
     names = patient.get("name") or []
     return normalize_token(names[0].get("family")) if names else ""
+
+
+def has_home_address(patient: Patient) -> bool:
+    """True if the first address has a street line and a postal code, which is
+    what lets a household member share it. An adult without one cannot make a
+    child "live with" them, so such an adult is not counted as a parent anchor."""
+    addresses = patient.get("address") or []
+    if not addresses:
+        return False
+    return bool(addresses[0].get("line")) and bool(addresses[0].get("postalCode"))
 
 
 def _entries(patient: Patient, system: str) -> List[Dict[str, Any]]:
@@ -219,8 +242,9 @@ def assign_households(
         a
         for a in adults
         if ages[a] is not None
+        and has_home_address(people[a])
         and any(
-            (ages[a] or 0) - (ages[m] or 0) >= MIN_PARENT_AGE_GAP
+            is_plausible_parent_gap((ages[a] or 0) - (ages[m] or 0))
             for m in minors_by_family.get(_family(people[a]), ())
         )
     ]
@@ -251,12 +275,13 @@ def assign_households(
             for h in candidates
             if family
             and _family(people[anchors[h]]) == family
-            and (ages[anchors[h]] or 0) - (ages[minor] or 0) >= MIN_PARENT_AGE_GAP
+            and has_home_address(people[anchors[h]])
+            and is_plausible_parent_gap((ages[anchors[h]] or 0) - (ages[minor] or 0))
         ]
         old_enough = [
             h
             for h in candidates
-            if (ages[anchors[h]] or 0) - (ages[minor] or 0) >= MIN_PARENT_AGE_GAP
+            if is_plausible_parent_gap((ages[anchors[h]] or 0) - (ages[minor] or 0))
         ]
         household = rng.choice(matched or old_enough or candidates)
         same_surname += bool(matched)
@@ -293,8 +318,9 @@ def assign_households(
         1
         for m in minors
         if any(
-            (ages[a] or 0) - (ages[m] or 0) >= MIN_PARENT_AGE_GAP
+            is_plausible_parent_gap((ages[a] or 0) - (ages[m] or 0))
             for a in same_family_adults.get(_family(people[m]), ())
+            if has_home_address(people[a])
         )
     )
     report = HouseholdReport(
