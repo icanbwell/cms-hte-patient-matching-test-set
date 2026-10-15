@@ -18,7 +18,10 @@ from scenarios import REGISTRY
 from support_patients import drift_donors, drift_population
 
 
-def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
+def _patient(id_: str, family: str = "Smith", given: str | None = None):
+    # Distinct default first names: the same first name and birth date under two
+    # surnames looks like one person to the duplicate guard.
+    given = given or ("Katherine" if family == "Smith" else f"Given{family}")
     return {
         "resourceType": "Patient",
         "id": id_,

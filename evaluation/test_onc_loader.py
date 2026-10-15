@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
 from fhir_conformance import V2_0203_SYSTEM, violations
-from onc_loader import MOTHERS_MAIDEN_NAME_URL, _row_to_patient, ssn_identifier
+from onc_loader import (
+    MOTHERS_MAIDEN_NAME_URL,
+    _row_to_patient,
+    load_onc_patients,
+    ssn_identifier,
+)
 
 
 def _row(**overrides):
@@ -144,3 +150,19 @@ class TestAddressAndIdentifier:
         assert violations(patient) == []
         for key in ("telecom", "address", "identifier"):
             assert key not in patient
+
+
+class TestRequiredColumns:
+    def test_a_shard_without_a_name_column_raises_instead_of_loading_empty_names(
+        self, tmp_path
+    ):
+        shard = tmp_path / "shard.csv"
+        shard.write_text("EnterpriseID,LAST,DOB\n1,SMITH,1\n")
+        with pytest.raises(ValueError, match="missing required column"):
+            load_onc_patients([shard])
+
+    def test_an_empty_cell_is_still_allowed(self, tmp_path):
+        shard = tmp_path / "shard.csv"
+        shard.write_text("EnterpriseID,FIRST,LAST\n1,,SMITH\n")
+        (patient,) = load_onc_patients([shard])
+        assert patient["name"][0]["family"] == "SMITH"

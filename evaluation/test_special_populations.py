@@ -16,8 +16,11 @@ from special_populations import (
 
 
 def _patient(
-    id_, family, given="Pat", zip_code="10001", dob="1980-01-01", street="1 Main St"
+    id_, family, given=None, zip_code="10001", dob="1980-01-01", street="1 Main St"
 ):
+    given = (
+        given or f"Pat{family}"
+    )  # distinct first names: same-first + same-DOB looks like one person
     return {
         "resourceType": "Patient",
         "id": id_,
