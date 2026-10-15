@@ -41,6 +41,8 @@ Patient = Dict[str, Any]
 
 SIBLING_MAX_AGE_GAP_YEARS = 3
 DEFAULT_PER_KIND_CAP = 3
+# Pool decoys are cheap (a candidate, not a labeled case), so the population tier keeps more.
+DEFAULT_POOL_PER_KIND_CAP = 8
 
 # Priority order: a record qualifying under several kinds is filed under the first.
 KINDS: Tuple[str, ...] = (
@@ -273,6 +275,28 @@ def _reservoir_offer(
     position = rng.randrange(seen_count)
     if position < cap:
         pool[position] = miss
+
+
+def limit_per_kind(
+    near_misses: Sequence[NearMiss], cap: int, *, seed: int
+) -> List[NearMiss]:
+    """At most `cap` near-misses per (query, kind), chosen by a seeded sample so
+    the choice does not favor low ids. Output keeps the input's relative order.
+    The pairwise tier uses a smaller cap than the population pools: each pairwise
+    decoy is a whole labeled case, while a pool just needs candidates."""
+    groups: Dict[Tuple[str, str], List[int]] = defaultdict(list)
+    for index, miss in enumerate(near_misses):
+        groups[(miss.query_id, miss.kind)].append(index)
+    keep: Set[int] = set()
+    for (query_id, kind), indexes in groups.items():
+        if len(indexes) <= cap:
+            keep.update(indexes)
+            continue
+        chosen = random.Random(f"{seed}:limit_per_kind:{query_id}:{kind}").sample(
+            indexes, cap
+        )
+        keep.update(chosen)
+    return [miss for index, miss in enumerate(near_misses) if index in keep]
 
 
 def _interleave(per_kind: Mapping[str, List[NearMiss]]) -> List[NearMiss]:

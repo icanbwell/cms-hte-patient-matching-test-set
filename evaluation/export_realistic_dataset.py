@@ -48,7 +48,12 @@ from export_test_dataset import (
 )
 from household_assignment import assign_households
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
-from near_miss import DEFAULT_PER_KIND_CAP, find_near_misses
+from near_miss import (
+    DEFAULT_PER_KIND_CAP,
+    DEFAULT_POOL_PER_KIND_CAP,
+    find_near_misses,
+    limit_per_kind,
+)
 from negative_balance import rebalance_negatives
 from population_cases import PopulationDataset, build_population_dataset
 from population_sampling import age_of, band_of, stratified_sample
@@ -124,10 +129,14 @@ def generate_realistic(
     profile: DriftProfile,
     decoy_batches: Callable[[], Iterable[Sequence[Patient]]] | None = None,
     target_negative_share: float | None = None,
-    per_kind_cap: int = DEFAULT_PER_KIND_CAP,
+    per_kind_cap: int = DEFAULT_POOL_PER_KIND_CAP,
+    pairwise_per_kind_cap: int = DEFAULT_PER_KIND_CAP,
 ) -> RealisticDataset:
-    if per_kind_cap < 1:
-        raise ValueError(f"per_kind_cap must be at least 1, got {per_kind_cap}")
+    if per_kind_cap < 1 or pairwise_per_kind_cap < 1:
+        raise ValueError(
+            "per_kind_cap and pairwise_per_kind_cap must be at least 1, got "
+            f"{per_kind_cap} and {pairwise_per_kind_cap}"
+        )
     sample = stratified_sample(batches, sample_size, donor_n=donor_size, seed=seed)
     housed = assign_households(sample.patients, profile=profile, seed=seed)
     near_result = None
@@ -147,7 +156,7 @@ def generate_realistic(
         donors=sample.donors,
         profile=profile,
         households=housed.households,
-        near_misses=near_misses,
+        near_misses=limit_per_kind(near_misses, pairwise_per_kind_cap, seed=seed),
         seed=seed,
         frequency_lookup=researched_frequency,
     )
@@ -187,6 +196,7 @@ def generate_realistic(
         "profile_rates": dict(profile.rates),
         "near_miss": {
             "per_kind_cap": per_kind_cap,
+            "pairwise_per_kind_cap": pairwise_per_kind_cap,
             "yield_by_kind": near_result.yield_by_kind if near_result else {},
         },
         "negative_share": n_negatives / len(records) if records else 0.0,
@@ -221,7 +231,10 @@ if __name__ == "__main__":
         profile=load_profile(),
         decoy_batches=iter_shard_batches,
         target_negative_share=TARGET_NEGATIVE_SHARE,
-        per_kind_cap=int(os.environ.get("NEAR_MISS_CAP", DEFAULT_PER_KIND_CAP)),
+        per_kind_cap=int(os.environ.get("NEAR_MISS_CAP", DEFAULT_POOL_PER_KIND_CAP)),
+        pairwise_per_kind_cap=int(
+            os.environ.get("PAIRWISE_NEAR_MISS_CAP", DEFAULT_PER_KIND_CAP)
+        ),
     )
     output_dir = Path(os.environ.get("OUTPUT_DIR", str(CASES_DIR)))
     write_realistic_dataset(result, output_dir)

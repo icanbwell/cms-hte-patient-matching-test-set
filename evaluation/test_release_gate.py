@@ -91,4 +91,4 @@ def test_realistic_thresholds_name_the_negative_balance_metrics():
     assert rules["negative_share"] == {"min": 0.45, "status": "enforced"}
     assert rules["all_yes_f1"] == {"max": 0.70, "status": "enforced"}
     assert rules["missing_hard_negative_categories"] == {"max": 0, "status": "enforced"}
-    assert rules["decoy_no_overlap_rate"] == {"max": 0.5, "status": "tracked"}
+    assert rules["decoy_no_overlap_rate"] == {"max": 0.5, "status": "enforced"}

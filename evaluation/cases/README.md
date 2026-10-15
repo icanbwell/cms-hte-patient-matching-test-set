@@ -541,6 +541,7 @@ other true-match/hard-negative/special-population category is present at full sc
 ## Dataset changelog
 
 ### Dataset version 2 (BAI-1156)
+- Population pools now carry up to 8 real look-alikes per kind per query (was 3), so `decoy_no_overlap_rate` falls from 0.7147 to 0.4707 and is enforced (BAI-1162). The pairwise tier keeps 3 per kind and is unchanged. `realistic_population_candidates.jsonl` grows from 14.4 MB to 23.7 MB.
 - The population top-up now excludes probable typo duplicates of the query, not only exact same-person matches (BAI-1164). The remaining known gap is the heuristic itself: a duplicate with no SSN on either side and two or more edits in both name and birth date still passes.
 - Dataset version 2 applies to every file in this directory, curated (`sample_labeled_pairs.jsonl`, `population_*.jsonl`) and realistic (`realistic_*`); only `realistic_manifest.json` carries the number. It is the data-format version and is independent of the package version in `pyproject.toml` and of git tags; the realistic files are the v1 release candidate of the benchmark.
 - Ids are opaque and pools are shuffled (see "The file format"). Before this, every true match had `source.id == target.id` and every population pool listed its true matches first, so either alone scored F1 1.0 (found in adversarial review of this PR; the same pattern existed in version 1 of the data).
@@ -551,7 +552,7 @@ other true-match/hard-negative/special-population category is present at full sc
 - `marriage_variant` is kept, with two changes: its surname now comes from the `patient-mothersMaidenName` extension (the loader no longer emits the mother's maiden name as a second `name` entry), and its donor address comes from the held-out donors instead of the next patient in the list, so a patient's variant no longer depends on its neighbour. New `surname_address_change` composes `surname_change` and `address_move` (rate placeholder 0.10, both tiers) as the better-founded surname-plus-address case.
 - Realistic set committed (`realistic_*`): real look-alike decoys from all shards in both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`; strata `found_by=near_miss`), pairwise tier targets 50% negatives and lands at `negative_share` 0.556 with no positives subsampled (`manifest.n_positives_dropped` = 0: the near-miss negatives alone exceeded the target), enforced gates for `negative_share`, `all_yes_f1`, required hard-negative categories and `probable_duplicate_negatives`. The near-miss finder rejects decoys that are probable typo duplicates of the query (`identity_guard.is_probable_duplicate`) or of its pre-household original.
 - Committed curated files regenerated in full at the default seed: `sample_labeled_pairs.jsonl` 14,295 rows (13,721 true matches, 574 non-matches; was 14,201 rows, 13,619 and 582), `population_queries.jsonl` 2,000 queries, `population_candidates.jsonl` 15,872 candidates (was 15,747 per the BAI-1061 entry). Consumers that pin row counts or case ids should re-pin.
-- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: `decoy_no_overlap_rate` 0.7147 (tracked, max 0.5), queries with exactly 0 or 1 expected matches, family structure and the age vintage.
+- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: queries with exactly 0 or 1 expected matches, family structure and the age vintage.
 
 - **BAI-1061 (regenerated cases)** - `sample_labeled_pairs.jsonl` and `population_*.jsonl` regenerated
   at the default seed with the generators as of the case-exclusion mechanism (rule 29 excluded in
@@ -739,11 +740,12 @@ What this is not:
   `all_yes_f1` is 0.6149 (committed: 0.980). A naive pairwise rule (match iff at least 2 of first name,
   family name, birth date agree) scores F1 0.899 on the pairwise tier (`pairwise_two_of_three_f1`, tracked,
   max 0.95).
-- **Harder decoys are only partly met.** `decoy_no_overlap_rate` is 0.7147 (tracked, max 0.5, tracked-fail):
-  72% of non-matching candidates in the realistic population pools still share nothing with their query.
-  This follows from the per-kind cap (3) and the low yield of most kinds (about 7 near-miss decoys per query
-  on average, 14,088 over 2,000 queries); the remaining pool slots are filled by random top-ups. It is not
-  caused by trimming.
+- **Harder decoys (BAI-1162).** `decoy_no_overlap_rate` is 0.4707 (enforced, max 0.5): 47% of
+  non-matching candidates in the realistic population pools share nothing with their query, down from
+  0.7147. Population pools keep up to 8 look-alikes per kind per query (`DEFAULT_POOL_PER_KIND_CAP`;
+  30,664 near-miss decoys, about 15 per query), while the pairwise tier is limited to 3 per kind
+  (`DEFAULT_PER_KIND_CAP`, applied by `near_miss.limit_per_kind`) so it is not flooded with negatives. The
+  remaining pool slots are filled by random top-ups.
   Queries with exactly 0 or 1 expected matches, family structure (same-surname minors) and the age vintage
   are not addressed in this release.
 - Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
