@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "8ec7024a7e0707783745a46ce96d43f4ecccf7055fd7137576f3a9fd46e89f06",
+  "generator_fingerprint": "f4666360f81c70ed283c7b5562deb23230aaf800b25a3e0681311d3db9c81c77",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -57,7 +57,9 @@
     "placeholder": 0.15,
     "household_shared_phone": 0.5,
     "household_shared_email": 0.5,
-    "minor_ssn_absent": 0.7
+    "minor_ssn_absent": 0.7,
+    "query_no_match": 0.1,
+    "query_single_match": 0.15
   },
   "near_miss": {
     "per_kind_cap": 8,

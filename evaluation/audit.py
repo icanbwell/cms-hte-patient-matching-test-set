@@ -266,6 +266,18 @@ def _same_id(row: Row) -> bool:
     return row["source"].get("id") == row["target"].get("id")
 
 
+def match_count_share(query_rows: Sequence[Row], count: int) -> float:
+    """Share of population queries with exactly `count` expected matches. The
+    population tier must include searches where the person is absent (0) or
+    appears once (1); a tier where every query has several matches flatters
+    precision and cannot test false positives on "no match exists"."""
+    if not query_rows:
+        return 0.0
+    return sum(1 for q in query_rows if len(q["expected_match_ids"]) == count) / len(
+        query_rows
+    )
+
+
 def matches_first_rate(query_rows: Sequence[Row]) -> float:
     """Share of queries whose true matches are exactly the leading entries of
     `candidate_ids`. Pool order must not reveal the label, so this is ~0."""
@@ -555,6 +567,8 @@ def build_report(
         ),
         "id_equality_f1": id_equality_f1(pair_rows),
         "matches_first_rate": matches_first_rate(query_rows),
+        "zero_match_query_share": match_count_share(query_rows, 0),
+        "single_match_query_share": match_count_share(query_rows, 1),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),
         "negative_share": negative_share(pair_rows),
         "all_yes_f1": all_yes_f1(pair_rows),

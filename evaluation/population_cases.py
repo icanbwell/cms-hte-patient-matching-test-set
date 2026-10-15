@@ -32,6 +32,11 @@ correctly produces an **empty** expected_match_ids - the current Doc calls
 this out explicitly as a real case ("possibly empty"), not an edge case to
 special-case away.
 
+By default a share of queries is deliberately thinned to no match or exactly one
+(`query_no_match`, `query_single_match` in drift_profile.py, placeholder shares):
+the thinned variants leave the pool and the registry, and the query's rationale
+no longer credits their categories.
+
 Known simplification vs. the pairwise tier (labeled_pairs.py): a
 construct_institutional_negatives() pair fabricates the SAME synthetic
 address on *both* sides, testing "do two institutional residents avoid
@@ -90,6 +95,22 @@ Patient = Dict[str, Any]
 # Per the current Doc's own framing: "the genuinely hard failure is picking a
 # plausible wrong candidate out of forty near-misses."
 DEFAULT_POOL_SIZE = 40
+
+
+def _matches_to_keep(
+    true_matches: List[str], profile: DriftProfile, seed: int, query_id: str
+) -> Set[str]:
+    """Which of a query's true matches stay in its pool. Most queries keep all of
+    them; `query_no_match` of queries keep none (the person is not in the pool)
+    and `query_single_match` keep exactly one, drawn from a per-query RNG."""
+    draw = random.Random(f"{seed}:match_count:{query_id}")
+    roll = draw.random()
+    no_match = profile.rate("query_no_match")
+    if roll < no_match:
+        return set()
+    if roll < no_match + profile.rate("query_single_match") and true_matches:
+        return {draw.choice(sorted(true_matches))}
+    return set(true_matches)
 
 
 @dataclass(frozen=True)
@@ -160,6 +181,9 @@ def build_population_dataset(
     pool_seen: Dict[str, Set[str]] = {pid: set() for pid in by_id}
     match_members: Dict[str, List[str]] = {pid: [] for pid in by_id}
     categories: Dict[str, Set[str]] = {pid: set() for pid in by_id}
+    # A true match's category is credited only if that match stays in the pool
+    # (a query can have its matches thinned to 0 or 1; see _matches_to_keep).
+    match_categories: Dict[str, Dict[str, str]] = {pid: {} for pid in by_id}
 
     def add_candidate(
         query_id: str,
@@ -174,7 +198,10 @@ def build_population_dataset(
         # A decoy that qualifies under several categories (e.g. a sibling who is
         # also a household co-resident) is added once but credited to all of
         # them, so tier parity sees every category it belongs to.
-        categories[query_id].add(category)
+        if is_true_match:
+            match_categories[query_id].setdefault(candidate_id, category)
+        else:
+            categories[query_id].add(category)
         if candidate_id in pool_seen[query_id]:
             return
         pool_seen[query_id].add(candidate_id)
@@ -327,12 +354,19 @@ def build_population_dataset(
             )
 
     all_ids = list(by_id)
+    thinned_ids: Set[str] = set()
     same_person = SamePersonIndex(patients)
     duplicates = ProbableDuplicateIndex(patients)
     cases: List[PopulationCase] = []
     for pid, patient in by_id.items():
         pool = list(pool_members[pid])
         true_matches = list(match_members[pid])
+        keep = _matches_to_keep(true_matches, profile, seed, pid)
+        thinned = set(true_matches) - keep
+        if thinned:
+            pool = [c for c in pool if c not in thinned]
+            true_matches = [m for m in true_matches if m in keep]
+            thinned_ids.update(thinned)
 
         if len(pool) < pool_size:
             excluded = same_person.matching_ids(patient) | duplicates.matching_ids(
@@ -355,7 +389,9 @@ def build_population_dataset(
         # Matches are collected before decoys, so an unshuffled pool lists every
         # true match first and its position reveals the label.
         random.Random(f"{seed}:pool_order:{pid}").shuffle(pool)
-        cats = categories[pid]
+        cats = categories[pid] | {
+            match_categories[pid][m] for m in true_matches if m in match_categories[pid]
+        }
         rationale = "population/" + "+".join(sorted(cats)) if cats else "population"
         cases.append(
             PopulationCase(
@@ -366,5 +402,10 @@ def build_population_dataset(
                 rationale=rationale,
             )
         )
+
+    # A thinned variant that no pool references would be an orphan candidate row.
+    referenced = {c for case in cases for c in case.candidate_ids}
+    for candidate_id in thinned_ids - referenced:
+        candidates.pop(candidate_id, None)
 
     return PopulationDataset(cases=cases, candidates=candidates)
