@@ -671,7 +671,7 @@ committed as the v1 release, with `make audit-realistic` run in CI) from all nin
 | Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
 
 Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
-60% of patients share a phone and 58% an email (committed: 6% and 32%); 769 households, 49 of the 430
+60% of patients share a phone and 56% an email (committed: 6% and 32%); 769 households, 46 of the 430
 children placed with a same-surname adult. Naive-baseline F1 on the population tier (as reported by `audit.py`):
 committed set phone-only 0.949 (best single field), address-only 0.934, multi-field margin 0.035;
 realistic set phone-only 0.860 (best single field), address-only 0.716, DOB-only 0.702, multi-field margin
@@ -699,7 +699,7 @@ What this is not:
   (`shared_phone_rate` >= 0.40, `people_per_address` >= 2.0) are provisional and tied to the placeholder
   0.5 sharing rate: children under 13 always take their anchor's phone, so the realistic `shared_phone_rate`
   stays around 0.29 even when `household_shared_phone` is 0.0 (measured: 0.29, 0.35, 0.41, 0.60 at 0.0, 0.1, 0.2,
-  0.5 respectively). The 0.40 floor fails at `household_shared_phone` 0.1 (0.35 measured) and passes at 0.2 (0.41 measured). The
+  0.5 respectively). The 0.40 floor fails at `household_shared_phone` 0.1 (0.35 measured) and passes at 0.2 (0.41 measured). This 0.29/0.35/0.41/0.60 series was measured in an earlier run and was not re-run for dataset version 2. The
   `people_per_address >= 2.0` floor depends on household size distribution, not sharing rates.
 - **Mined negative categories.** A random 2,000-of-1M draw removes the alphabetical clustering the
   per-sample miners relied on, so hard negatives now come from `near_miss.py`, a streaming
