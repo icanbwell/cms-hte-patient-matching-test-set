@@ -16,7 +16,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
 
-from identity_guard import is_possible_same_person, normalize_phone, normalize_token
+from identity_guard import (
+    is_placeholder_ssn,
+    is_possible_same_person,
+    normalize_phone,
+    normalize_token,
+)
 from naive_baselines import (
     BASELINES,
     MULTI_FIELD_BASELINE_NAME,
@@ -103,6 +108,137 @@ def same_person_negatives(pair_rows: Sequence[Row]) -> List[str]:
         for r in pair_rows
         if not r["expected_match"] and is_possible_same_person(r["source"], r["target"])
     ]
+
+
+def _levenshtein(a: str, b: str, limit: int) -> int:
+    """Edit distance; limit + 1 once it is known to exceed limit. Independent of
+    the generator's helpers on purpose (the audit must not share its blind spots)."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        new = [i]
+        for j, cb in enumerate(b, 1):
+            new.append(min(row[j] + 1, new[-1] + 1, row[j - 1] + (ca != cb)))
+        if min(new) > limit:
+            return limit + 1
+        row = new
+    return row[-1]
+
+
+def _audit_ssn(p: Patient) -> str | None:
+    for ident in p.get("identifier") or []:
+        if "ssn" in str(ident.get("system") or "").lower():
+            digits = re.sub(r"\D", "", str(ident.get("value") or ""))
+            if len(digits) == 9 and not is_placeholder_ssn(digits):
+                return digits
+    return None
+
+
+def _audit_phones(p: Patient) -> frozenset[str]:
+    return frozenset(v for v in _phones(p) if len(v) == 10)
+
+
+def _audit_name(p: Patient) -> str:
+    names = p.get("name") or []
+    if not names:
+        return ""
+    given = names[0].get("given") or []
+    first = normalize_token(given[0]) if given else ""
+    family = normalize_token(names[0].get("family"))
+    return f"{first} {family}" if first and family else ""
+
+
+def _dob_close(a: str, b: str, limit: int, allow_swap: bool) -> bool:
+    if not (a and b):
+        return False
+    if _levenshtein(a, b, limit) <= limit:
+        return True
+    return bool(
+        allow_swap
+        and len(a) == len(b) == 10
+        and a[:4] == b[:4]
+        and a[5:7] == b[8:10]
+        and a[8:10] == b[5:7]
+    )
+
+
+def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
+    ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
+    if ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1:
+        return True
+    dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
+    if _audit_phones(a) & _audit_phones(b) and _dob_close(dob_a, dob_b, 0, False):
+        return True
+    name_a, name_b = _audit_name(a), _audit_name(b)
+    return bool(
+        name_a
+        and name_b
+        and _levenshtein(name_a, name_b, 2) <= 2
+        and _dob_close(dob_a, dob_b, 1, True)
+    )
+
+
+def probable_duplicate_negatives(
+    pair_rows: Sequence[Row],
+    query_rows: Sequence[Row],
+    candidates: Dict[str, Patient],
+) -> List[str]:
+    """Non-match pairs (pairwise rows, and every non-matching population pool
+    pair) whose two records look like one person recorded twice.
+
+    A looser, independent check than same_person_negatives, which only repeats
+    the generator's exact-match predicate: SSNs within edit distance 1; or a
+    shared phone with an identical birth date; or first+family names within
+    edit distance 2 with birth dates within edit distance 1 or a month/day swap.
+    (Wider date tolerances flagged only legitimate pairs on the realistic set:
+    household members sharing a phone with birth dates a character or two
+    apart, and same-surname relatives decades apart.) Returns case ids ("<case_id>") and population pair ids
+    ("<query_id>::<candidate_id>")."""
+    flagged = [
+        r["case_id"]
+        for r in pair_rows
+        if not r["expected_match"] and _looks_like_duplicate(r["source"], r["target"])
+    ]
+    for q in query_rows:
+        expected = set(q["expected_match_ids"])
+        for candidate_id in q["candidate_ids"]:
+            if candidate_id in expected:
+                continue
+            if _looks_like_duplicate(q["query"], candidates[candidate_id]):
+                flagged.append(f"{q['query_id']}::{candidate_id}")
+    return flagged
+
+
+def _two_of_three(source: Patient, target: Patient) -> bool:
+    def first(p: Patient) -> str:
+        names = p.get("name") or []
+        given = (names[0].get("given") or []) if names else []
+        return normalize_token(given[0]) if given else ""
+
+    agreements = [
+        bool(first(source)) and first(source) == first(target),
+        bool(_family(source)) and _family(source) == _family(target),
+        bool(source.get("birthDate"))
+        and source.get("birthDate") == target.get("birthDate"),
+    ]
+    return sum(agreements) >= 2
+
+
+def pairwise_two_of_three_f1(pair_rows: Sequence[Row]) -> float:
+    """F1 over the pairwise rows (positive = expected_match) of the naive rule
+    "match iff at least 2 of: first given name, family name, birth date agree"."""
+    tp = fp = fn = 0
+    for r in pair_rows:
+        predicted = _two_of_three(r["source"], r["target"])
+        if predicted and r["expected_match"]:
+            tp += 1
+        elif predicted:
+            fp += 1
+        elif r["expected_match"]:
+            fn += 1
+    denominator = 2 * tp + fp + fn
+    return 2 * tp / denominator if denominator else 0.0
 
 
 REQUIRED_HARD_NEGATIVE_CATEGORIES = (
@@ -319,9 +455,13 @@ def build_report(
     best_single = max(f1s[name] for name in SINGLE_FIELD_BASELINES)
     return {
         "same_person_negatives": same_person_negatives(pair_rows),
+        "probable_duplicate_negatives": probable_duplicate_negatives(
+            pair_rows, query_rows, candidates
+        ),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),
         "negative_share": negative_share(pair_rows),
         "all_yes_f1": all_yes_f1(pair_rows),
+        "pairwise_two_of_three_f1": pairwise_two_of_three_f1(pair_rows),
         "missing_hard_negative_categories": missing_hard_negative_categories(pair_rows),
         "decoy_no_overlap_rate": decoy_no_overlap_rate(query_rows, candidates),
         "positive_field_disagreement": disagreement,

@@ -8,6 +8,8 @@
   "multi_field_margin": {"min": 0.05, "status": "tracked"},
   "negative_share": {"min": 0.45, "status": "enforced"},
   "all_yes_f1": {"max": 0.70, "status": "enforced"},
+  "pairwise_two_of_three_f1": {"max": 0.95, "status": "tracked"},
+  "probable_duplicate_negatives": {"max": 0, "status": "enforced"},
   "missing_hard_negative_categories": {"max": 0, "status": "enforced"},
   "decoy_no_overlap_rate": {"max": 0.5, "status": "tracked"}
 }
