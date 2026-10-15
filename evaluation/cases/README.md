@@ -34,18 +34,19 @@ The ONC 2017 Patient Matching Algorithm Challenge dataset: 9 alphabetically-shar
 | ONC CSV column(s) | FHIR `Patient` field | Notes |
 |---|---|---|
 | `EnterpriseID` | `id` | The stable identifier every generated `case_id`/`candidate_id` is built from |
-| `FIRST`, `MIDDLE`, `ALIAS` | `name[0].given` | Appended in that order, each only if present |
+| `FIRST`, `MIDDLE` | `name[0].given` | Appended in that order, each only if non-empty |
+| `ALIAS` | a separate `name[]` entry with `use: nickname` | Not part of `given` |
 | `LAST` | `name[0].family` | |
-| `MOTHERS_MAIDEN_NAME` | a second `name[]` entry's `family` | Not mapped by the reference matching engine's own transform — added here so normalization/matching sees prior/maiden names |
+| `MOTHERS_MAIDEN_NAME` | the `http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName` extension (`valueString`) | Not a `name[]` entry |
 | `SUFFIX` | `name[0].suffix` | |
 | `DOB` | `birthDate` | SAS-style day-offset from `1900-01-01` minus 2; decoded to an ISO date. Only set if the column is non-empty — the dataset's "Null" shard has intentionally-missing fields for incomplete-data testing, mirrored rather than raising |
 | `GENDER` | `gender` | `M`/`MALE`→`male`, `F`/`FEMALE`→`female`, anything else→`unknown` |
-| `PHONE`, `PHONE2`, `EMAIL` | `telecom[]` | `PHONE2` (session 14) is only ~15.1% populated in the vendored shard |
+| `PHONE`, `PHONE2`, `EMAIL` | `telecom[]` | One entry per value with `rank` from column order; caret-joined phone values are split into one entry each. `PHONE2` (session 14) is only ~15.1% populated in the vendored shard |
 | `ADDRESS1`, `ADDRESS2`, `CITY`, `STATE`, `ZIP` | `address[0]` | `ADDRESS2` appended to `line` only if present |
-| `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn` |
+| `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn`, `type` code `SS` |
 
 Values are copied through as-is — this repo's generation pipeline does not normalize
-case/punctuation. **Verified (session 12): every `EnterpriseID` across all 9 shards is unique** —
+case/punctuation. No empty strings, empty arrays or nulls are emitted: an empty ONC column is omitted. **Verified (session 12): every `EnterpriseID` across all 9 shards is unique** —
 this specific vendored copy has no native duplicate-person clusters. Every true-match cluster
 below is built by this repo's own generators, not looked up from ONC.
 
@@ -83,7 +84,7 @@ a pair, so it isn't represented in this dataset's pair/pool format.)
 
 ### True-match pairs — compound variants and scenario-specific mutators (`mutations.py`, session 14)
 
-Four more true-match generators added in response to the 2026-09-22 CMS Patient Matching
+Three more true-match generators added in response to the 2026-09-22 CMS Patient Matching
 workgroup's feedback that every prior true-match pair was "an exact copy with only one field
 changed":
 
@@ -92,11 +93,6 @@ changed":
   one field. `generate_fuzzy_variant` itself is unchanged.
 - **`ssn_dropped_variant`** — one side of the pair has its SSN identifier removed, modeling a
   record where only one of two on-file copies carries a Social Security Number.
-- **`marriage_variant`** — swaps in the record's second `name` entry (ONC's `MOTHERS_MAIDEN_NAME`,
-  loaded as a pre-marriage surname proxy) and replaces the address with an unrelated real ONC
-  record's address, modeling a marriage-driven surname + address change together. Only ~5.3% of
-  the vendored ONC shard carries a second `name` entry, so this category's yield is intentionally
-  small — not a bug, and no-op (skipped, not emitted) for records without one.
 - **`phone_variant`** — swaps to the record's second phone number (ONC's `PHONE2` column,
   loaded by `onc_loader.py` starting session 14), modeling two genuinely different on-file phone
   numbers for one person. Only ~15.1% of the vendored ONC shard carries a `PHONE2` value — and of
@@ -152,7 +148,7 @@ real SSN or first+family+DOB.
   `(source, target, is_true_match)` triples — the shared generation core everything else builds
   on. It runs on **one shared `random.Random(seed)` instance** (default `seed=0`), consumed in a
   fixed order (per patient: fuzzy variant → normalization edge cases → compound variant →
-  ssn_dropped → marriage_variant → phone_variant; then, across all patients: hard negatives →
+  ssn_dropped → phone_variant; then, across all patients: hard negatives →
   name-collision negatives → households → sibling negatives → institutional pairs per type). The
   session-15 registry scenarios (`surname_change`, `address_move`, `phone_churn`, `email_churn`,
   `placeholder`, `gender_drift`) do not draw from that stream: each uses its own RNG seeded by
@@ -164,7 +160,7 @@ real SSN or first+family+DOB.
   involved: `{id}::{mutation_type}` for a fuzzy variant (e.g. `14065387::family_transpose`),
   `{id}::diacritic` / `{id}::punctuation` for normalization edge cases,
   `{id}::compound::{mutation_types}` for a compound variant, `{id}::ssn_dropped` /
-  `{id}::marriage_variant` / `{id}::phone_variant` for those session-14 scenarios,
+  `{id}::phone_variant` for those session-14 scenarios,
   `{id}::surname_change` / `{id}::address_move` / `{id}::phone_churn` / `{id}::email_churn` /
   `{id}::placeholder` / `{id}::gender_drift` for the session-15 drift scenarios,
   `{a}::{b}::placeholder_{field}` for a placeholder-collision negative (two distinct people
@@ -200,18 +196,11 @@ real SSN or first+family+DOB.
   loading and transforming the full ~1,000,000-record dataset at once has crashed a cluster
   before; see `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising this.
 - The generators are reproducible given the same seed/inputs, and the commands in "Regenerating
-  or extending this file" below re-run them. **The committed files are curated snapshots, not
-  byte-for-byte regenerable outputs:**
-  1. The committed positives were hand-filtered by BAI-1061 (317 rule-29-only positives removed).
-     That filter is now code (`case_exclusions.py`, applied inside both generators), so
-     regenerating no longer needs a hand edit. It reproduces 316 of the 317 removals on the
-     pre-filter data (and drops 3 the hand filter kept), so the regenerated positive count is not
-     11,222. See the changelog entry below.
-  2. BAI-1067 refreshed only the negatives (a negatives-only migration), so regenerating
-     `sample_labeled_pairs.jsonl` reproduces the committed negatives but not the positives.
-  3. The committed population tier was not refreshed for constructed households: regenerating
-     `population_*.jsonl` adds `::household::constructed` decoys and yields different pools than
-     the committed files.
+  or extending this file" below re-run them. **As of dataset version 2 the three committed files
+  (`sample_labeled_pairs.jsonl`, `population_candidates.jsonl`, `population_queries.jsonl`) were
+  regenerated in full at the default seed** (the earlier append-only and negatives-only migrations
+  are superseded), so re-running the two export scripts reproduces them. The `case_exclusions.py`
+  filter (rule 29) is applied inside both generators.
 
 ### Frequency weighting (`prevalence_estimates.py`)
 
@@ -339,9 +328,9 @@ generated, not a signal about how often that scenario occurs in the real world.*
 diacritic and one punctuation variant per source patient — not because accented or hyphenated
 names are that common. Conversely, `hard_negative` has only 4 cases because that's how many
 coincidental ZIP+DOB collisions happened to occur in a 2,000-patient sample — not because that
-scenario is rare in reality. Likewise, `marriage_variant`/`ssn_dropped`/`phone_variant` (session
-14) track how often `MOTHERS_MAIDEN_NAME`/SSN/`PHONE2` happen to be populated in the vendored ONC
-sample (~5.3%/~75%/~15.1% respectively — see those mutators' own docstrings), not real-world
+scenario is rare in reality. Likewise, `ssn_dropped`/`phone_variant` (session
+14) track how often SSN/`PHONE2` happen to be populated in the vendored ONC
+sample (~75%/~15.1% respectively — see those mutators' own docstrings), not real-world
 prevalence of a missing-SSN or two-phone-number record. **Do not compute an aggregate "expected
 real-world accuracy" number by weighting categories according to their raw counts in this file.**
 
@@ -405,7 +394,7 @@ much weight to put on them.
 Your algorithm just needs to satisfy one contract: given two FHIR `Patient` documents, decide
 match or no-match. Any language, any org — no need to adopt Python or this repo's tooling.
 
-1. Stream the file line by line (it's ~6,300 lines / ~6MB as committed; don't assume that stays small).
+1. Stream the file line by line (it's 12,713 lines / ~14.8 MB as committed; don't assume that stays small).
 2. Parse each line's JSON and hand `source`/`target` to your algorithm.
 3. Compare its answer to `expected_match` and tally into `tp`/`fp`/`fn`/`tn`.
 4. Compute metrics from the tallies — never per-case, never by averaging per-case percentages.
@@ -536,6 +525,13 @@ other true-match/hard-negative/special-population category is present at full sc
 
 ## Dataset changelog
 
+### Dataset version 2 (BAI-1156)
+- Patient resources are FHIR-conformant: no empty strings/arrays, caret-joined phones split into one `telecom` entry each with `rank`, SSN identifiers carry type `SS`, ONC ALIAS is a separate `use: nickname` name (not in `given`), MOTHERS_MAIDEN_NAME is the `patient-mothersMaidenName` extension (not a second name).
+- Removed: the `marriage_variant` case ids (its surname swap relied on mother's maiden name as a name entry). Surname changes are covered by `surname_change`, address changes by `address_move`.
+- Realistic set committed (`realistic_*`): real look-alike decoys from all shards in both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`; strata `found_by=near_miss`), pairwise tier rebalanced to ~50% negatives by subsampling positives (`manifest.n_positives_dropped`), enforced gates for `negative_share`, `all_yes_f1` and required hard-negative categories.
+- Committed curated files regenerated in full at the default seed: `sample_labeled_pairs.jsonl` 12,713 rows (12,136 true matches, 577 non-matches; was 14,201 rows, 13,619 and 582), `population_queries.jsonl` 2,000 queries, `population_candidates.jsonl` 14,262 candidates (was 15,747 per the BAI-1061 entry). Consumers that pin row counts or case ids should re-pin.
+- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: `decoy_no_overlap_rate` 0.7213 (tracked, max 0.5), queries with exactly 0 or 1 expected matches, family structure and the age vintage.
+
 - **BAI-1061 (regenerated cases)** - `sample_labeled_pairs.jsonl` and `population_*.jsonl` regenerated
   at the default seed with the generators as of the case-exclusion mechanism (rule 29 excluded in
   code) and the no-op fuzzy-variant fix (#20). `sample_labeled_pairs.jsonl`: 14,201 rows (13,619
@@ -563,18 +559,23 @@ other true-match/hard-negative/special-population category is present at full sc
   removed. `::sibling` case ids changed, and a new `::household_constructed` id class was added
   (a real younger record given a real elder's address; the pair-tier target keeps the younger
   record's id). Positives are unchanged. `population_*.jsonl` no longer contains such pairs but does
-  not yet contain constructed households (a follow-up regenerates the population tier). Consumers
+  not yet contain constructed households (superseded: the population tier was regenerated in dataset version 2). Consumers
   that pin row counts or case ids should re-pin.
 
 ## Release gate
 
 `make audit` evaluates `evaluation/release_thresholds.json` against `evaluation/audit.py`'s report
-(label validity, tier parity, positive phone drift, naive-baseline F1). A metric marked
-`"tracked"` is reported but does not fail; `"enforced"` fails CI. Enforced: `same_person_negatives`
-(max 0); `tier_parity_gap` (max 0; `placeholder_collision_negative` is exempt because it is
-pairwise-only by design); and `positive_phone_drift_rate` (min 0.05). The 0.05 floor is
-**provisional**: it is to be re-set when the workgroup supplies measured rates, and a measured
-profile with phone churn below roughly that level will fail CI until the floor is changed. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
+(label validity, tier parity, positive phone drift, naive-baseline F1) for the committed set. A metric
+marked `"tracked"` is reported but does not fail; `"enforced"` fails CI. Enforced for the committed
+set: `same_person_negatives` (max 0) and `tier_parity_gap` (max 0; `placeholder_collision_negative` is
+exempt because it is pairwise-only by design). Tracked: `positive_phone_drift_rate` (min 0.05; the floor
+is **provisional** and is to be re-set when the workgroup supplies measured rates),
+`best_single_field_f1` (max 0.9; the committed set reports 0.9486, tracked-fail) and
+`multi_field_margin` (min 0.05; 0.035, tracked-fail). `make audit-realistic` additionally enforces
+`negative_share` (min 0.45), `all_yes_f1` (max 0.70), `best_single_field_f1` (max 0.9) and
+`missing_hard_negative_categories` (max 0) for the realistic set, and runs in CI. The committed set is
+not rebalanced: its `negative_share` is 0.0454 and its always-"match" F1 is 0.977, which is why the
+realistic set is the one to use for those metrics. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
 JSON report (per-field positive drift rates, people per address, shared-phone rate, age bands).
 The naive baselines (phone-only, SSN-only, ...) are deliberately weak matchers: a test set where
 one of them scores near the multi-field baseline is not discriminating between algorithms.
@@ -601,27 +602,26 @@ New phones, emails, addresses and surnames come from a held-out donor pool (the 
 after the sample), so donors are distinct records, but a donated value can coincidentally equal a value held by an in-set patient (counts below). Emission rates come from
 `drift_profile.py` and are **placeholders, not measured real-world rates**; supply measured ones
 with `DRIFT_PROFILE_PATH=profile.json` (`{"source": "...", "rates": {"phone_churn": 0.4}}`).
-`marriage_variant` and `phone_variant` (session 14) are kept unchanged for `case_id` stability;
-`surname_change` + `address_move` and `phone_churn` are the replacements, and removing the old ids
-awaits the workgroup's versioning decision.
+`phone_variant` (session 14) is kept unchanged for `case_id` stability; `phone_churn` is its
+replacement, and removing the old id awaits the workgroup's versioning decision. `marriage_variant`
+was removed in dataset version 2 (see the changelog); `surname_change` and `address_move` cover it.
 
-The committed files were extended **append-only** by a one-off migration: every row that was
-committed before is unchanged in content (`population_candidates.jsonl` is
-re-sorted by id), and population pools grew by the new candidates (39-48 candidates
-per query). Regenerating the files will not reproduce them exactly (see "Assembly, export, and
-reproducibility"). 
-**Donor coincidences** (computed over the 2,715 appended pairwise rows; a "new" value is on the target
+The committed files were regenerated in full in dataset version 2, so the counts below describe the
+current files. Regenerating at the default seed reproduces them (see "Assembly, export, and
+reproducibility").
+
+**Donor coincidences** (computed over the 2,128 pairwise `email_churn`, `phone_churn`, `surname_change` and `address_move` rows; a "new" value is on the target
 but not on the source; "in-set" means held by a different patient in the committed sample or queries):
 `email_churn/replaced` 2 of 78 rows carry a new email equal to an in-set email, and `email_churn/added`
 5 of 363; `phone_churn/replaced` and `phone_churn/added` 0 of 462 and 0 of 25; `surname_change` 0 of
-303; `address_move` 19 of 366 target addresses (street + city + ZIP) equal an in-set patient's address.
-7 of the 366 `address_move` targets are placeholder-like addresses (line containing UNDOMICILED,
+303; `address_move` 12 of 365 target addresses (street + city + ZIP) equal an in-set patient's address.
+7 of the 365 `address_move` targets are placeholder-like addresses (line containing UNDOMICILED,
 HOMELESS or UNKNOWN, or ZIP 99999/00000), so `address_move` can move a record to a placeholder-like
 address in those rows.
 
 **Donor skew (committed files).** Donors are the rows immediately after the sample in one alphabetically sorted shard, so
 donated surnames start almost entirely with "A" (303 of 303 `surname_change` rows have a new surname
-starting with "A") and donated addresses are almost all NY (364 of 366 `address_move` targets, 99.5%).
+starting with "A") and donated addresses are almost all NY (363 of 365 `address_move` targets, 99.5%; the other 2 carry no state).
 This limits what the `surname_change` and `address_move` categories stress in the committed files. The
 realistic set draws its donors with the age-stratified sampler across all shards, so its 297
 `surname_change` targets are spread over many initials (initials are counted on the DONATED surname; for hyphenated prior-name targets, the part after the hyphen; largest: S 33, H 26, B 25, M 23, R 22; 24 distinct initials); its
@@ -629,10 +629,10 @@ realistic set draws its donors with the age-stratified sampler across all shards
 
 **Phone churn can leave a shared phone.** ONC patients can hold two phones and the scenarios drop or
 replace only the first, so some `phone_churn` rows still share a phone with the source: 63 of 474
-`phone_churn/dropped`, 82 of 462 `phone_churn/replaced`, and 12 of 74 `placeholder/phone` rows have a
+`phone_churn/dropped`, 82 of 462 `phone_churn/replaced`, and 12 of 76 `placeholder/phone` rows have a
 shared normalized phone between source and target. `audit.positive_phone_drift_rate` counts set
-inequality of normalized phones: it is 0.0801 (1,093 of 13,637 positives) as reported, and 0.0728
-(982 of 13,480) when those 157 rows are excluded.
+inequality of normalized phones: it is 0.0901 (1,093 of 12,136 positives) as reported, and 0.0821
+(984 of 11,979) when those 157 rows are excluded (109 of them are counted in the 1,093).
 
 **Not yet verified against the CMS reference algorithm.** This repo has no matching engine. BAI-1061
 removed positives that only a removed rule could match; a new positive that no Table 2 rule can
@@ -645,7 +645,7 @@ do not count), so no SSN-based rule can match them:
 
 | Subtype | Rows | No shared real SSN |
 |---|---|---|
-| `placeholder/given` | 82 | 18 |
+| `placeholder/given` | 78 | 16 |
 | `surname_change/no_history` | 96 | 20 |
 | `surname_change/hyphenated` | 109 | 21 |
 | `surname_change/prior_name_on_target` | 98 | 27 |
@@ -660,9 +660,9 @@ ONC's own vintage (2017-01-01) they are already 21.5% under 18, so the earlier "
 an artifact of measuring ages as of 2026 (ONC's latest birth year is 2016, so nobody is under 10 that
 year); the skew that persists is the elderly (12.8% aged 85+ against about 2%). The committed samples also
 have almost no shared addresses (1.03 patients per address) or shared phones (6%). `make
-generate-realistic-dataset` builds a **parallel release candidate** (`realistic_labeled_pairs.jsonl`,
+generate-realistic-dataset` builds a **parallel set** (`realistic_labeled_pairs.jsonl`,
 `realistic_population_candidates.jsonl`, `realistic_population_queries.jsonl`, `realistic_manifest.json`;
-git-ignored, commit deliberately with `git add -f`) from all nine ONC shards, one at a time:
+committed as the v1 release, with `make audit-realistic` run in CI) from all nine ONC shards, one at a time:
 
 | Stage | What it does | Source of the target |
 |---|---|---|
@@ -672,11 +672,10 @@ git-ignored, commit deliberately with `git add -f`) from all nine ONC shards, on
 
 Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
 60% of patients share a phone and 58% an email (committed: 6% and 32%); 769 households, 49 of the 430
-children placed with a same-surname adult. Against the committed set the phone-only baseline's F1 on
-the population tier drops from 0.953 to 0.882 and the address-only baseline's from 0.862 to 0.749; the
-multi-field margin over the best single field rises from 0.032 to 0.054 (only just above the provisional
-0.05). Date-of-birth-only is now the strongest single field in the realistic set (F1 0.919; phone-only was
-strongest in the committed set at 0.953), so `best_single_field_f1` stays `tracked`.
+children placed with a same-surname adult. Naive-baseline F1 on the population tier (as reported by `audit.py`):
+committed set phone-only 0.949 (best single field), address-only 0.934, multi-field margin 0.035;
+realistic set phone-only 0.860 (best single field), address-only 0.716, DOB-only 0.702, multi-field margin
+0.119 (above the 0.05 floor). `best_single_field_f1` (max 0.9) is enforced for the realistic set.
 
 The committed audit (`make audit`) now reports age shares as of 2017-01-01, so its JSON age bands read
 21.5% under 18 and 12.8% aged 85+ for the committed files; the earlier 8.0% / 21.1% figures are the same
@@ -688,26 +687,31 @@ sharing, no SSN drops), so list those keys when supplying a profile.
 
 What this is not:
 
-- **Not the committed set.** The rule-29 exclusion now applies here too (`case_exclusions.py`), but the
-  new drift positives are not yet verified against the CMS reference algorithm. Treat them as a release
-  candidate.
+- **Not the curated committed set.** The rule-29 exclusion applies here too (`case_exclusions.py`), but the
+  drift positives are not yet verified against the CMS reference algorithm; this is disclosed in
+  `realistic_manifest.json` and below.
 - **Most households are unrelated real records at one address** (roommates, blended families whose
   surnames differ). The sample is too small to mine family structure; the report counts how many children
   were placed with a same-surname adult.
 - **The shape of the multi-person household size distribution is an assumption** (sizes 2-6, geometric
   weights solved to hit the mean); the cited sources fix only the one-person share and the mean. The
   sharing and no-SSN rates are PLACEHOLDERS in `drift_profile.py`. The realistic gate floors
-  (`shared_phone_rate` >= 0.30, `people_per_address` >= 2.0) are provisional and tied to the placeholder
+  (`shared_phone_rate` >= 0.40, `people_per_address` >= 2.0) are provisional and tied to the placeholder
   0.5 sharing rate: children under 13 always take their anchor's phone, so the realistic `shared_phone_rate`
   stays around 0.29 even when `household_shared_phone` is 0.0 (measured: 0.29, 0.35, 0.41, 0.60 at 0.0, 0.1, 0.2,
-  0.5 respectively). A profile fails the 0.30 floor only when `household_shared_phone` approaches 0. The
+  0.5 respectively). The 0.40 floor fails at `household_shared_phone` 0.1 (0.35 measured) and passes at 0.2 (0.41 measured). The
   `people_per_address >= 2.0` floor depends on household size distribution, not sharing rates.
-- **The mined negative categories collapse.** A random 2,000-of-1M draw across all shards removes the
-  alphabetical clustering that the sibling, name-collision and shared-ZIP+DOB miners relied on. Pairwise
-  rows per category, committed -> realistic: `sibling_negative` 36 -> 3, `name_collision_negative` 75 -> 1,
-  `hard_negative` 4 -> 1. The realistic set therefore does NOT meaningfully exercise those provisions, and
-  the pairwise tier's purpose of deliberately over-sampling rare categories is not met for them. Mining
-  them per shard, or constructing them, is a follow-up.
+- **Mined negative categories.** A random 2,000-of-1M draw removes the alphabetical clustering the
+  per-sample miners relied on, so hard negatives now come from `near_miss.py`, a streaming
+  reverse-blocking finder over all shards (`found_by=near_miss`). Pairwise rows per category in the
+  realistic file: `hard_negative` 625, `name_collision_negative` 1,495, `sibling_negative` 534,
+  `near_miss_negative` 11,450 (committed set: 4, 70, 36, 0). The pairwise tier is rebalanced to
+  `negative_share` 0.5881 by subsampling positives (`manifest.n_positives_dropped` = 0 at the default seed);
+  `all_yes_f1` is 0.5835 (committed: 0.977).
+- **Harder decoys are only partly met.** `decoy_no_overlap_rate` is 0.7213 (tracked, max 0.5, tracked-fail):
+  72% of non-matching candidates in the realistic population pools still share nothing with their query.
+  Queries with exactly 0 or 1 expected matches, family structure (same-surname minors) and the age vintage
+  are not addressed in this release.
 - Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
 
 `make audit-realistic` evaluates `release_thresholds_realistic.json` against the generated files;

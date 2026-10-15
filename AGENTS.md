@@ -213,12 +213,17 @@ step (ONC's data is already public/synthetic).
 - **`population_targets.py` / `population_sampling.py` / `household_assignment.py` / `export_realistic_dataset.py`** —
   cited age-band and household targets, the age-stratified sampler (all ONC shards, one at a time),
   household assignment with shared addresses and contacts, and the generator for the parallel
-  `realistic_*` release-candidate files (git-ignored; the committed files are never overwritten).
+  `realistic_*` files (the committed curated files are never overwritten; the realistic files are
+  committed as the v1 release and `make audit-realistic` runs in CI).
   `make generate-realistic-dataset` / `make audit-realistic`.
 - **`prevalence_estimates.py`** — real, cited public-source prevalence estimates (Census/CDC/Pew/
   peer-reviewed) per test-case category, for optional real-world-weighted aggregation. Every entry
   is either a cited estimate or an explicit `has_public_estimate=False` placeholder — never a
   guessed number.
+- **`near_miss.py`** — streaming reverse-blocking finder: real look-alike decoys for sampled queries
+  across all shards; feeds both tiers (`hard_negative`, `name_collision_negative`,
+  `sibling_negative`, `near_miss_negative`). **`negative_balance.py`** rebalances the pairwise tier
+  toward 50% negatives.
 - **`labeled_pairs.py`** — assembles all of the above into per-provision `(source, target,
   is_true_match)` triples; the shared generation core everything else builds on.
 - **`population_cases.py`** — regroups the same generation logic into the second test kind: one
