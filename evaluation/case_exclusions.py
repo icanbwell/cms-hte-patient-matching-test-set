@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Dict, Set, Tuple
 
+from fhir_conformance import SSN_SYSTEM
 from mutations import get_nick_namer
 
 Patient = Dict[str, Any]
@@ -163,7 +164,6 @@ def _dob_within_tolerance(query: Patient, candidate: Patient) -> bool:
     return abs((q - c).days) <= DOB_TOLERANCE_DAYS
 
 
-_SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
 _ITIN_SYSTEM = "urn:oid:2.16.840.1.113883.4.4"
 _MBI_SYSTEM = "http://hl7.org/fhir/sid/us-mbi"
 _NAMESPACE_CODES = {"RI", "MR", "AN", "PI"}
@@ -192,10 +192,10 @@ def _identifiers(patient: Patient) -> Dict[str, Set[str]]:
         codes = {
             c.get("code") or "" for c in (ident.get("type") or {}).get("coding") or []
         }
-        if system in (_SSN_SYSTEM, _ITIN_SYSTEM):
+        if system in (SSN_SYSTEM, _ITIN_SYSTEM):
             last4 = value.replace("-", "").replace(" ", "")[-4:]
             if len(last4) == 4:
-                out["ssn4" if system == _SSN_SYSTEM else "itin4"].add(last4)
+                out["ssn4" if system == SSN_SYSTEM else "itin4"].add(last4)
         elif system == _MBI_SYSTEM:
             out["mbi"].add(value)
         elif "DL" in codes:
@@ -217,6 +217,13 @@ def _first_names_with_nicknames(patient: Patient) -> Set[str]:
     """Given names plus nicknames of each name entry's primary (first) given
     name, which is all the engine's normalizer attaches."""
     names = _names(patient, "given")
+    # The loader stores ONC ALIAS as a `use: nickname` entry with `text` (it used
+    # to be appended to `given`); it still counts as a first-name candidate.
+    for entry in patient.get("name") or []:
+        if entry.get("use") == "nickname" and entry.get("text"):
+            alias = _normalize_name(str(entry["text"]))
+            if alias:
+                names.add(alias)
     namer = get_nick_namer()
     for entry in patient.get("name") or []:
         given = entry.get("given") or []

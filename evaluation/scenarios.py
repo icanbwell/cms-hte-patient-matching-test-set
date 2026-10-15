@@ -26,6 +26,7 @@ from drift_mutations import (
     email_churn_variant,
     gender_drift_variant,
     phone_churn_variant,
+    surname_address_change_variant,
     surname_change_variant,
 )
 from drift_profile import DriftProfile
@@ -39,7 +40,6 @@ Patient = Dict[str, Any]
 class ScenarioContext:
     rng: random.Random
     donors: Sequence[Patient]
-    next_patient: Patient | None
 
 
 @dataclass(frozen=True)
@@ -64,10 +64,11 @@ def _ssn_dropped(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | Non
 
 
 def _marriage_variant(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
-    if ctx.next_patient is None:
+    donors = [d for d in ctx.donors if d.get("address")]
+    if not donors:
         return None
     return ScenarioResult(
-        marriage_variant(patient, ctx.next_patient), "marriage_variant"
+        marriage_variant(patient, ctx.rng.choice(donors)), "marriage_variant"
     )
 
 
@@ -93,6 +94,15 @@ def _surname_change(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | 
 def _address_move(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
     return _with_subtype(
         "address_move", address_move_variant(patient, ctx.donors, ctx.rng)
+    )
+
+
+def _surname_address_change(
+    patient: Patient, ctx: ScenarioContext
+) -> ScenarioResult | None:
+    return _with_subtype(
+        "surname_address_change",
+        surname_address_change_variant(patient, ctx.donors, ctx.rng),
     )
 
 
@@ -126,6 +136,7 @@ REGISTRY: Dict[str, Scenario] = {
         Scenario("phone_variant", _phone_variant),
         Scenario("surname_change", _surname_change),
         Scenario("address_move", _address_move),
+        Scenario("surname_address_change", _surname_address_change),
         Scenario("phone_churn", _phone_churn),
         Scenario("email_churn", _email_churn),
         Scenario("gender_drift", _gender_drift),
@@ -137,7 +148,6 @@ REGISTRY: Dict[str, Scenario] = {
 def generate_scenario_variants(
     patient: Patient,
     *,
-    next_patient: Patient | None,
     donors: Sequence[Patient],
     profile: DriftProfile,
     seed: int,
@@ -150,7 +160,7 @@ def generate_scenario_variants(
         rng = random.Random(f"{seed}:{name}:{patient['id']}")
         if rate <= 0.0 or (rate < 1.0 and rng.random() >= rate):
             continue
-        result = scenario.apply(patient, ScenarioContext(rng, donors, next_patient))
+        result = scenario.apply(patient, ScenarioContext(rng, donors))
         if result is None or result.variant == patient:
             continue
         yield scenario, result

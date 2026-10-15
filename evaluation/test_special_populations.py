@@ -16,8 +16,11 @@ from special_populations import (
 
 
 def _patient(
-    id_, family, given="Pat", zip_code="10001", dob="1980-01-01", street="1 Main St"
+    id_, family, given=None, zip_code="10001", dob="1980-01-01", street="1 Main St"
 ):
+    given = (
+        given or f"Pat{family}"
+    )  # distinct first names: same-first + same-DOB looks like one person
     return {
         "resourceType": "Patient",
         "id": id_,
@@ -361,10 +364,10 @@ class TestConstructHouseholdNegatives:
     def test_equal_gap_tie_break_is_independent_of_input_order(self) -> None:
         def members():
             return [
-                _patient("a", "Rivera", given="A", dob="1950-01-01", street="1 A St"),
-                _patient("b", "Rivera", given="B", dob="1950-01-01", street="2 B St"),
-                _patient("c", "Rivera", given="C", dob="1980-01-01", street="3 C St"),
-                _patient("d", "Rivera", given="D", dob="1980-01-01", street="4 D St"),
+                _patient("a", "Rivera", "Alice", dob="1950-01-01", street="1 A St"),
+                _patient("b", "Rivera", "Bernard", dob="1950-01-01", street="2 B St"),
+                _patient("c", "Rivera", "Cecilia", dob="1980-01-01", street="3 C St"),
+                _patient("d", "Rivera", "Dominic", dob="1980-01-01", street="4 D St"),
             ]
 
         chosen = set()

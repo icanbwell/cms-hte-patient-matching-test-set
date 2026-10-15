@@ -1,0 +1,111 @@
+{
+  "kind": "realistic dataset: RELEASE CANDIDATE",
+  "dataset_version": "2",
+  "generator_fingerprint": "72f98a82a2b278b44e5864157ebc896b07fc627413697f702da2dff3bc4bb9de",
+  "seed": 0,
+  "sample_size": 2000,
+  "donor_size": 2000,
+  "as_of": "2017-01-01",
+  "caveats": [
+    "drift positives not verified against the CMS reference algorithm",
+    "drift and household sharing rates are placeholders, not measured",
+    "households are mostly unrelated ONC-derived records placed at one address"
+  ],
+  "age_band_targets": {
+    "0-17": 0.215,
+    "18-64": 0.612,
+    "65-84": 0.1535,
+    "85+": 0.0195
+  },
+  "target_sources": {
+    "0-17": "U.S. Census Bureau, Vintage 2024 population estimates (July 1, 2024)",
+    "18-64": "Remainder: 1 - 0-17 (21.5%) - 65+ (17.3%); mixed 2022/2024 vintages",
+    "65-84": "65+ 17.3% (ACL 2023 Profile of Older Americans, 2022) minus 85+ 1.95%",
+    "85+": "6.5M age 85+ / (57.8M / 17.3%) (ACL 2023 Profile of Older Americans, 2022)",
+    "single_person_household_share": "U.S. Census Bureau, America's Families and Living Arrangements: 2024",
+    "mean_household_size": "Workgroup reviewer ('roughly 2.5 nationally'); not independently verified against a Census table"
+  },
+  "sample_band_counts": {
+    "18-64": 1224,
+    "65-84": 307,
+    "0-17": 430,
+    "85+": 39
+  },
+  "onc_band_supply": {
+    "0-17": 197270,
+    "18-64": 472427,
+    "65-84": 189691,
+    "85+": 124149
+  },
+  "households": {
+    "n_households": 769,
+    "mean_size": 2.600780234070221,
+    "n_minors": 430,
+    "n_same_surname_minors": 46
+  },
+  "profile_source": "PLACEHOLDER rates, not measured; supply the workgroup's measured cross-organization disagreement rates via a profile JSON file",
+  "profile_rates": {
+    "ssn_dropped": 1.0,
+    "marriage_variant": 1.0,
+    "phone_variant": 1.0,
+    "surname_change": 0.15,
+    "address_move": 0.2,
+    "surname_address_change": 0.1,
+    "phone_churn": 0.5,
+    "email_churn": 0.25,
+    "gender_drift": 0.0,
+    "placeholder": 0.15,
+    "household_shared_phone": 0.5,
+    "household_shared_email": 0.5,
+    "minor_ssn_absent": 0.7
+  },
+  "near_miss": {
+    "per_kind_cap": 3,
+    "yield_by_kind": {
+      "dob_zip": {
+        "queries": 469,
+        "kept": 624,
+        "seen": 631
+      },
+      "name": {
+        "queries": 704,
+        "kept": 1487,
+        "seen": 5067
+      },
+      "sibling": {
+        "queries": 301,
+        "kept": 528,
+        "seen": 740
+      },
+      "address": {
+        "queries": 1369,
+        "kept": 3269,
+        "seen": 278352
+      },
+      "phone": {
+        "queries": 64,
+        "kept": 65,
+        "seen": 65
+      },
+      "email": {
+        "queries": 114,
+        "kept": 261,
+        "seen": 12291
+      },
+      "dob_only": {
+        "queries": 2000,
+        "kept": 5999,
+        "seen": 60157
+      },
+      "surname_zip": {
+        "queries": 773,
+        "kept": 1855,
+        "seen": 9760
+      }
+    }
+  },
+  "negative_share": 0.5560285545877268,
+  "n_positives_dropped": 0,
+  "n_labeled_cases": 30538,
+  "n_population_queries": 2000
+}

@@ -225,6 +225,55 @@ class TestGenerateFuzzyVariant:
             generate_fuzzy_variant(_patient(), "not_a_mutation", rng=random.Random(0))
 
 
+MAIDEN = {
+    "url": "http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName",
+    "valueString": "Jones",
+}
+DONOR_ADDRESS = [
+    {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
+]
+
+
+class TestMarriageVariant:
+    def test_replaces_family_name_with_mothers_maiden_name(self) -> None:
+        patient = _patient(
+            name=[{"use": "official", "family": "Smith", "given": ["Katherine"]}],
+            extension=[MAIDEN],
+        )
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["name"] == [
+            {"use": "official", "family": "Jones", "given": ["Katherine"]}
+        ]
+
+    def test_drops_the_extension_so_the_surname_is_not_listed_twice(self) -> None:
+        patient = _patient(extension=[MAIDEN, {"url": "other", "valueString": "x"}])
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["extension"] == [{"url": "other", "valueString": "x"}]
+
+    def test_replaces_address_with_donors_address(self) -> None:
+        patient = _patient(
+            address=[
+                {"line": ["1 Main St"], "city": "A", "state": "B", "postalCode": "1"}
+            ]
+        )
+        donor = _patient(id="donor", address=DONOR_ADDRESS)
+        assert marriage_variant(patient, donor)["address"] == DONOR_ADDRESS
+
+    def test_no_mothers_maiden_name_leaves_family_name_unchanged(self) -> None:
+        patient = _patient(name=[{"family": "Smith", "given": ["Katherine"]}])
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["name"][0]["family"] == "Smith"
+
+    def test_does_not_mutate_input_patient_or_donor(self) -> None:
+        patient = _patient(extension=[dict(MAIDEN)], address=[{"line": ["1 Main St"]}])
+        donor = _patient(id="donor", address=list(DONOR_ADDRESS))
+        marriage_variant(patient, donor)
+        assert patient["name"][0]["family"] == "Smith"
+        assert patient["extension"] == [MAIDEN]
+        assert patient["address"] == [{"line": ["1 Main St"]}]
+        assert donor["address"] == DONOR_ADDRESS
+
+
 class TestSsnDroppedVariant:
     def test_removes_the_ssn_identifier(self) -> None:
         patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "123-45-6789"}])
@@ -242,95 +291,15 @@ class TestSsnDroppedVariant:
         result = ssn_dropped_variant(patient)
         assert result["identifier"] == []
 
+    def test_patient_without_an_identifier_key_is_returned_unchanged(self) -> None:
+        patient = _patient()
+        patient.pop("identifier", None)
+        assert ssn_dropped_variant(patient) == patient
+
     def test_does_not_mutate_input_patient(self) -> None:
         patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "1"}])
         ssn_dropped_variant(patient)
         assert patient["identifier"] == [{"system": SSN_SYSTEM, "value": "1"}]
-
-
-class TestMarriageVariant:
-    def test_replaces_family_name_with_mothers_maiden_name(self) -> None:
-        patient = _patient(
-            name=[
-                {"family": "Smith", "given": ["Katherine"]},
-                {"family": "Jones", "given": ["Katherine"]},  # maiden-name proxy entry
-            ]
-        )
-        donor = _patient(
-            id="donor",
-            address=[
-                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
-            ],
-        )
-        result = marriage_variant(patient, donor)
-        assert result["name"][0]["family"] == "Jones"
-
-    def test_collapses_to_a_single_name_entry_not_a_duplicated_surname(self) -> None:
-        # Keeping both entries after overwriting name[0] with name[1]'s family
-        # would leave the variant with the same surname twice ("Jones", "Jones")
-        # - a shape no real record has, and one that leaks the maiden surname
-        # onto both sides of the pair via name[1] as well as name[0].
-        patient = _patient(
-            name=[
-                {"family": "Smith", "given": ["Katherine"]},
-                {"family": "Jones", "given": ["Katherine"]},
-            ]
-        )
-        donor = _patient(id="donor", address=[])
-        result = marriage_variant(patient, donor)
-        assert result["name"] == [{"family": "Jones", "given": ["Katherine"]}]
-
-    def test_replaces_address_with_donors_address(self) -> None:
-        patient = _patient(
-            address=[
-                {
-                    "line": ["1 Main St"],
-                    "city": "A",
-                    "state": "B",
-                    "postalCode": "11111",
-                }
-            ]
-        )
-        donor = _patient(
-            id="donor",
-            address=[
-                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
-            ],
-        )
-        result = marriage_variant(patient, donor)
-        assert result["address"] == donor["address"]
-
-    def test_no_maiden_name_entry_leaves_family_name_unchanged(self) -> None:
-        patient = _patient(name=[{"family": "Smith", "given": ["Katherine"]}])
-        donor = _patient(id="donor", address=[])
-        result = marriage_variant(patient, donor)
-        assert result["name"][0]["family"] == "Smith"
-
-    def test_does_not_mutate_input_patient_or_donor(self) -> None:
-        patient = _patient(
-            name=[
-                {"family": "Smith", "given": ["K"]},
-                {"family": "Jones", "given": ["K"]},
-            ],
-            address=[
-                {
-                    "line": ["1 Main St"],
-                    "city": "A",
-                    "state": "B",
-                    "postalCode": "11111",
-                }
-            ],
-        )
-        donor = _patient(
-            id="donor",
-            address=[
-                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
-            ],
-        )
-        original_patient_address = [dict(a) for a in patient["address"]]
-        marriage_variant(patient, donor)
-        assert patient["address"] == original_patient_address
-        assert patient["name"][0]["family"] == "Smith"
 
 
 class TestPhoneVariant:

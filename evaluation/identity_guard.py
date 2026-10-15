@@ -7,9 +7,12 @@ import unicodedata
 from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Set, Tuple
 
+from fhir_conformance import SSN_SYSTEM
+from text_distance import levenshtein_distance
+
 Patient = Dict[str, Any]
 
-SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
+US_PHONE_DIGITS = 10
 
 PLACEHOLDER_SSNS: FrozenSet[str] = frozenset(
     {
@@ -84,6 +87,99 @@ def is_possible_same_person(a: Patient, b: Patient) -> bool:
         return True
     key_a, key_b = identity_key(a), identity_key(b)
     return key_a is not None and key_a == key_b
+
+
+def _month_day_swapped(dob_a: str, dob_b: str) -> bool:
+    """True if two ISO dates share a year and swap month and day (1980-03-11 / 1980-11-03)."""
+    if len(dob_a) != 10 or len(dob_b) != 10 or dob_a[:4] != dob_b[:4]:
+        return False
+    return (
+        dob_a[4] == dob_b[4] == "-"
+        and dob_a[7] == dob_b[7] == "-"
+        and dob_a[5:7] == dob_b[8:10]
+        and dob_a[8:10] == dob_b[5:7]
+    )
+
+
+def _dobs_close(a: Patient, b: Patient) -> bool:
+    """Birth dates within edit distance 1, or a month/day swap."""
+    dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
+    if not (dob_a and dob_b):
+        return False
+    return levenshtein_distance(dob_a, dob_b, 1) <= 1 or _month_day_swapped(
+        dob_a, dob_b
+    )
+
+
+def phone_set(patient: Patient) -> Set[str]:
+    """Normalized 10-digit phone numbers on `patient`; shorter or longer values
+    are dropped."""
+    found = {
+        normalize_phone(t.get("value"))
+        for t in patient.get("telecom") or []
+        if t.get("system") == "phone"
+    }
+    return {p for p in found if len(p) == US_PHONE_DIGITS}
+
+
+def _first_name(patient: Patient) -> str:
+    names = patient.get("name") or []
+    given = (names[0].get("given") or []) if names else []
+    return normalize_token(given[0]) if given else ""
+
+
+def is_probable_duplicate(a: Patient, b: Patient) -> bool:
+    """True if a and b are very likely one person recorded twice with a typo.
+
+    Looser than is_possible_same_person (which is exact-match): ANY of
+      - both have a real SSN and the SSNs are within edit distance 1;
+      - they share a normalized 10-digit phone and the birth dates are close;
+      - normalized first+family names are within edit distance 1 and the birth
+        dates are close.
+    "Close" means edit distance <= 1 on the ISO date or a month/day swap. A name
+    match with a clearly different birth date is a legitimate hard negative and
+    is not flagged.
+
+    Also flagged: the same normalized first name and an identical birth date
+    under a different family name, which is what a surname change (marriage)
+    looks like when no SSN or phone survives it."""
+    ssn_a, ssn_b = ssn_of(a), ssn_of(b)
+    if (
+        ssn_a is not None
+        and ssn_b is not None
+        and levenshtein_distance(ssn_a, ssn_b, 1) <= 1
+    ):
+        return True
+    if not _dobs_close(a, b):
+        return False
+    if phone_set(a) & phone_set(b):
+        return True
+    first_a, first_b = _first_name(a), _first_name(b)
+    if first_a and first_a == first_b and a.get("birthDate") == b.get("birthDate"):
+        return True
+    key_a, key_b = identity_key_names(a), identity_key_names(b)
+    return (
+        key_a is not None
+        and key_b is not None
+        and levenshtein_distance(key_a, key_b, 1) <= 1
+    )
+
+
+def identity_key_names(patient: Patient) -> str | None:
+    """Normalized 'first family', or None if either is missing."""
+    names = patient.get("name") or []
+    if not names:
+        return None
+    given = names[0].get("given") or []
+    first = normalize_token(given[0]) if given else ""
+    family = normalize_token(names[0].get("family"))
+    return f"{first} {family}" if first and family else None
+
+
+def looks_like_same_person(a: Patient, b: Patient) -> bool:
+    """The predicate every negative-pair generator applies: an exact same-person
+    match (`is_possible_same_person`) or a typo duplicate (`is_probable_duplicate`)."""
+    return is_possible_same_person(a, b) or is_probable_duplicate(a, b)
 
 
 class SamePersonIndex:

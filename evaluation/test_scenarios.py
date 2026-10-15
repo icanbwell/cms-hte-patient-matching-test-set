@@ -52,12 +52,11 @@ DONORS = [
 ]
 
 
-def _variants(patient, profile, *, donors=DONORS, seed=0, next_patient=None):
+def _variants(patient, profile, *, donors=DONORS, seed=0):
     return {
         s.name: r
         for s, r in generate_scenario_variants(
             patient,
-            next_patient=next_patient or _patient("n1", family="LEE"),
             donors=donors,
             profile=profile,
             seed=seed,
@@ -138,14 +137,10 @@ class TestGenerateScenarioVariants:
         no_ssn = _patient("p1", identifier=[])
         assert _variants(no_ssn, profile) == {}
 
-    def test_marriage_variant_needs_a_next_patient(self):
+    def test_marriage_variant_needs_a_donor_with_an_address(self):
         profile = DriftProfile(rates={"marriage_variant": 1.0})
-        got = list(
-            generate_scenario_variants(
-                _patient("p1"), next_patient=None, donors=[], profile=profile, seed=0
-            )
-        )
-        assert got == []
+        assert _variants(_patient("p1"), profile, donors=[]) == {}
+        assert _variants(_patient("p1"), profile, donors=[{"id": "d"}]) == {}
 
     def test_bare_patient_never_raises(self):
         bare = {"resourceType": "Patient", "id": "x"}

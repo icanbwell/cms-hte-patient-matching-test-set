@@ -172,14 +172,15 @@ requirement).
    class PopulationCase:
        query_id: str
        query_patient: Patient
-       candidate_ids: List[str]        # this query's full candidate pool
-       expected_match_ids: List[str]   # subset of candidate_ids - possibly empty
+       candidate_ids: List[str]  # this query's full candidate pool
+       expected_match_ids: List[str]  # subset of candidate_ids - possibly empty
        rationale: str
+
 
    def build_population_cases(
        patients: List[Patient],
        *,
-       pool_size: int = 40,            # per the current Doc's own "forty near-misses" framing
+       pool_size: int = 40,  # per the current Doc's own "forty near-misses" framing
        n_fuzzy_variants_per_patient: int = 1,
        seed: int = 0,
    ) -> List[PopulationCase]: ...

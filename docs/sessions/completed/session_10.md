@@ -261,7 +261,9 @@ def construct_institutional_negatives(
                     candidate=group[j],
                     shared_fields={
                         "institution_type": institution_type,
-                        "postalCode": INSTITUTIONAL_ADDRESSES[institution_type]["postalCode"],
+                        "postalCode": INSTITUTIONAL_ADDRESSES[institution_type][
+                            "postalCode"
+                        ],
                     },
                 )
             )
@@ -307,7 +309,9 @@ def mine_shared_surname_household_negatives(
                 if not dob_a or not dob_b:
                     continue
                 try:
-                    gap_years = abs(date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year)
+                    gap_years = abs(
+                        date.fromisoformat(dob_a).year - date.fromisoformat(dob_b).year
+                    )
                 except ValueError:
                     continue
                 if gap_years < min_age_gap_years:
@@ -395,7 +399,9 @@ def _name_value(patient: Patient, field: str, *, name_index: int = 0) -> str:
     raise ValueError(f"Unknown name field: {field!r}")
 
 
-def _set_name_value(patient: Patient, field: str, value: str, *, name_index: int = 0) -> None:
+def _set_name_value(
+    patient: Patient, field: str, value: str, *, name_index: int = 0
+) -> None:
     names = patient.get("name") or []
     if name_index >= len(names):
         return
@@ -517,18 +523,30 @@ def build_labeled_pairs(
             diacritic = diacritic_variant(p, rng=rng)
             pairs.append(
                 LabeledPair(
-                    features={"query": q_fields, "candidate": extractor.extract(diacritic)},
+                    features={
+                        "query": q_fields,
+                        "candidate": extractor.extract(diacritic),
+                    },
                     is_true_match=True,
-                    strata={"pair_type": "normalization_edge_case", "case": "diacritic"},
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "diacritic",
+                    },
                     pair_id=f"{p['id']}::diacritic",
                 )
             )
             punctuated = punctuation_variant(p, rng=rng)
             pairs.append(
                 LabeledPair(
-                    features={"query": q_fields, "candidate": extractor.extract(punctuated)},
+                    features={
+                        "query": q_fields,
+                        "candidate": extractor.extract(punctuated),
+                    },
                     is_true_match=True,
-                    strata={"pair_type": "normalization_edge_case", "case": "punctuation"},
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "punctuation",
+                    },
                     pair_id=f"{p['id']}::punctuation",
                 )
             )
@@ -554,13 +572,20 @@ def build_labeled_pairs(
                         "candidate": extractor.extract(candidate.candidate),
                     },
                     is_true_match=False,
-                    strata={"pair_type": "special_population", "category": "multi_generational_household", **candidate.shared_fields},
+                    strata={
+                        "pair_type": "special_population",
+                        "category": "multi_generational_household",
+                        **candidate.shared_fields,
+                    },
                     pair_id=f"{candidate.query['id']}::{candidate.candidate['id']}::household",
                 )
             )
         for institution_type in INSTITUTION_TYPES:
             for candidate in construct_institutional_negatives(
-                normalized, institution_type, group_size=institutional_group_size, rng=rng
+                normalized,
+                institution_type,
+                group_size=institutional_group_size,
+                rng=rng,
             ):
                 pairs.append(
                     LabeledPair(
@@ -569,7 +594,10 @@ def build_labeled_pairs(
                             "candidate": extractor.extract(candidate.candidate),
                         },
                         is_true_match=False,
-                        strata={"pair_type": "special_population", "category": institution_type},
+                        strata={
+                            "pair_type": "special_population",
+                            "category": institution_type,
+                        },
                         pair_id=f"{candidate.query['id']}::{candidate.candidate['id']}::{institution_type}",
                     )
                 )
@@ -686,24 +714,44 @@ def _patient(id_, family, given="Pat", zip_code="10001", dob="1980-01-01"):
         "name": [{"family": family, "given": [given]}],
         "birthDate": dob,
         "telecom": [],
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": zip_code}
+        ],
         "identifier": [],
     }
 
 
 class TestConstructInstitutionalNegatives:
     def test_assigns_same_synthetic_address_to_every_group_member(self):
-        patients = [_patient("p1", "Smith"), _patient("p2", "Jones"), _patient("p3", "Lee")]
-        candidates = construct_institutional_negatives(patients, "shelter", group_size=3)
+        patients = [
+            _patient("p1", "Smith"),
+            _patient("p2", "Jones"),
+            _patient("p3", "Lee"),
+        ]
+        candidates = construct_institutional_negatives(
+            patients, "shelter", group_size=3
+        )
         assert len(candidates) == 3  # 3 choose 2
         for c in candidates:
-            assert c.query["address"][0]["postalCode"] == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
-            assert c.candidate["address"][0]["postalCode"] == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            assert (
+                c.query["address"][0]["postalCode"]
+                == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            )
+            assert (
+                c.candidate["address"][0]["postalCode"]
+                == INSTITUTIONAL_ADDRESSES["shelter"]["postalCode"]
+            )
             assert c.shared_fields["institution_type"] == "shelter"
 
     def test_never_pairs_two_patients_with_the_same_family_name(self):
-        patients = [_patient("p1", "Smith"), _patient("p2", "Smith"), _patient("p3", "Lee")]
-        candidates = construct_institutional_negatives(patients, "shelter", group_size=3)
+        patients = [
+            _patient("p1", "Smith"),
+            _patient("p2", "Smith"),
+            _patient("p3", "Lee"),
+        ]
+        candidates = construct_institutional_negatives(
+            patients, "shelter", group_size=3
+        )
         # Only 2 distinct family names available (Smith deduped) - group caps at 2, 1 pair.
         assert len(candidates) == 1
 
@@ -711,7 +759,9 @@ class TestConstructInstitutionalNegatives:
         import pytest
 
         with pytest.raises(ValueError):
-            construct_institutional_negatives([_patient("p1", "Smith")], "not_a_real_type")
+            construct_institutional_negatives(
+                [_patient("p1", "Smith")], "not_a_real_type"
+            )
 
     def test_every_institution_type_has_a_distinct_synthetic_zip(self):
         zips = [addr["postalCode"] for addr in INSTITUTIONAL_ADDRESSES.values()]
@@ -774,9 +824,18 @@ def _patient(given="Jose", family="Nunez", dob="1980-01-01"):
 class TestDiacriticVariant:
     @pytest.mark.parametrize("field,name", [("given", "Jose"), ("family", "Nunez")])
     def test_introduces_exactly_one_accented_character(self, field, name):
-        patient = _patient(given=name if field == "given" else "Jose", family=name if field == "family" else "Nunez")
-        variant = diacritic_variant(patient, field=field, rng=__import__("random").Random(0))
-        value = variant["name"][0]["given"][0] if field == "given" else variant["name"][0]["family"]
+        patient = _patient(
+            given=name if field == "given" else "Jose",
+            family=name if field == "family" else "Nunez",
+        )
+        variant = diacritic_variant(
+            patient, field=field, rng=__import__("random").Random(0)
+        )
+        value = (
+            variant["name"][0]["given"][0]
+            if field == "given"
+            else variant["name"][0]["family"]
+        )
         assert value != name
         assert any(accented in value for accented in DIACRITIC_MAP.values())
 
@@ -813,6 +872,7 @@ class TestPunctuationVariant:
 # evaluation/test_placeholder_dob_pipeline.py, sibling to labeled_pairs.py's own
 # tests - author's call at implementation time; either location is a legitimate
 # home for a pipeline-level, not unit-level, check):
+
 
 class TestPlaceholderDobExcludedEndToEnd:
     def test_out_of_range_dob_never_reaches_extracted_fields(self):

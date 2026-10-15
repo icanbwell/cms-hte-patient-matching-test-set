@@ -130,14 +130,19 @@ def _row(**overrides):
 class TestPhone2Loading:
     def test_both_phone_columns_load_as_separate_phone_telecom_entries(self) -> None:
         patient = _row_to_patient(_row(PHONE="555-000-1111", PHONE2="555-222-3333"))
-        phone_values = [t["value"] for t in patient["telecom"] if t["system"] == "phone"]
+        phone_values = [
+            t["value"] for t in patient["telecom"] if t["system"] == "phone"
+        ]
         assert phone_values == ["555-000-1111", "555-222-3333"]
 
     def test_email_still_loads_after_both_phones(self) -> None:
         patient = _row_to_patient(
             _row(PHONE="555-000-1111", PHONE2="555-222-3333", EMAIL="jane@example.com")
         )
-        assert patient["telecom"][-1] == {"system": "email", "value": "jane@example.com"}
+        assert patient["telecom"][-1] == {
+            "system": "email",
+            "value": "jane@example.com",
+        }
 
     def test_missing_phone2_yields_a_single_phone_entry(self) -> None:
         patient = _row_to_patient(_row(PHONE="555-000-1111"))
@@ -217,9 +222,7 @@ from mutations import SSN_SYSTEM, ssn_dropped_variant
 
 class TestSsnDroppedVariant:
     def test_removes_the_ssn_identifier(self) -> None:
-        patient = _patient(
-            identifier=[{"system": SSN_SYSTEM, "value": "123-45-6789"}]
-        )
+        patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "123-45-6789"}])
         result = ssn_dropped_variant(patient)
         assert result["identifier"] == []
 
@@ -313,13 +316,32 @@ class TestMarriageVariant:
                 {"family": "Jones", "given": ["Katherine"]},  # maiden-name proxy entry
             ]
         )
-        donor = _patient(id="donor", address=[{"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}])
+        donor = _patient(
+            id="donor",
+            address=[
+                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
+            ],
+        )
         result = marriage_variant(patient, donor)
         assert result["name"][0]["family"] == "Jones"
 
     def test_replaces_address_with_donors_address(self) -> None:
-        patient = _patient(address=[{"line": ["1 Main St"], "city": "A", "state": "B", "postalCode": "11111"}])
-        donor = _patient(id="donor", address=[{"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}])
+        patient = _patient(
+            address=[
+                {
+                    "line": ["1 Main St"],
+                    "city": "A",
+                    "state": "B",
+                    "postalCode": "11111",
+                }
+            ]
+        )
+        donor = _patient(
+            id="donor",
+            address=[
+                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
+            ],
+        )
         result = marriage_variant(patient, donor)
         assert result["address"] == donor["address"]
 
@@ -331,10 +353,25 @@ class TestMarriageVariant:
 
     def test_does_not_mutate_input_patient_or_donor(self) -> None:
         patient = _patient(
-            name=[{"family": "Smith", "given": ["K"]}, {"family": "Jones", "given": ["K"]}],
-            address=[{"line": ["1 Main St"], "city": "A", "state": "B", "postalCode": "11111"}],
+            name=[
+                {"family": "Smith", "given": ["K"]},
+                {"family": "Jones", "given": ["K"]},
+            ],
+            address=[
+                {
+                    "line": ["1 Main St"],
+                    "city": "A",
+                    "state": "B",
+                    "postalCode": "11111",
+                }
+            ],
         )
-        donor = _patient(id="donor", address=[{"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}])
+        donor = _patient(
+            id="donor",
+            address=[
+                {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
+            ],
+        )
         original_patient_address = [dict(a) for a in patient["address"]]
         marriage_variant(patient, donor)
         assert patient["address"] == original_patient_address
@@ -358,7 +395,7 @@ def marriage_variant(patient: Patient, donor: Patient) -> Patient:
     surname proxy, since ONC has no dedicated maiden-name column) and its
     address replaced by `donor`'s address (modeling a marriage-driven move -
     ONC carries no address history for one person to draw a second address
-    from, so an unrelated real ONC record's address stands in for it).
+    from, so an unrelated ONC-derived record's address stands in for it).
     Represents the "surname + address changed together" scenario Luke Breyer
     (Epic) raised in the 2026-09-22 workgroup meeting. No-op on the name
     change if `patient` has fewer than two `name` entries."""
@@ -532,9 +569,7 @@ class TestGenerateCompoundVariant:
         # depending on random name-mutation luck.
         patient = _patient()
         rng = random.Random(0)
-        variant, _ = generate_compound_variant(
-            patient, n_mutations=2, rng=rng
-        )
+        variant, _ = generate_compound_variant(patient, n_mutations=2, rng=rng)
         # At least one field must differ somewhere in the record.
         assert variant != patient
 ```
@@ -704,7 +739,7 @@ Add to `evaluation/special_populations.py`, immediately after
 def mine_sibling_negatives(
     patients: Iterable[Patient], *, max_age_gap_years: int = 3
 ) -> List[HardNegativeCandidate]:
-    """Mine real ONC pairs sharing a postal code AND family name, with birth
+    """Mine ONC-derived pairs sharing a postal code AND family name, with birth
     years close enough together to represent siblings (or twins, which
     ONC's per-row structure cannot distinguish from close-in-age siblings
     without a family-relationship column) - the complementary near-DOB case
@@ -1009,11 +1044,18 @@ def test_generate_raw_pairs_includes_all_new_pair_types() -> None:
                 {"system": "phone", "value": "555-222-3333"},
             ],
             "address": [
-                {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+                {
+                    "line": ["1 Main St"],
+                    "city": "NY",
+                    "state": "NY",
+                    "postalCode": "10001",
+                }
             ],
             "identifier": [{"system": SSN_SYSTEM, "value": "123-45-6789"}],
         },
-        _patient("p2", family="Rivera", given="Ana"),  # default zip 10001, dob 1980-06-15
+        _patient(
+            "p2", family="Rivera", given="Ana"
+        ),  # default zip 10001, dob 1980-06-15
         {
             **_patient("p3", family="Rivera", given="Luis"),
             "birthDate": "1981-01-01",  # 1-year gap from p2 -> sibling_negative, not household
@@ -1022,7 +1064,12 @@ def test_generate_raw_pairs_includes_all_new_pair_types() -> None:
             **_patient("p4", family="Smyth", given="Katherine"),
             "birthDate": "2001-02-02",
             "address": [
-                {"line": ["9 Elm St"], "city": "LA", "state": "CA", "postalCode": "70007"}
+                {
+                    "line": ["9 Elm St"],
+                    "city": "LA",
+                    "state": "CA",
+                    "postalCode": "70007",
+                }
             ],
             # "Katherine Smith" (p1) vs "Katherine Smyth" (p4): edit distance 1,
             # no shared ZIP or DOB -> name_collision_negative.
@@ -1076,7 +1123,10 @@ a `TypeError` (unexpected keyword arguments), since those parameters don't exist
 In `evaluation/labeled_pairs.py`, update the imports (lines 51-59):
 
 ```python
-from hard_negatives import mine_name_collision_negatives, mine_shared_address_hard_negatives
+from hard_negatives import (
+    mine_name_collision_negatives,
+    mine_shared_address_hard_negatives,
+)
 from mutations import (
     generate_compound_variant,
     generate_fuzzy_variant,

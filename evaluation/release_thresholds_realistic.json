@@ -1,9 +1,19 @@
 {
   "same_person_negatives": {"max": 0, "status": "enforced"},
+  "identical_positive_pairs": {"max": 0, "status": "enforced"},
+  "conformance_violations": {"max": 0, "status": "enforced"},
+  "id_equality_f1": {"max": 0.1, "status": "enforced"},
+  "matches_first_rate": {"max": 0.05, "status": "enforced"},
   "tier_parity_gap": {"max": 0, "status": "enforced"},
   "age_band_max_error": {"max": 0.01, "status": "enforced"},
   "people_per_address": {"min": 2.0, "status": "enforced"},
   "shared_phone_rate": {"min": 0.4, "status": "enforced"},
-  "best_single_field_f1": {"max": 0.9, "status": "tracked"},
-  "multi_field_margin": {"min": 0.05, "status": "tracked"}
+  "best_single_field_f1": {"max": 0.9, "status": "enforced"},
+  "multi_field_margin": {"min": 0.05, "status": "tracked"},
+  "negative_share": {"min": 0.45, "status": "enforced"},
+  "all_yes_f1": {"max": 0.70, "status": "enforced"},
+  "pairwise_two_of_three_f1": {"max": 0.95, "status": "tracked"},
+  "probable_duplicate_negatives": {"max": 0, "status": "enforced"},
+  "missing_hard_negative_categories": {"max": 0, "status": "enforced"},
+  "decoy_no_overlap_rate": {"max": 0.5, "status": "tracked"}
 }

@@ -50,6 +50,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence
 
 from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
+from fhir_conformance import is_noop_variant
 from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
@@ -60,6 +61,7 @@ from mutations import (
     generate_compound_variant,
     generate_fuzzy_variant,
 )
+from near_miss import NearMiss
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from onc_loader import load_onc_patients
 from placeholders import COLLISION_FIELDS, construct_placeholder_collision_negatives
@@ -142,6 +144,7 @@ def _generate_all_raw_pairs(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     seed: int = 0,
 ) -> Iterator[RawPair]:
     """Yield RawPairs from ONC patients: fuzzy-variant true-matches,
@@ -161,9 +164,12 @@ def _generate_all_raw_pairs(
         include_phone_variant=include_phone_variant,
     )
 
-    for idx, p in enumerate(patients):
+    for p in patients:
+        # Per-patient RNG so a change to one patient's draws cannot shift the
+        # case ids of every later patient.
+        patient_rng = random.Random(f"{seed}:variants:{p['id']}")
         for _ in range(n_fuzzy_variants_per_patient):
-            variant, mutation_type = generate_fuzzy_variant(p, rng=rng)
+            variant, mutation_type = generate_fuzzy_variant(p, rng=patient_rng)
             if variant == p:
                 continue  # nothing to mutate (no DOB, no usable name)
             yield RawPair(
@@ -174,25 +180,33 @@ def _generate_all_raw_pairs(
                 strata={"pair_type": "fuzzy_variant", "mutation": mutation_type},
             )
         if include_normalization_edge_cases:
-            diacritic = diacritic_variant(p, rng=rng)
-            yield RawPair(
-                pair_id=f"{p['id']}::diacritic",
-                query_patient=p,
-                candidate_patient=diacritic,
-                is_true_match=True,
-                strata={"pair_type": "normalization_edge_case", "case": "diacritic"},
-            )
-            punctuated = punctuation_variant(p, rng=rng)
-            yield RawPair(
-                pair_id=f"{p['id']}::punctuation",
-                query_patient=p,
-                candidate_patient=punctuated,
-                is_true_match=True,
-                strata={"pair_type": "normalization_edge_case", "case": "punctuation"},
-            )
+            diacritic = diacritic_variant(p, rng=patient_rng)
+            if not is_noop_variant(p, diacritic):
+                yield RawPair(
+                    pair_id=f"{p['id']}::diacritic",
+                    query_patient=p,
+                    candidate_patient=diacritic,
+                    is_true_match=True,
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "diacritic",
+                    },
+                )
+            punctuated = punctuation_variant(p, rng=patient_rng)
+            if not is_noop_variant(p, punctuated):
+                yield RawPair(
+                    pair_id=f"{p['id']}::punctuation",
+                    query_patient=p,
+                    candidate_patient=punctuated,
+                    is_true_match=True,
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "punctuation",
+                    },
+                )
         if include_compound_variants:
             compound, mutation_types = generate_compound_variant(
-                p, n_mutations=n_compound_mutations, rng=rng
+                p, n_mutations=n_compound_mutations, rng=patient_rng
             )
             # A field group can legitimately no-op entirely (e.g. an empty
             # given name, a missing birthDate) even though a different group
@@ -212,7 +226,6 @@ def _generate_all_raw_pairs(
                 )
         for scenario, result in generate_scenario_variants(
             p,
-            next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
             profile=effective_profile,
             seed=seed,
@@ -251,6 +264,19 @@ def _generate_all_raw_pairs(
                     **name_candidate.shared_fields,
                 },
             )
+
+    for miss in near_misses:
+        yield RawPair(
+            pair_id=f"{miss.query_id}::{miss.decoy['id']}::near_miss::{miss.kind}",
+            query_patient=miss.query,
+            candidate_patient=miss.decoy,
+            is_true_match=False,
+            strata={
+                "pair_type": miss.pair_type,
+                "found_by": "near_miss",
+                **miss.shared_fields,
+            },
+        )
 
     if not include_special_populations:
         return
@@ -378,6 +404,7 @@ def generate_raw_pairs(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
 ) -> Iterator[RawPair]:
@@ -408,6 +435,7 @@ def generate_raw_pairs(
         donors=donors,
         profile=profile,
         households=households,
+        near_misses=near_misses,
         seed=seed,
     ):
         if pair.is_true_match and policy.excludes(

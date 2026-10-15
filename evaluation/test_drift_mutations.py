@@ -12,6 +12,7 @@ from drift_mutations import (
     email_churn_variant,
     gender_drift_variant,
     phone_churn_variant,
+    surname_address_change_variant,
     surname_change_variant,
 )
 from identity_guard import normalize_token
@@ -116,6 +117,48 @@ class TestSurnameChange:
         assert source == snapshot and donors == DONORS
 
 
+class TestSurnameAddressChange:
+    def test_changes_both_the_surname_and_the_address(self):
+        source = _patient()
+        variant, subtype = surname_address_change_variant(
+            source, DONORS, random.Random(0)
+        )
+        assert (
+            normalize_token(variant["name"][0]["family"])
+            != normalize_token(source["name"][0]["family"])
+            or "-" in variant["name"][0]["family"]
+        )
+        assert variant["address"][0]["line"][0] in {"9 ELM ST", "7 OAK AVE"}
+        surname_subtype, address_subtype = subtype.split("+")
+        assert surname_subtype in {"no_history", "prior_name_on_target", "hyphenated"}
+        assert address_subtype in {"current_vs_prior", "history_on_one_side"}
+
+    def test_the_new_surname_is_not_on_the_source_record(self):
+        source = _patient()
+        source["name"].append({"family": "OKAFOR", "given": ["KATHERINE"]})
+        for seed in range(30):
+            variant, _ = surname_address_change_variant(
+                source, DONORS, random.Random(seed)
+            )
+            assert "okafor" not in normalize_token(variant["name"][0]["family"])
+
+    def test_is_none_without_a_surname_or_without_an_address(self):
+        no_name = _patient()
+        no_name["name"] = []
+        no_address = _patient()
+        no_address["address"] = []
+        assert surname_address_change_variant(no_name, DONORS, random.Random(0)) is None
+        assert (
+            surname_address_change_variant(no_address, DONORS, random.Random(0)) is None
+        )
+
+    def test_does_not_mutate_the_input(self):
+        source = _patient()
+        before = copy.deepcopy(source)
+        surname_address_change_variant(source, DONORS, random.Random(0))
+        assert source == before
+
+
 class TestAddressMove:
     def test_target_gets_a_different_donor_street(self):
         variant, _ = address_move_variant(_patient(), DONORS, random.Random(0))
@@ -170,6 +213,19 @@ class TestContactChurn:
                 ]
                 assert phones[0] in {"212-555-0111", "212-555-0122"}
                 assert any(t["system"] == "email" for t in variant["telecom"])
+                return
+        pytest.fail("replaced never drawn")
+
+    def test_phone_replaced_keeps_the_replaced_entrys_rank(self):
+        patient = _patient()
+        phones = [t for t in patient["telecom"] if t["system"] == "phone"]
+        for rank, phone in enumerate(phones, start=1):
+            phone["rank"] = rank
+        for seed in range(60):
+            variant, subtype = phone_churn_variant(patient, DONORS, random.Random(seed))
+            if subtype == "replaced":
+                new_phones = [t for t in variant["telecom"] if t["system"] == "phone"]
+                assert new_phones[0]["rank"] == 1
                 return
         pytest.fail("replaced never drawn")
 

@@ -13,11 +13,15 @@ from typing import Any
 from drift_profile import DriftProfile
 from labeled_pairs import generate_raw_pairs
 from mutations import SSN_SYSTEM, count_changed_fields
+from near_miss import NearMiss
 from scenarios import REGISTRY
 from support_patients import drift_donors, drift_population
 
 
-def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
+def _patient(id_: str, family: str = "Smith", given: str | None = None):
+    # Distinct default first names: the same first name and birth date under two
+    # surnames looks like one person to the duplicate guard.
+    given = given or ("Katherine" if family == "Smith" else f"Given{family}")
     return {
         "resourceType": "Patient",
         "id": id_,
@@ -151,7 +155,6 @@ class TestGenerateRawPairs:
                 "id": "p1",
                 "name": [
                     {"family": "Smith", "given": ["Katherine"]},
-                    {"family": "Jones", "given": ["Katherine"]},  # maiden-name proxy
                 ],
                 "birthDate": "1980-06-15",
                 "telecom": [
@@ -190,7 +193,7 @@ class TestGenerateRawPairs:
                 # no shared ZIP or DOB -> name_collision_negative.
             },
         ]
-        pairs = list(generate_raw_pairs(patients, seed=0))
+        pairs = list(generate_raw_pairs(patients, donors=drift_donors(), seed=0))
         pair_types = {p.strata["pair_type"] for p in pairs}
         assert {
             "compound_variant",
@@ -313,6 +316,49 @@ class TestGenerateRawPairs:
         )
         assert not [p for p in pairs if p.strata.get("address_source")]
 
+    def test_near_misses_are_emitted_as_negative_pairs_in_their_own_category(
+        self,
+    ) -> None:
+        query = _patient("p1")
+        decoy = _patient("d1", family="Jones", given="Robert")
+        miss = NearMiss(
+            query=query,
+            decoy=decoy,
+            kind="dob_only",
+            shared_fields={"shared": "birthDate"},
+        )
+        pairs = [
+            p
+            for p in generate_raw_pairs([query], near_misses=[miss], seed=0)
+            if "::near_miss::" in p.pair_id
+        ]
+        assert len(pairs) == 1
+        assert pairs[0].pair_id == "p1::d1::near_miss::dob_only"
+        assert pairs[0].is_true_match is False
+        assert pairs[0].candidate_patient is decoy
+        assert dict(pairs[0].strata) == {
+            "pair_type": "near_miss_negative",
+            "found_by": "near_miss",
+            "shared": "birthDate",
+        }
+
+
+class TestPerPatientSeeding:
+    def test_a_patients_case_ids_do_not_depend_on_other_patients(self):
+        a, b = _patient("a", "Jones", "Robert"), _patient("b")
+
+        def ids_for(patients, pid):
+            return sorted(
+                pair.pair_id
+                for pair in generate_raw_pairs(patients, seed=0)
+                if pair.pair_id.startswith(f"{pid}::")
+                and pair.strata["pair_type"]
+                in ("fuzzy_variant", "normalization_edge_case", "compound_variant")
+            )
+
+        assert ids_for([a, b], "b") == ids_for([b], "b")
+        assert ids_for([b, a], "b") == ids_for([b], "b")
+
 
 class TestDriftScenariosPerProvisionTier:
     def test_new_scenarios_emit_true_match_pairs_with_stable_ids_and_subtypes(
@@ -370,14 +416,14 @@ class TestDriftScenariosPerProvisionTier:
         assert "phone_churn" in types
         assert "address_move" not in types
 
-    def test_session_14_scenarios_are_unchanged_by_the_registry(self) -> None:
+    def test_ssn_dropped_scenario_is_unchanged_by_the_registry(self) -> None:
         patients = drift_population()
         pairs = [
             p
             for p in generate_raw_pairs(patients, seed=0)
-            if p.strata["pair_type"] in {"ssn_dropped", "marriage_variant"}
+            if p.strata["pair_type"] == "ssn_dropped"
         ]
-        ssn = [p for p in pairs if p.strata["pair_type"] == "ssn_dropped"]
+        ssn = pairs
         assert {p.pair_id for p in ssn} == {f"{x['id']}::ssn_dropped" for x in patients}
         assert all(not any(i for i in p.candidate_patient["identifier"]) for p in ssn)
 

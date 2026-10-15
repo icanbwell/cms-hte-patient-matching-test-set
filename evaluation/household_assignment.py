@@ -11,7 +11,7 @@ ids) are never changed, except that children under 13 may lose their SSN
 
 What this does and does not model:
 
-- Most households are unrelated real records placed at one address
+- Most households are unrelated ONC-derived records placed at one address
   (roommates, blended families whose surnames differ). A child is attached to
   an adult with the same surname when one is available, otherwise to any
   household with a free slot. The report counts the same-surname placements.
@@ -35,7 +35,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple
 from drift_profile import DriftProfile
 from identity_guard import (
     SSN_SYSTEM,
-    is_possible_same_person,
+    looks_like_same_person,
     normalize_phone,
     normalize_token,
 )
@@ -178,7 +178,7 @@ def iter_household_pairs(
         members = [by_id[pid] for pid in household if pid in by_id]
         for position, a in enumerate(members):
             for b in members[position + 1 :]:
-                if not is_possible_same_person(a, b):
+                if not looks_like_same_person(a, b):
                     yield a, b
 
 

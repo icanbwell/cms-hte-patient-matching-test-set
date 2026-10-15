@@ -13,6 +13,7 @@ import pytest
 from audit import (
     age_band_max_error,
     build_report,
+    negative_share,
     read_jsonl,
     unique_source_patients,
 )
@@ -32,6 +33,7 @@ from release_gate import (
 )
 
 SAMPLE = 300
+SCALE_DEPENDENT = {"missing_hard_negative_categories"}
 
 
 @pytest.fixture(scope="module")
@@ -42,6 +44,8 @@ def realistic(tmp_path_factory):
         donor_size=SAMPLE,
         seed=0,
         profile=DriftProfile(),
+        decoy_batches=lambda: iter_shard_batches(limit=1),
+        target_negative_share=0.5,
     )
     out = tmp_path_factory.mktemp("realistic")
     write_realistic_dataset(dataset, out)
@@ -80,7 +84,12 @@ def test_the_realistic_thresholds_pass_on_the_generated_files(realistic):
         out / "realistic_population_queries.jsonl",
         out / "realistic_population_candidates.jsonl",
     )
-    results = check(report, load_thresholds(REALISTIC_THRESHOLDS_PATH))
+    thresholds = {
+        name: rule
+        for name, rule in load_thresholds(REALISTIC_THRESHOLDS_PATH).items()
+        if name not in SCALE_DEPENDENT
+    }
+    results = check(report, thresholds)
     assert failures(results) == [], [(r.name, r.value) for r in failures(results)]
 
 
@@ -109,13 +118,46 @@ def test_manifest_states_its_caveats_and_target_sources(realistic):
     manifest = json.loads((out / "realistic_manifest.json").read_text())
     caveats = " ".join(manifest["caveats"])
     assert manifest["caveats"]
-    assert "rule 29" in caveats
+    assert "rule 29" not in caveats
     assert "reference algorithm" in caveats
+    assert manifest["dataset_version"] == "2"
+    assert "rule 29" not in manifest["kind"]
     sources = manifest["target_sources"]
     for name, _, _ in AGE_BANDS:
         assert sources[name]
     assert sources["single_person_household_share"]
     assert sources["mean_household_size"]
+
+
+def test_pairwise_tier_is_about_half_negative(realistic):
+    _, out = realistic
+    rows = read_jsonl(out / "realistic_labeled_pairs.jsonl")
+    assert negative_share(rows) >= 0.45
+
+
+def test_near_miss_negatives_appear_in_both_tiers(realistic):
+    _, out = realistic
+    pairs = read_jsonl(out / "realistic_labeled_pairs.jsonl")
+    near = [r for r in pairs if "found_by=near_miss" in r["rationale"]]
+    assert near and all(r["expected_match"] is False for r in near)
+    queries = read_jsonl(out / "realistic_population_queries.jsonl")
+    assert any(
+        "near_miss_negative" in q["rationale"] or "hard_negative" in q["rationale"]
+        for q in queries
+    )
+
+
+def test_manifest_reports_near_miss_yield_and_negative_share(realistic):
+    dataset, _ = realistic
+    manifest = dataset.manifest
+    assert set(manifest["near_miss"]["yield_by_kind"]) >= {
+        "dob_zip",
+        "name",
+        "dob_only",
+    }
+    assert manifest["near_miss"]["per_kind_cap"] == 3
+    assert manifest["negative_share"] >= 0.45
+    assert manifest["n_positives_dropped"] >= 0
 
 
 def test_an_unknown_dataset_name_is_rejected():

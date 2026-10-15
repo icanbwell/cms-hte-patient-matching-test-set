@@ -2,11 +2,12 @@
 Patient dicts, for use as this repo's test-case generation input
 (labeled_pairs.py, population_cases.py, and the export_*.py manifest writers).
 
-Column mapping mirrors the legacy production matching engine's own
-create_patient_resource() transform (confirmed via direct inspection of its CMS
-test suite), extended to also populate MOTHERS_MAIDEN_NAME, ALIAS, and PHONE2,
-which that transform reads from the CSV but never maps into the output FHIR
-resource.
+Column mapping started from the legacy production matching engine's own
+create_patient_resource() transform and is now FHIR R4 conformant: empty
+columns are omitted (never emitted as ""/[]), ALIAS becomes a separate
+`use: nickname` name, and MOTHERS_MAIDEN_NAME maps to the standard
+patient-mothersMaidenName extension (it is the mother's maiden name, not the
+patient's own prior surname).
 
 Values are copied through as-is (raw CSV case/punctuation) - this repo's own
 generation pipeline does not normalize them (see session_13, which dropped
@@ -31,9 +32,12 @@ for this dataset copy, since there is no found duplication to contradict it.
 from __future__ import annotations
 
 import csv
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
+
+from fhir_conformance import MOTHERS_MAIDEN_NAME_URL, SSN_SYSTEM, V2_0203_SYSTEM
 
 _SAS_EPOCH = date(1900, 1, 1)
 _GENDER_MAP = {
@@ -43,6 +47,42 @@ _GENDER_MAP = {
     "F": "female",
     "U": "unknown",
 }
+
+
+def _clean(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _human_names(row: Dict[str, str]) -> List[Dict[str, Any]]:
+    official: Dict[str, Any] = {"use": "official"}
+    family = _clean(row.get("LAST"))
+    if family:
+        official["family"] = family
+    given = [g for g in (_clean(row.get("FIRST")), _clean(row.get("MIDDLE"))) if g]
+    if given:
+        official["given"] = given
+    suffix = _clean(row.get("SUFFIX"))
+    if suffix:
+        official["suffix"] = [suffix]
+    names: List[Dict[str, Any]] = [official] if len(official) > 1 else []
+    alias = _clean(row.get("ALIAS"))
+    if alias:
+        names.append({"use": "nickname", "text": alias})
+    return names
+
+
+def ssn_identifier(value: str) -> Dict[str, Any]:
+    """A US SSN identifier with the v2-0203 `SS` type coding."""
+    return {
+        "system": SSN_SYSTEM,
+        "type": {"coding": [{"system": V2_0203_SYSTEM, "code": "SS"}]},
+        "value": value,
+    }
+
+
+def _phone_numbers(raw: str | None) -> List[str]:
+    """ONC phone columns sometimes hold several numbers joined by HL7 '^'."""
+    return [part for part in (p.strip() for p in re.split(r"\^+", raw or "")) if part]
 
 
 def _decode_sas_date(raw: str) -> str:
@@ -57,61 +97,54 @@ def _decode_sas_date(raw: str) -> str:
 
 
 def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
-    given = [row["FIRST"]]
-    if row.get("MIDDLE"):
-        given.append(row["MIDDLE"])
-    if row.get("ALIAS"):
-        given.append(row["ALIAS"])
-    family_names = [row["LAST"]]
-    # Not mapped by the legacy production matching engine's transform - included
-    # here so this repo's normalization/matching sees prior/maiden names per
-    # Core Principle 10.
-    if row.get("MOTHERS_MAIDEN_NAME"):
-        family_names.append(row["MOTHERS_MAIDEN_NAME"])
-
     patient: Dict[str, Any] = {
         "resourceType": "Patient",
         "id": row["EnterpriseID"],
-        "name": [
-            {
-                "family": fam,
-                "given": given,
-                "suffix": [row["SUFFIX"]] if row.get("SUFFIX") else [],
-            }
-            for fam in family_names
-        ],
         "gender": _GENDER_MAP.get(row.get("GENDER", "").upper(), "unknown"),
-        "telecom": [],
-        "address": [],
-        "identifier": [],
     }
+    names = _human_names(row)
+    if names:
+        patient["name"] = names
+    mothers_maiden_name = _clean(row.get("MOTHERS_MAIDEN_NAME"))
+    if mothers_maiden_name:
+        patient["extension"] = [
+            {"url": MOTHERS_MAIDEN_NAME_URL, "valueString": mothers_maiden_name}
+        ]
     # The dataset's "Null" shard has intentionally-missing fields for incomplete-data
     # testing; the legacy production matching engine's transform only sets
     # birthDate when DOB is present (`if row["DOB"]:`) - mirrored here rather
     # than crashing.
     if row.get("DOB"):
         patient["birthDate"] = _decode_sas_date(row["DOB"])
-    if row.get("PHONE"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE"]})
-    if row.get("PHONE2"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE2"]})
-    if row.get("EMAIL"):
-        patient["telecom"].append({"system": "email", "value": row["EMAIL"]})
-    if row.get("ADDRESS1"):
-        lines = [row["ADDRESS1"]] + ([row["ADDRESS2"]] if row.get("ADDRESS2") else [])
-        patient["address"].append(
-            {
-                "line": lines,
-                "city": row.get("CITY", ""),
-                "state": row.get("STATE", ""),
-                "postalCode": row.get("ZIP", ""),
-            }
-        )
-    if row.get("SSN"):
-        patient["identifier"].append(
-            {"system": "http://hl7.org/fhir/sid/us-ssn", "value": row["SSN"]}
-        )
+    telecom: List[Dict[str, Any]] = []
+    phones = _phone_numbers(row.get("PHONE")) + _phone_numbers(row.get("PHONE2"))
+    for rank, value in enumerate(phones, start=1):
+        telecom.append({"system": "phone", "value": value, "rank": rank})
+    email = _clean(row.get("EMAIL"))
+    if email:
+        telecom.append({"system": "email", "value": email, "rank": 1})
+    if telecom:
+        patient["telecom"] = telecom
+    line1 = _clean(row.get("ADDRESS1"))
+    if line1:
+        line2 = _clean(row.get("ADDRESS2"))
+        address: Dict[str, Any] = {"line": [line1] + ([line2] if line2 else [])}
+        for key, column in (
+            ("city", "CITY"),
+            ("state", "STATE"),
+            ("postalCode", "ZIP"),
+        ):
+            part = _clean(row.get(column))
+            if part:
+                address[key] = part
+        patient["address"] = [address]
+    ssn = _clean(row.get("SSN"))
+    if ssn:
+        patient["identifier"] = [ssn_identifier(ssn)]
     return patient
+
+
+REQUIRED_COLUMNS = ("FIRST", "LAST")
 
 
 def load_onc_patients(csv_paths: List[Path]) -> List[Dict[str, Any]]:
@@ -121,6 +154,13 @@ def load_onc_patients(csv_paths: List[Path]) -> List[Dict[str, Any]]:
         if ".." in str(path):
             raise ValueError(f"Invalid file path: {path!r}")
         with open(path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
+            reader = csv.DictReader(f)
+            missing = [
+                c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])
+            ]
+            if missing:
+                # A missing header would otherwise load as silently empty names.
+                raise ValueError(f"{path}: missing required column(s) {missing}")
+            for row in reader:
                 patients.append(_row_to_patient(row))
     return patients

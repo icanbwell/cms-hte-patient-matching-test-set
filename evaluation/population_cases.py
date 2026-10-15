@@ -22,7 +22,9 @@ For each query patient:
     sibling/name-collision near-misses, topped up with random distractors from
     the broader sample up
     to `pool_size` (per the current Doc's own "forty near-misses" framing) -
-    never displacing a true match to make room.
+    never displacing a true match to make room. Near-miss decoys (near_miss.py)
+    are real records found across all ONC shards that share a name, DOB,
+    address or contact with the query.
 
 A query for which no true-match candidate was generated (e.g.
 n_fuzzy_variants_per_patient=0 and include_normalization_edge_cases=False)
@@ -58,6 +60,7 @@ from typing import Any, Dict, List, Sequence, Set
 
 from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
+from fhir_conformance import is_noop_variant
 from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
@@ -69,6 +72,7 @@ from mutations import (
     generate_compound_variant,
     generate_fuzzy_variant,
 )
+from near_miss import NearMiss
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from scenarios import generate_scenario_variants
 from special_populations import (
@@ -140,6 +144,7 @@ def build_population_dataset(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
 ) -> PopulationDataset:
@@ -178,23 +183,33 @@ def build_population_dataset(
             match_members[query_id].append(candidate_id)
 
     profile = profile or DriftProfile()
-    for idx, (pid, patient) in enumerate(by_id.items()):
+    for pid, patient in by_id.items():
+        # Same per-patient stream as labeled_pairs.py, so a case id names the
+        # same variant in both tiers and one patient's draws cannot shift
+        # another's.
+        patient_rng = random.Random(f"{seed}:variants:{pid}")
         for _ in range(n_fuzzy_variants_per_patient):
-            variant, mutation_type = generate_fuzzy_variant(patient, rng=rng)
+            variant, mutation_type = generate_fuzzy_variant(patient, rng=patient_rng)
             if variant == patient:
                 continue  # nothing to mutate (no DOB, no usable name)
             add_candidate(
                 pid, f"{pid}::{mutation_type}", variant, True, "fuzzy_variant"
             )
         if include_normalization_edge_cases:
-            diacritic = diacritic_variant(patient, rng=rng)
-            add_candidate(
-                pid, f"{pid}::diacritic", diacritic, True, "normalization_edge_case"
-            )
-            punctuated = punctuation_variant(patient, rng=rng)
-            add_candidate(
-                pid, f"{pid}::punctuation", punctuated, True, "normalization_edge_case"
-            )
+            diacritic = diacritic_variant(patient, rng=patient_rng)
+            if not is_noop_variant(patient, diacritic):
+                add_candidate(
+                    pid, f"{pid}::diacritic", diacritic, True, "normalization_edge_case"
+                )
+            punctuated = punctuation_variant(patient, rng=patient_rng)
+            if not is_noop_variant(patient, punctuated):
+                add_candidate(
+                    pid,
+                    f"{pid}::punctuation",
+                    punctuated,
+                    True,
+                    "normalization_edge_case",
+                )
         # Compound variants keep their own per-patient RNG so they never
         # perturb the stream above (session 15 tier parity).
         compound, mutation_types = generate_compound_variant(
@@ -210,7 +225,6 @@ def build_population_dataset(
             )
         for scenario, result in generate_scenario_variants(
             patient,
-            next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
             profile=profile,
             seed=seed,
@@ -303,6 +317,15 @@ def build_population_dataset(
                     "special_population",
                 )
 
+    # Real look-alike decoys found by near_miss.py. Added last so every existing
+    # decoy category keeps its slot when a pool is trimmed to `pool_size`; the
+    # decoy is not in `patients`, so its plain id cannot collide with a sample id.
+    for miss in near_misses:
+        if miss.query_id in by_id:
+            add_candidate(
+                miss.query_id, str(miss.decoy["id"]), miss.decoy, False, miss.pair_type
+            )
+
     all_ids = list(by_id)
     same_person = SamePersonIndex(patients)
     cases: List[PopulationCase] = []
@@ -326,6 +349,9 @@ def build_population_dataset(
             decoys = [c for c in pool if c not in match_members[pid]]
             pool = true_matches + decoys[: max(0, pool_size - len(true_matches))]
 
+        # Matches are collected before decoys, so an unshuffled pool lists every
+        # true match first and its position reveals the label.
+        random.Random(f"{seed}:pool_order:{pid}").shuffle(pool)
         cats = categories[pid]
         rationale = "population/" + "+".join(sorted(cats)) if cats else "population"
         cases.append(

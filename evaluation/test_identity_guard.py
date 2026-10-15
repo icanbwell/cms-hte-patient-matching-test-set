@@ -9,6 +9,8 @@ from identity_guard import (
     SSN_SYSTEM,
     identity_key,
     is_possible_same_person,
+    is_probable_duplicate,
+    looks_like_same_person,
     normalize_phone,
     normalize_token,
     ssn_of,
@@ -170,3 +172,113 @@ def test_is_placeholder_ssn_rejects_unissuable_values():
     ):
         assert is_placeholder_ssn(bad), bad
     assert not is_placeholder_ssn("123456780")
+
+
+def _with_phone(patient, phone):
+    patient["telecom"] = [{"system": "phone", "value": phone}]
+    return patient
+
+
+class TestIsProbableDuplicate:
+    def test_ssn_one_digit_off_is_a_duplicate_even_with_different_names_and_dobs(self):
+        a = _patient("a", "Eugene", "Benally", "1971-01-01", ssn="892-39-5115")
+        b = _patient("b", "Maria", "Lopez", "1999-09-09", ssn="892-39-5116")
+        assert is_probable_duplicate(a, b)
+
+    def test_ssns_two_digits_apart_are_not_a_duplicate(self):
+        a = _patient("a", "Eugene", "Benally", "1971-01-01", ssn="892-39-5115")
+        b = _patient("b", "Maria", "Lopez", "1999-09-09", ssn="892-39-5126")
+        assert not is_probable_duplicate(a, b)
+
+    def test_placeholder_ssns_never_count(self):
+        a = _patient("a", "Eugene", "Benally", "1971-01-01", ssn="123-45-6789")
+        b = _patient("b", "Maria", "Lopez", "1999-09-09", ssn="123-45-6788")
+        assert not is_probable_duplicate(a, b)
+
+    def test_shared_phone_with_dob_one_digit_apart_is_a_duplicate(self):
+        a = _with_phone(
+            _patient("a", "Harris", "Greene", "1980-06-15"), "(347) 984-6839"
+        )
+        b = _with_phone(_patient("b", "Jim", "Other", "1980-06-16"), "347-984-6839")
+        assert is_probable_duplicate(a, b)
+
+    def test_shared_phone_with_identical_dob_is_a_duplicate(self):
+        a = _with_phone(_patient("a", "Harris", "Greene", "1980-06-15"), "3479846839")
+        b = _with_phone(_patient("b", "Jim", "Other", "1980-06-15"), "3479846839")
+        assert is_probable_duplicate(a, b)
+
+    def test_shared_phone_with_a_month_day_swapped_dob_is_a_duplicate(self):
+        a = _with_phone(_patient("a", dob="1980-03-11"), "3479846839")
+        b = _with_phone(_patient("b", "Jim", "Other", "1980-11-03"), "3479846839")
+        assert is_probable_duplicate(a, b)
+
+    def test_shared_phone_with_a_clearly_different_dob_is_not_a_duplicate(self):
+        a = _with_phone(_patient("a", dob="1950-06-15"), "3479846839")
+        b = _with_phone(_patient("b", "Jim", "Other", "1971-06-15"), "3479846839")
+        assert not is_probable_duplicate(a, b)
+
+    def test_name_typo_with_dob_one_digit_apart_is_a_duplicate(self):
+        a = _patient("a", "Gerald", "Gutschow", "1980-11-05")
+        b = _patient("b", "Gerald", "Gutachow", "1980-12-05")
+        assert is_probable_duplicate(a, b)
+
+    def test_identical_name_with_dob_one_digit_apart_is_a_duplicate(self):
+        a = _patient("a", "Rosalind", "Vandermeer", "1980-06-15")
+        b = _patient("b", "Rosalind", "Vandermeer", "1980-06-25")
+        assert is_probable_duplicate(a, b)
+
+    def test_name_match_with_a_clearly_different_dob_is_a_legitimate_hard_negative(
+        self,
+    ):
+        a = _patient("a", "Rosalind", "Vandermeer", "1950-06-15")
+        b = _patient("b", "Rosalind", "Vandermeer", "1971-06-15")
+        assert not is_probable_duplicate(a, b)
+
+    def test_names_two_edits_apart_are_not_a_duplicate(self):
+        a = _patient("a", "Rosalind", "Vandermeer", "1980-06-15")
+        b = _patient("b", "Rosamund", "Vandermeer", "1980-06-15")
+        assert not is_probable_duplicate(a, b)
+
+    def test_missing_birth_dates_never_trigger_the_name_or_phone_rules(self):
+        a = _with_phone(_patient("a", dob=None), "3479846839")
+        b = _with_phone(_patient("b", dob=None), "3479846839")
+        assert not is_probable_duplicate(a, b)
+
+
+class TestLooksLikeSamePerson:
+    def test_true_for_an_exact_match(self):
+        assert looks_like_same_person(_patient("a"), _patient("b"))
+
+    def test_true_for_a_typo_duplicate_the_exact_check_misses(self):
+        a = _patient("a", "Eugene", "Benally", "1971-01-01", ssn="892-39-5115")
+        b = _patient("b", "Maria", "Lopez", "1999-09-09", ssn="892-39-5116")
+        assert not is_possible_same_person(a, b)
+        assert looks_like_same_person(a, b)
+
+    def test_false_for_different_people(self):
+        other = _patient("b", "Maria", "Lopez", "1999-09-09")
+        assert not looks_like_same_person(_patient("a"), other)
+
+
+class TestSurnameChangeLooksLikeADuplicate:
+    def test_same_first_name_and_birth_date_under_another_surname_is_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", "1980-06-15")
+        assert not is_possible_same_person(a, b)
+        assert is_probable_duplicate(a, b)
+        assert looks_like_same_person(a, b)
+
+    def test_a_different_first_name_or_birth_date_is_not_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        assert not is_probable_duplicate(
+            a, _patient("b", "Maria", "Okafor", "1980-06-15")
+        )
+        assert not is_probable_duplicate(
+            a, _patient("c", "Katherine", "Okafor", "1990-01-01")
+        )
+
+    def test_a_missing_first_name_is_not_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", "1980-06-15")
+        b["name"][0]["given"] = []
+        assert not is_probable_duplicate(a, b)

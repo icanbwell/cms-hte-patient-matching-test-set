@@ -12,7 +12,7 @@ def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01
     return {
         "resourceType": "Patient",
         "id": id_,
-        "name": [{"family": family, "given": ["Pat"]}],
+        "name": [{"family": family, "given": [f"Pat{family}"]}],
         "birthDate": dob,
         "telecom": [],
         "address": [
@@ -20,6 +20,16 @@ def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01
         ],
         "identifier": [],
     }
+
+
+class TestMinersSkipTypoDuplicates:
+    def test_shared_address_miner_skips_a_record_with_a_one_digit_ssn_typo(
+        self,
+    ) -> None:
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn"}
+        a = {**_patient("p1", "Smith"), "identifier": [{**ssn, "value": "892-39-5115"}]}
+        b = {**_patient("p2", "Jones"), "identifier": [{**ssn, "value": "892-39-5116"}]}
+        assert mine_shared_address_hard_negatives([a, b]) == []
 
 
 class TestMineSharedAddressHardNegatives:

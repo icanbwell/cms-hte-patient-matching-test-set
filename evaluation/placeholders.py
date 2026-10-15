@@ -22,7 +22,8 @@ import random
 from typing import Any, Dict, Iterable, List, Tuple
 
 from hard_negatives import HardNegativeCandidate
-from identity_guard import SSN_SYSTEM, is_possible_same_person, normalize_token
+from identity_guard import SSN_SYSTEM, looks_like_same_person, normalize_token
+from onc_loader import ssn_identifier
 
 Patient = Dict[str, Any]
 
@@ -71,9 +72,7 @@ def apply_placeholder(
                 break
         else:
             if create_missing:
-                modified.setdefault("identifier", []).append(
-                    {"system": SSN_SYSTEM, "value": value}
-                )
+                modified.setdefault("identifier", []).append(ssn_identifier(value))
     elif field == "phone":
         for entry in modified.get("telecom") or []:
             if entry.get("system") == "phone":
@@ -142,7 +141,7 @@ def construct_placeholder_collision_negatives(
                 if _family(other)
                 and _family(patient)
                 and _family(other) != _family(patient)
-                and not is_possible_same_person(other, patient)
+                and not looks_like_same_person(other, patient)
             ),
             None,
         )

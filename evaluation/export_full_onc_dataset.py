@@ -54,6 +54,7 @@ from export_test_dataset import build_test_case_records
 from onc_loader import load_onc_patients
 from population_cases import DEFAULT_POOL_SIZE, build_population_dataset
 from prevalence_estimates import researched_frequency
+from release_rows import candidate_row, pair_row, query_row
 
 DEFAULT_OUTPUT_PATH = Path(__file__).parent / "cases" / "full_labeled_pairs.jsonl"
 DEFAULT_CANDIDATES_PATH = (
@@ -83,19 +84,7 @@ def export_full_test_dataset(output_path: Path) -> None:
                 include_name_collision_negatives=False,
             )
             for record in records:
-                f.write(
-                    json.dumps(
-                        {
-                            "case_id": record.case_id,
-                            "source": record.source,
-                            "target": record.target,
-                            "expected_match": record.expected_match,
-                            "rationale": record.rationale,
-                            "frequency": record.frequency,
-                        }
-                    )
-                    + "\n"
-                )
+                f.write(json.dumps(pair_row(record)) + "\n")
             total += len(records)
             total_true += sum(r.expected_match for r in records)
             print(f"{shard.name}: {len(patients)} patients -> {len(records)} cases")
@@ -125,20 +114,9 @@ def export_full_population_dataset(
             patients = load_onc_patients([shard])
             dataset = build_population_dataset(patients, pool_size=pool_size)
             for candidate_id, patient in sorted(dataset.candidates.items()):
-                cf.write(json.dumps({"id": candidate_id, "patient": patient}) + "\n")
+                cf.write(json.dumps(candidate_row(candidate_id, patient)) + "\n")
             for case in dataset.cases:
-                qf.write(
-                    json.dumps(
-                        {
-                            "query_id": case.query_id,
-                            "query": case.query_patient,
-                            "candidate_ids": case.candidate_ids,
-                            "expected_match_ids": case.expected_match_ids,
-                            "rationale": case.rationale,
-                        }
-                    )
-                    + "\n"
-                )
+                qf.write(json.dumps(query_row(case)) + "\n")
             total_queries += len(dataset.cases)
             total_nonempty += sum(1 for c in dataset.cases if c.expected_match_ids)
             total_candidates += len(dataset.candidates)

@@ -38,6 +38,7 @@ import string
 from datetime import date, timedelta
 from typing import Any, Callable, Dict, List, Tuple
 
+from fhir_conformance import MOTHERS_MAIDEN_NAME_URL, SSN_SYSTEM
 from nicknames import NickNamer
 
 Patient = Dict[str, Any]
@@ -307,9 +308,6 @@ def substitute_nickname(
 # Identifier mutations
 # --------------------------------------------------------------------------------------
 
-# Matches onc_loader.py's own SSN identifier.system value exactly.
-SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
-
 
 def ssn_dropped_variant(patient: Patient) -> Patient:
     """Return a copy of `patient` with its SSN identifier removed - models the
@@ -320,35 +318,49 @@ def ssn_dropped_variant(patient: Patient) -> Patient:
     SSN identifier to begin with."""
     patient = _copy_patient(patient)
     identifiers = patient.get("identifier") or []
+    if not any(i.get("system") == SSN_SYSTEM for i in identifiers):
+        return patient
     patient["identifier"] = [i for i in identifiers if i.get("system") != SSN_SYSTEM]
     return patient
 
 
-def marriage_variant(patient: Patient, donor: Patient) -> Patient:
-    """Return a copy of `patient` with its family name replaced by its second
-    `name` entry (onc_loader.py loads MOTHERS_MAIDEN_NAME as a second `name`
-    entry for household-linkage purposes; repurposed here as a pre-marriage
-    surname proxy, since ONC has no dedicated maiden-name column) and its
-    address replaced by `donor`'s address (modeling a marriage-driven move -
-    ONC carries no address history for one person to draw a second address
-    from, so an unrelated real ONC record's address stands in for it).
-    Represents the "surname + address changed together" scenario Luke Breyer
-    (Epic) raised in the 2026-09-22 workgroup meeting. No-op on the name
-    change if `patient` has fewer than two `name` entries - measured against
-    the vendored ONC shard, only ~5.3% of records carry a second `name` entry
-    (MOTHERS_MAIDEN_NAME is sparse in the source data), so this category's
-    yield is intentionally small, not a bug.
+def _mothers_maiden_name(patient: Patient) -> str:
+    for extension in patient.get("extension") or []:
+        if extension.get("url") == MOTHERS_MAIDEN_NAME_URL:
+            return str(extension.get("valueString") or "").strip()
+    return ""
 
-    The variant collapses to a single `name` entry carrying the maiden
-    surname - keeping both entries after overwriting name[0] would leave the
-    variant with the same surname twice (e.g. "Jones" at both name[0] and
-    name[1]), a shape no real record has and one that would leak the maiden
-    surname onto both sides of the pair via name[1] as well as name[0]."""
+
+def marriage_variant(patient: Patient, donor: Patient) -> Patient:
+    """Return a copy of `patient` with its family name replaced by its mother's
+    maiden name (the `patient-mothersMaidenName` extension, ONC's
+    MOTHERS_MAIDEN_NAME column) and its address replaced by `donor`'s address.
+
+    This approximates the "surname + address changed together" scenario Luke
+    Breyer (Epic) raised in the 2026-09-22 workgroup meeting. It is only an
+    approximation: ONC has no column for the patient's own maiden name, and a
+    mother's maiden name is generally a different surname from the patient's
+    own, so the surname side is a stand-in. `surname_address_change` is the
+    donor-surname composition of `surname_change` and `address_move`. ONC
+    carries no address history for one person either, so an unrelated real
+    record's address stands in for the move.
+
+    No-op on the name if `patient` has no mother's maiden name (only ~5.3% of
+    ONC records do, so this category's yield is intentionally small, not a
+    bug). The variant drops the extension: a record that already carries the
+    maiden surname as its name would not also list it as its mother's, and
+    keeping it would put the surname on both sides of the pair twice."""
     patient = _copy_patient(patient)
-    names = patient.get("name") or []
-    if len(names) > 1:
-        patient["name"] = [
-            {"family": names[1]["family"], "given": names[0].get("given")}
+    maiden = _mothers_maiden_name(patient)
+    if maiden:
+        for name in patient.get("name") or []:
+            if name.get("use") in (None, "official"):
+                name["family"] = maiden
+                break
+        patient["extension"] = [
+            e
+            for e in patient.get("extension") or []
+            if e.get("url") != MOTHERS_MAIDEN_NAME_URL
         ]
     patient["address"] = copy.deepcopy(donor.get("address") or [])
     return patient

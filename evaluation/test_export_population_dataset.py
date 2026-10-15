@@ -6,6 +6,7 @@ import json
 
 from export_population_dataset import write_population_dataset
 from population_cases import build_population_dataset
+from release_rows import opaque_id
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -50,7 +51,7 @@ class TestWritePopulationDataset:
         )
 
         rows = [json.loads(line) for line in queries_path.read_text().splitlines()]
-        assert {row["query_id"] for row in rows} == {"p1", "p2"}
+        assert {row["query_id"] for row in rows} == {opaque_id("p1"), opaque_id("p2")}
 
     def test_creates_parent_directories_if_missing(self, tmp_path):
         dataset = build_population_dataset([_patient("p1")], seed=0)
@@ -59,3 +60,16 @@ class TestWritePopulationDataset:
         write_population_dataset(dataset, candidates_path, queries_path)
         assert candidates_path.exists()
         assert queries_path.exists()
+
+
+def test_population_files_drop_empty_arrays(tmp_path):
+    dataset = build_population_dataset(
+        [_patient("p1"), _patient("p2", family="Jones", given="Robert")], seed=0
+    )
+    candidates_path = tmp_path / "c.jsonl"
+    queries_path = tmp_path / "q.jsonl"
+    write_population_dataset(dataset, candidates_path, queries_path)
+    for line in candidates_path.read_text().splitlines():
+        assert "identifier" not in json.loads(line)["patient"]
+    for line in queries_path.read_text().splitlines():
+        assert "identifier" not in json.loads(line)["query"]

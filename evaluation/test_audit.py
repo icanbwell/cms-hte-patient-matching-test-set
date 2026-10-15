@@ -8,15 +8,26 @@ from datetime import date
 import pytest
 from audit import (
     age_band_shares,
+    all_yes_f1,
     category_of,
+    conformance_violations,
+    decoy_no_overlap_rate,
+    id_equality_f1,
+    identical_positive_pairs,
+    matches_first_rate,
+    missing_hard_negative_categories,
+    negative_share,
+    pairwise_two_of_three_f1,
     people_per_address,
     population_categories,
     population_pairs,
     positive_field_disagreement,
+    probable_duplicate_negatives,
     same_person_negatives,
     shared_contact_rate,
     tier_parity_gap,
 )
+from fhir_conformance import export_ready
 from identity_guard import SSN_SYSTEM
 
 
@@ -60,7 +71,7 @@ class TestCategoryOf:
         "rationale,expected",
         [
             ("fuzzy_variant/family_typo", "fuzzy_variant"),
-            ("marriage_variant", "marriage_variant"),
+            ("address_move", "address_move"),
             ("sibling_negative (age_gap_years=1, family_name=X)", "sibling_negative"),
             ("compound_variant (mutations=a,b)", "compound_variant"),
         ],
@@ -83,11 +94,11 @@ class TestTierParity:
     def test_lists_pair_categories_missing_from_population_rationales(self):
         pair_rows = [
             _row("1", _patient("a"), _patient("a"), True, "fuzzy_variant/dob_day"),
-            _row("2", _patient("a"), _patient("a"), True, "marriage_variant"),
+            _row("2", _patient("a"), _patient("a"), True, "address_move"),
         ]
         query_rows = [{"rationale": "population/fuzzy_variant+hard_negative"}]
         assert population_categories(query_rows) == {"fuzzy_variant", "hard_negative"}
-        assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
+        assert tier_parity_gap(pair_rows, query_rows) == ["address_move"]
 
 
 class TestTierParityExemption:
@@ -100,10 +111,10 @@ class TestTierParityExemption:
                 False,
                 "placeholder_collision_negative/ssn",
             ),
-            _row("2", _patient("a"), _patient("a"), True, "marriage_variant"),
+            _row("2", _patient("a"), _patient("a"), True, "address_move"),
         ]
         query_rows = [{"rationale": "population/fuzzy_variant"}]
-        assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
+        assert tier_parity_gap(pair_rows, query_rows) == ["address_move"]
 
 
 class TestPositiveFieldDisagreement:
@@ -305,3 +316,235 @@ def test_population_pairs_rejects_dangling_candidate():
     ]
     with pytest.raises(ValueError, match="unknown candidate"):
         list(population_pairs(queries, {}))
+
+
+class TestNegativeBalance:
+    def _rows(self, positives, negatives):
+        rows = [
+            _row(f"p{i}", _patient("a"), _patient("b"), True, "fuzzy_variant")
+            for i in range(positives)
+        ]
+        rows += [
+            _row(f"n{i}", _patient("a"), _patient("b"), False, "hard_negative")
+            for i in range(negatives)
+        ]
+        return rows
+
+    def test_negative_share_is_the_fraction_of_non_matches(self):
+        assert negative_share(self._rows(1, 1)) == 0.5
+        assert negative_share([]) == 0.0
+
+    def test_all_yes_f1_is_two_p_over_one_plus_p(self):
+        assert all_yes_f1(self._rows(1, 1)) == pytest.approx(2 * 0.5 / 1.5)
+        assert all_yes_f1(self._rows(959, 41)) == pytest.approx(0.9791, abs=1e-3)
+        assert all_yes_f1([]) == 0.0
+
+    def test_missing_hard_negative_categories_lists_absent_required_ones(self):
+        rows = self._rows(1, 1)  # only hard_negative present
+        assert missing_hard_negative_categories(rows) == [
+            "name_collision_negative",
+            "sibling_negative",
+            "near_miss_negative",
+        ]
+
+
+class TestDecoyOverlap:
+    def _p(self, id_, first, family, dob):
+        return {
+            "resourceType": "Patient",
+            "id": id_,
+            "name": [{"family": family, "given": [first]}],
+            "birthDate": dob,
+        }
+
+    def test_share_of_decoys_with_no_field_in_common(self):
+        query = self._p("q", "Jane", "Smith", "1980-01-01")
+        candidates = {
+            "m": self._p("m", "Jane", "Smith", "1980-01-01"),
+            "near": self._p("near", "Robert", "Smith", "1970-02-02"),
+            "far": self._p("far", "Robert", "Jones", "1970-02-02"),
+        }
+        rows = [
+            {
+                "query_id": "q",
+                "query": query,
+                "candidate_ids": ["m", "near", "far"],
+                "expected_match_ids": ["m"],
+                "rationale": "population",
+            }
+        ]
+        assert decoy_no_overlap_rate(rows, candidates) == 0.5
+
+
+def _query_row(query, candidates, expected=()):
+    return {
+        "query_id": query["id"],
+        "query": query,
+        "candidate_ids": [c["id"] for c in candidates],
+        "expected_match_ids": list(expected),
+    }
+
+
+class TestProbableDuplicateNegatives:
+    def test_flags_the_same_first_name_and_birth_date_under_another_surname(self):
+        a = _patient("a", "Katherine", "Smith", dob="1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", dob="1980-06-15")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_does_not_flag_a_different_first_name_with_the_same_birth_date(self):
+        a = _patient("a", "Katherine", "Smith", dob="1980-06-15")
+        b = _patient("b", "Maria", "Okafor", dob="1980-06-15")
+        assert self._flag(a, b) == []
+
+    def _flag(self, a, b):
+        row = _row("c1", a, b, False, "hard_negative")
+        return probable_duplicate_negatives([row], [], {})
+
+    def test_flags_ssn_one_digit_off(self):
+        a = _patient("a", "Eugene", "Benally", ssn="892-39-5115")
+        b = _patient("b", "Maria", "Lopez", dob="1999-09-09", ssn="892-39-5116")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_flags_a_name_typo_with_a_birth_month_off_by_one(self):
+        a = _patient("a", "Gerald", "Gutschow", dob="1980-11-05")
+        b = _patient("b", "Gerald", "Gutachow", dob="1980-12-05")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_flags_shared_phone_with_identical_dob(self):
+        a = _patient("a", "Harris", "Greene", dob="1980-06-15", phones=("3479846839",))
+        b = _patient("b", "Jim", "Other", dob="1980-06-15", phones=("(347) 984-6839",))
+        assert self._flag(a, b) == ["c1"]
+
+    def test_does_not_flag_household_members_with_birth_dates_a_digit_apart(self):
+        a = _patient(
+            "a", "Kathleen", "Hileman", dob="1958-03-07", phones=("2017226909",)
+        )
+        b = _patient("b", "Krista", "Burke", dob="1958-03-04", phones=("2017226909",))
+        assert self._flag(a, b) == []
+
+    def test_does_not_flag_a_same_name_pair_decades_apart(self):
+        a = _patient("a", "Angela", "Damron", dob="1977-07-05")
+        b = _patient("b", "Angela", "Damron", dob="1927-04-05")
+        assert self._flag(a, b) == []
+
+    def test_flags_identical_rare_name_with_dob_one_digit_apart(self):
+        a = _patient("a", "Rosalind", "Vandermeer", dob="1980-06-15")
+        b = _patient("b", "Rosalind", "Vandermeer", dob="1980-06-25")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_flags_a_month_day_swap_with_the_same_name(self):
+        a = _patient("a", "Rosalind", "Vandermeer", dob="1980-03-11")
+        b = _patient("b", "Rosalind", "Vandermeer", dob="1980-11-03")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_does_not_flag_a_name_collision_with_unrelated_dobs(self):
+        a = _patient("a", "Rosalind", "Vandermeer", dob="1950-06-15")
+        b = _patient("b", "Rosalind", "Vandermeer", dob="1991-12-30")
+        assert self._flag(a, b) == []
+
+    def test_does_not_flag_a_household_sharing_a_phone_across_generations(self):
+        a = _patient(
+            "a", "Rosalind", "Vandermeer", dob="1950-06-15", phones=("3479846839",)
+        )
+        b = _patient(
+            "b", "Tess", "Vandermeer", dob="1985-01-02", phones=("3479846839",)
+        )
+        assert self._flag(a, b) == []
+
+    def test_does_not_flag_placeholder_ssns_one_digit_apart(self):
+        a = _patient("a", "Eugene", "Benally", dob="1950-01-01", ssn="123-45-6789")
+        b = _patient("b", "Maria", "Lopez", dob="1999-09-09", ssn="123-45-6788")
+        assert self._flag(a, b) == []
+
+    def test_does_not_flag_positives(self):
+        row = _row("c1", _patient("a"), _patient("a"), True)
+        assert probable_duplicate_negatives([row], [], {}) == []
+
+    def test_checks_every_non_matching_population_pool_pair(self):
+        query = _patient("q", "Eugene", "Benally", dob="1971-02-02")
+        typo = _patient("typo", "Etgene", "Benally", dob="1971-02-03")
+        other = _patient("other", "Maria", "Lopez", dob="1999-09-09")
+        true_match = _patient("m", "Eugene", "Benally", dob="1971-02-02")
+        rows = [_query_row(query, [typo, other, true_match], expected=["m"])]
+        candidates = {p["id"]: p for p in (typo, other, true_match)}
+        assert probable_duplicate_negatives([], rows, candidates) == ["q::typo"]
+
+
+class TestIdenticalPositivePairs:
+    def test_flags_byte_identical_positives_in_both_tiers(self):
+        a = _patient("a")
+        pair_rows = [
+            _row("same", a, dict(a), True),
+            _row("changed", a, _patient("a", dob="1980-06-16"), True),
+            _row("negative", a, dict(a), False),
+        ]
+        query = _patient("q")
+        twin = dict(query)
+        edited = _patient("q", dob="1980-06-16")
+        rows = [_query_row(query, [twin, edited], expected=["q", "q2"])]
+        candidates = {"q": twin, "q2": edited}
+        assert identical_positive_pairs(pair_rows, rows, candidates) == [
+            "same",
+            "q::q",
+        ]
+
+
+class TestConformanceViolations:
+    def test_reports_problems_in_every_file(self):
+        bad = {**_patient("b"), "telecom": [{"system": "phone", "value": ""}]}
+        pair_rows = [_row("p", _patient("a"), bad, True)]
+        query_rows = [_query_row(bad, [bad], expected=["b"])]
+        found = conformance_violations(pair_rows, query_rows, {"b": bad})
+        assert any(v.startswith("p.target:") for v in found)
+        assert any(v.startswith("b.query:") for v in found)
+        assert any(v.startswith("b:") for v in found)
+
+    def test_is_empty_for_conformant_patients(self):
+        good = export_ready(_patient("a"))
+        assert conformance_violations([_row("p", good, good, True)], [], {}) == []
+
+
+class TestIdEqualityF1:
+    def test_is_perfect_when_ids_reveal_the_label(self):
+        a = _patient("a")
+        rows = [_row("p", a, dict(a), True), _row("n", a, _patient("b"), False)]
+        assert id_equality_f1(rows) == 1.0
+
+    def test_is_zero_when_ids_are_label_free(self):
+        a, b = _patient("a"), _patient("b")
+        rows = [_row("p", a, _patient("c"), True), _row("n", a, b, False)]
+        assert id_equality_f1(rows) == 0.0
+
+
+class TestMatchesFirstRate:
+    def test_counts_queries_whose_matches_lead_the_pool(self):
+        q = _patient("q")
+        leading = _query_row(q, [_patient("m"), _patient("x")], expected=["m"])
+        trailing = _query_row(q, [_patient("x"), _patient("m")], expected=["m"])
+        assert matches_first_rate([leading, trailing]) == 0.5
+
+    def test_ignores_queries_without_matches(self):
+        q = _patient("q")
+        assert matches_first_rate([_query_row(q, [_patient("x")])]) == 0.0
+
+
+class TestPairwiseTwoOfThreeF1:
+    def test_scores_the_two_of_three_rule(self):
+        base = _patient("a")
+        match_same_name_dob = _row("1", base, _patient("b", street="9 Elm"), True)
+        miss_positive = _row(
+            "2", base, _patient("c", given="Zed", family="Z", dob="1999-01-01"), True
+        )
+        false_alarm = _row(
+            "3", base, _patient("d", given="Zed", dob="1980-06-15"), False
+        )
+        quiet_negative = _row(
+            "4", base, _patient("e", given="Zed", family="Z", dob="1999-01-01"), False
+        )
+        # predictions: 1 yes (tp), 2 no (fn), 3 yes (fp: family+dob), 4 no
+        assert pairwise_two_of_three_f1(
+            [match_same_name_dob, miss_positive, false_alarm, quiet_negative]
+        ) == pytest.approx(2 * 1 / (2 * 1 + 1 + 1))
+
+    def test_empty_or_all_negative_rows_score_zero(self):
+        assert pairwise_two_of_three_f1([]) == 0.0

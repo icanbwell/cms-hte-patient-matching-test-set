@@ -5,12 +5,16 @@ from __future__ import annotations
 from drift_profile import DriftProfile
 from labeled_pairs import generate_raw_pairs
 from mutations import MUTATIONS
+from near_miss import NearMiss
 from population_cases import build_population_dataset
 from scenarios import REGISTRY
 from support_patients import drift_donors, drift_population
 
 
-def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
+def _patient(id_: str, family: str = "Smith", given: str | None = None):
+    # Distinct default first names: the same first name and birth date under two
+    # surnames looks like one person to the duplicate guard.
+    given = given or ("Katherine" if family == "Smith" else f"Given{family}")
     return {
         "resourceType": "Patient",
         "id": id_,
@@ -348,3 +352,54 @@ class TestDecoyCategories:
         assert case.candidate_ids.count("s1") == 1
         assert "household_member_negative" in case.rationale
         assert "sibling_negative" in case.rationale
+
+
+def _near_patient(id_: str, family: str, given: str, dob: str = "1980-06-15"):
+    return {
+        "resourceType": "Patient",
+        "id": id_,
+        "name": [{"family": family, "given": [given]}],
+        "birthDate": dob,
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ],
+    }
+
+
+def test_near_misses_join_the_query_pool_as_non_matches():
+    patients = [
+        _near_patient("p1", "Smith", "Katherine"),
+        _near_patient("p2", "Jones", "Robert", "1970-01-01"),
+    ]
+    decoy = _near_patient("d1", "Brown", "Alice")
+    miss = NearMiss(
+        query=patients[0],
+        decoy=decoy,
+        kind="dob_zip",
+        shared_fields={"postalCode": "10001", "birthDate": "1980-06-15"},
+    )
+    dataset = build_population_dataset(patients, near_misses=[miss], seed=0)
+    case = next(c for c in dataset.cases if c.query_id == "p1")
+    assert "d1" in case.candidate_ids
+    assert "d1" not in case.expected_match_ids
+    assert dataset.candidates["d1"] is decoy
+    assert "hard_negative" in case.rationale
+
+
+def test_near_misses_never_displace_true_matches_when_the_pool_is_trimmed():
+    patients = [_near_patient("p1", "Smith", "Katherine")]
+    misses = [
+        NearMiss(
+            query=patients[0],
+            decoy=_near_patient(f"d{i}", f"Brown{i}", "Alice"),
+            kind="dob_only",
+            shared_fields={"shared": "birthDate"},
+        )
+        for i in range(60)
+    ]
+    dataset = build_population_dataset(
+        patients, near_misses=misses, pool_size=40, seed=0
+    )
+    case = dataset.cases[0]
+    assert len(case.candidate_ids) == 40
+    assert set(case.expected_match_ids) <= set(case.candidate_ids)

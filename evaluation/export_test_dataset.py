@@ -37,6 +37,8 @@ from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
 from export_inputs import load_profile, load_sample_and_donors
 from labeled_pairs import DEFAULT_SAMPLE_SIZE, generate_raw_pairs
+from near_miss import NearMiss
+from release_rows import pair_row
 
 Patient = Dict[str, Any]
 FrequencyLookup = Callable[[str], float]
@@ -130,6 +132,7 @@ def build_test_case_records(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
     frequency_lookup: FrequencyLookup = uniform_frequency,
@@ -164,6 +167,7 @@ def build_test_case_records(
         donors=donors,
         profile=profile,
         households=households,
+        near_misses=near_misses,
         exclusions=exclusions,
         seed=seed,
     ):
@@ -188,19 +192,7 @@ def write_jsonl(records: List[LabeledCaseRecord], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         for record in records:
-            f.write(
-                json.dumps(
-                    {
-                        "case_id": record.case_id,
-                        "source": record.source,
-                        "target": record.target,
-                        "expected_match": record.expected_match,
-                        "rationale": record.rationale,
-                        "frequency": record.frequency,
-                    }
-                )
-                + "\n"
-            )
+            f.write(json.dumps(pair_row(record)) + "\n")
 
 
 if __name__ == "__main__":

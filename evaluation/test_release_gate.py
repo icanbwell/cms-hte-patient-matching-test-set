@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 from audit import build_report
-from release_gate import check, failures, load_thresholds, metric_value
+from release_gate import (
+    REALISTIC_THRESHOLDS_PATH,
+    check,
+    failures,
+    load_thresholds,
+    metric_value,
+)
 
 REPORT = {
     "same_person_negatives": ["a", "b"],
@@ -78,3 +84,11 @@ def test_check_rejects_non_scalar_metric():
 
     with pytest.raises(TypeError, match="not a scalar"):
         check({"m": {"a": 1}}, {"m": {"max": 1, "status": "tracked"}})
+
+
+def test_realistic_thresholds_name_the_negative_balance_metrics():
+    rules = load_thresholds(REALISTIC_THRESHOLDS_PATH)
+    assert rules["negative_share"] == {"min": 0.45, "status": "enforced"}
+    assert rules["all_yes_f1"] == {"max": 0.70, "status": "enforced"}
+    assert rules["missing_hard_negative_categories"] == {"max": 0, "status": "enforced"}
+    assert rules["decoy_no_overlap_rate"] == {"max": 0.5, "status": "tracked"}
