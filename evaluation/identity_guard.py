@@ -112,12 +112,20 @@ def _dobs_close(a: Patient, b: Patient) -> bool:
 
 
 def phone_set(patient: Patient) -> Set[str]:
+    """Normalized 10-digit phone numbers on `patient`; shorter or longer values
+    are dropped."""
     found = {
         normalize_phone(t.get("value"))
         for t in patient.get("telecom") or []
         if t.get("system") == "phone"
     }
     return {p for p in found if len(p) == US_PHONE_DIGITS}
+
+
+def _first_name(patient: Patient) -> str:
+    names = patient.get("name") or []
+    given = (names[0].get("given") or []) if names else []
+    return normalize_token(given[0]) if given else ""
 
 
 def is_probable_duplicate(a: Patient, b: Patient) -> bool:
@@ -130,7 +138,11 @@ def is_probable_duplicate(a: Patient, b: Patient) -> bool:
         dates are close.
     "Close" means edit distance <= 1 on the ISO date or a month/day swap. A name
     match with a clearly different birth date is a legitimate hard negative and
-    is not flagged."""
+    is not flagged.
+
+    Also flagged: the same normalized first name and an identical birth date
+    under a different family name, which is what a surname change (marriage)
+    looks like when no SSN or phone survives it."""
     ssn_a, ssn_b = ssn_of(a), ssn_of(b)
     if (
         ssn_a is not None
@@ -141,6 +153,9 @@ def is_probable_duplicate(a: Patient, b: Patient) -> bool:
     if not _dobs_close(a, b):
         return False
     if phone_set(a) & phone_set(b):
+        return True
+    first_a, first_b = _first_name(a), _first_name(b)
+    if first_a and first_a == first_b and a.get("birthDate") == b.get("birthDate"):
         return True
     key_a, key_b = identity_key_names(a), identity_key_names(b)
     return (

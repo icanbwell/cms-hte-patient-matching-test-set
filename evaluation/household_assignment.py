@@ -11,7 +11,7 @@ ids) are never changed, except that children under 13 may lose their SSN
 
 What this does and does not model:
 
-- Most households are unrelated real records placed at one address
+- Most households are unrelated ONC-derived records placed at one address
   (roommates, blended families whose surnames differ). A child is attached to
   an adult with the same surname when one is available, otherwise to any
   household with a free slot. The report counts the same-surname placements.

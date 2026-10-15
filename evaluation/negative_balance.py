@@ -18,14 +18,20 @@ from typing import Dict, List, Set
 from export_test_dataset import LabeledCaseRecord
 from rationale import category_of
 
+DEFAULT_MIN_PER_CATEGORY = 25
+
 
 def rebalance_negatives(
     records: List[LabeledCaseRecord],
     *,
     target_share: float,
     seed: int,
-    min_per_category: int = 25,
+    min_per_category: int = DEFAULT_MIN_PER_CATEGORY,
 ) -> List[LabeledCaseRecord]:
+    """`records` with positives dropped, proportionally by category and never below
+    `min_per_category` per category, until negatives are `target_share` of the
+    total. Negatives are never dropped; if the floors leave the share short of the
+    target it is returned as is. Deterministic for `seed`; `records` is not modified."""
     if not 0.0 < target_share < 1.0:
         raise ValueError(f"target_share must be in (0, 1), got {target_share}")
     n_negatives = sum(1 for r in records if not r.expected_match)
