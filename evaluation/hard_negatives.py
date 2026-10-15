@@ -37,7 +37,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
-from identity_guard import is_possible_same_person
+from identity_guard import looks_like_same_person
 from text_distance import levenshtein_distance
 
 Patient = Dict[str, Any]
@@ -102,7 +102,7 @@ def mine_shared_address_hard_negatives(
                     continue
                 if _primary_family_name(a).upper() == _primary_family_name(b).upper():
                     continue
-                if is_possible_same_person(a, b):
+                if looks_like_same_person(a, b):
                     continue
                 candidates.append(
                     HardNegativeCandidate(
@@ -184,7 +184,7 @@ def mine_name_collision_negatives(
                     "birthDate"
                 ):
                     continue
-                if name_a == name_b or is_possible_same_person(a, b):
+                if name_a == name_b or looks_like_same_person(a, b):
                     continue
                 distance = levenshtein_distance(name_a, name_b, max_name_distance)
                 if distance > max_name_distance:

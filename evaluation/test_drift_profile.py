@@ -31,14 +31,16 @@ class TestDriftProfile:
         assert profile.rate("ssn_dropped") == 0.0
         assert profile.rate("phone_churn") == 0.0
 
-    def test_legacy_marriage_variant_key_in_a_custom_profile_is_ignored(self, tmp_path):
+    def test_marriage_variant_is_a_default_on_rate_a_profile_can_override(
+        self, tmp_path
+    ):
+        assert DriftProfile().rate("marriage_variant") == 1.0
         path = tmp_path / "profile.json"
         path.write_text(
-            json.dumps({"source": "old", "rates": {"marriage_variant": 1.0}})
+            json.dumps({"source": "custom", "rates": {"marriage_variant": 0.3}})
         )
-        with pytest.warns(UserWarning, match="retired scenario rates"):
-            profile = DriftProfile.from_json(path)
-        assert "marriage_variant" not in profile.rates
+        profile = DriftProfile.from_json(path)
+        assert profile.rate("marriage_variant") == 0.3
         assert profile.rate("phone_churn") == DriftProfile().rate("phone_churn")
 
     def test_from_json_reads_rates_and_source(self, tmp_path):

@@ -22,6 +22,16 @@ def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01
     }
 
 
+class TestMinersSkipTypoDuplicates:
+    def test_shared_address_miner_skips_a_record_with_a_one_digit_ssn_typo(
+        self,
+    ) -> None:
+        ssn = {"system": "http://hl7.org/fhir/sid/us-ssn"}
+        a = {**_patient("p1", "Smith"), "identifier": [{**ssn, "value": "892-39-5115"}]}
+        b = {**_patient("p2", "Jones"), "identifier": [{**ssn, "value": "892-39-5116"}]}
+        assert mine_shared_address_hard_negatives([a, b]) == []
+
+
 class TestMineSharedAddressHardNegatives:
     def test_finds_distinct_family_names_sharing_zip_and_dob(self) -> None:
         patients = [

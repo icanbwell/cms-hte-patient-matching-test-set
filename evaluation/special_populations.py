@@ -41,7 +41,7 @@ from datetime import date
 from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from hard_negatives import HardNegativeCandidate
-from identity_guard import is_possible_same_person, normalize_token
+from identity_guard import looks_like_same_person, normalize_token
 
 Patient = Dict[str, Any]
 
@@ -198,7 +198,7 @@ def construct_institutional_negatives(
         family = _primary_family_name(patient).upper()
         if not family or family in seen_family_names:
             continue
-        if any(is_possible_same_person(patient, g) for g in chosen):
+        if any(looks_like_same_person(patient, g) for g in chosen):
             continue
         seen_family_names.add(family)
         group.append(_with_synthetic_address(patient, institution_type))
@@ -255,7 +255,7 @@ def _mine_same_surname_zip_pairs(
                 dob_a, dob_b = a.get("birthDate"), b.get("birthDate")
                 if a.get("id") == b.get("id") or not dob_a or not dob_b:
                     continue
-                if is_possible_same_person(a, b):
+                if looks_like_same_person(a, b):
                     continue
                 if same_street:
                     ka = _street_key(a)
@@ -360,7 +360,7 @@ def construct_household_negatives(
     `min_age_gap_years` - the closest available approximation of a
     parent/child household rather than the oldest/youngest extremes. A pair is
     eligible when the records have different ids, could not be the same person
-    (is_possible_same_person) and do not already share a street. Equal gaps
+    (looks_like_same_person) and do not already share a street. Equal gaps
     break ties on the smallest (elder id, younger id) as strings. Records with
     an unparseable birthDate are dropped individually, not the whole family.
     The younger record then gets the older one's real address. Only the
@@ -395,7 +395,7 @@ def construct_household_negatives(
                     elder.get("id") == younger.get("id")
                     or gap_years < min_age_gap_years
                     or elder_street == younger_street
-                    or is_possible_same_person(elder, younger)
+                    or looks_like_same_person(elder, younger)
                 ):
                     continue
                 key = (gap_years, str(elder.get("id")), str(younger.get("id")))

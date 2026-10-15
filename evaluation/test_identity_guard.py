@@ -10,6 +10,7 @@ from identity_guard import (
     identity_key,
     is_possible_same_person,
     is_probable_duplicate,
+    looks_like_same_person,
     normalize_phone,
     normalize_token,
     ssn_of,
@@ -242,3 +243,18 @@ class TestIsProbableDuplicate:
         a = _with_phone(_patient("a", dob=None), "3479846839")
         b = _with_phone(_patient("b", dob=None), "3479846839")
         assert not is_probable_duplicate(a, b)
+
+
+class TestLooksLikeSamePerson:
+    def test_true_for_an_exact_match(self):
+        assert looks_like_same_person(_patient("a"), _patient("b"))
+
+    def test_true_for_a_typo_duplicate_the_exact_check_misses(self):
+        a = _patient("a", "Eugene", "Benally", "1971-01-01", ssn="892-39-5115")
+        b = _patient("b", "Maria", "Lopez", "1999-09-09", ssn="892-39-5116")
+        assert not is_possible_same_person(a, b)
+        assert looks_like_same_person(a, b)
+
+    def test_false_for_different_people(self):
+        other = _patient("b", "Maria", "Lopez", "1999-09-09")
+        assert not looks_like_same_person(_patient("a"), other)

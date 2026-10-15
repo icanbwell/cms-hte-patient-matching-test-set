@@ -128,10 +128,38 @@ class TestPlaceholderVariant:
 class TestPlaceholderCollisions:
     def _people(self):
         return [
-            _patient("a", family="Smith", given="Ana", ssn="111-22-3333"),
-            _patient("b", family="Jones", given="Luis", ssn="444-55-6666"),
-            _patient("c", family="Lee", given="Mei", ssn="777-88-9999"),
-            _patient("d", family="Okafor", given="Chidi", ssn="222-33-4444"),
+            _patient(
+                "a",
+                "Smith",
+                "Ana",
+                ssn="111-22-3333",
+                phone="212-555-0101",
+                dob="1971-02-03",
+            ),
+            _patient(
+                "b",
+                "Jones",
+                "Luis",
+                ssn="444-55-6666",
+                phone="212-555-0102",
+                dob="1984-07-19",
+            ),
+            _patient(
+                "c",
+                "Lee",
+                "Mei",
+                ssn="777-88-9999",
+                phone="212-555-0103",
+                dob="1992-11-30",
+            ),
+            _patient(
+                "d",
+                "Okafor",
+                "Chidi",
+                ssn="222-33-4444",
+                phone="212-555-0104",
+                dob="1960-05-08",
+            ),
         ]
 
     @pytest.mark.parametrize("field", COLLISION_FIELDS)

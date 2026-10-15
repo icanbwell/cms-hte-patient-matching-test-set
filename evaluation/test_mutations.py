@@ -20,6 +20,7 @@ from mutations import (
     drop_letters,
     generate_compound_variant,
     generate_fuzzy_variant,
+    marriage_variant,
     mutate_dob,
     phone_variant,
     ssn_dropped_variant,
@@ -222,6 +223,55 @@ class TestGenerateFuzzyVariant:
     def test_unknown_mutation_type_raises(self) -> None:
         with pytest.raises(ValueError):
             generate_fuzzy_variant(_patient(), "not_a_mutation", rng=random.Random(0))
+
+
+MAIDEN = {
+    "url": "http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName",
+    "valueString": "Jones",
+}
+DONOR_ADDRESS = [
+    {"line": ["9 Elm St"], "city": "X", "state": "Y", "postalCode": "99999"}
+]
+
+
+class TestMarriageVariant:
+    def test_replaces_family_name_with_mothers_maiden_name(self) -> None:
+        patient = _patient(
+            name=[{"use": "official", "family": "Smith", "given": ["Katherine"]}],
+            extension=[MAIDEN],
+        )
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["name"] == [
+            {"use": "official", "family": "Jones", "given": ["Katherine"]}
+        ]
+
+    def test_drops_the_extension_so_the_surname_is_not_listed_twice(self) -> None:
+        patient = _patient(extension=[MAIDEN, {"url": "other", "valueString": "x"}])
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["extension"] == [{"url": "other", "valueString": "x"}]
+
+    def test_replaces_address_with_donors_address(self) -> None:
+        patient = _patient(
+            address=[
+                {"line": ["1 Main St"], "city": "A", "state": "B", "postalCode": "1"}
+            ]
+        )
+        donor = _patient(id="donor", address=DONOR_ADDRESS)
+        assert marriage_variant(patient, donor)["address"] == DONOR_ADDRESS
+
+    def test_no_mothers_maiden_name_leaves_family_name_unchanged(self) -> None:
+        patient = _patient(name=[{"family": "Smith", "given": ["Katherine"]}])
+        result = marriage_variant(patient, _patient(id="donor", address=[]))
+        assert result["name"][0]["family"] == "Smith"
+
+    def test_does_not_mutate_input_patient_or_donor(self) -> None:
+        patient = _patient(extension=[dict(MAIDEN)], address=[{"line": ["1 Main St"]}])
+        donor = _patient(id="donor", address=list(DONOR_ADDRESS))
+        marriage_variant(patient, donor)
+        assert patient["name"][0]["family"] == "Smith"
+        assert patient["extension"] == [MAIDEN]
+        assert patient["address"] == [{"line": ["1 Main St"]}]
+        assert donor["address"] == DONOR_ADDRESS
 
 
 class TestSsnDroppedVariant:

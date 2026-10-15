@@ -35,7 +35,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple
 from drift_profile import DriftProfile
 from identity_guard import (
     SSN_SYSTEM,
-    is_possible_same_person,
+    looks_like_same_person,
     normalize_phone,
     normalize_token,
 )
@@ -178,7 +178,7 @@ def iter_household_pairs(
         members = [by_id[pid] for pid in household if pid in by_id]
         for position, a in enumerate(members):
             for b in members[position + 1 :]:
-                if not is_possible_same_person(a, b):
+                if not looks_like_same_person(a, b):
                     yield a, b
 
 

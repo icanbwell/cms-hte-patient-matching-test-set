@@ -139,6 +139,8 @@ sources have a recoverable prior surname. The audit re-checks recoverability and
 for those subtypes; any case the CMS rules can no longer resolve is dropped by `case_exclusions.py`
 rather than relabelled.
 
+**Decision (2026-10-15): `marriage_variant` is kept.** It reads the mother's maiden name from the `patient-mothersMaidenName` extension and takes its donor address from the held-out donors (not the next patient). It stays an approximation, since a mother's maiden name is not the patient's own, so `surname_address_change` (a donor surname plus a donor address) was added as the better-founded surname-and-address case. The duplicate guard (`identity_guard.looks_like_same_person`) is now applied in every negative miner, so the curated tier also reports `probable_duplicate_negatives` 0.
+
 ### Workstream 2 — Reverse-blocking near-miss finder (R2, E4 foundations, PR 2)
 
 New `evaluation/near_miss.py`.
@@ -293,7 +295,7 @@ and resolution:
 from a fresh clone in CI, and the manifest and `cases/README.md` list every caveat still open
 (2, 3 and 4 if PR 5 has not shipped).
 
-**Status at release (2026-10-14):** caveats 1 and 5 are closed. Caveats 2, 3 and 4 remain open and disclosed. Also open: `decoy_no_overlap_rate` is 0.7229 (tracked, max 0.5, tracked-fail), so 72% of non-matching pool candidates in the realistic population tier still share nothing with their query and the "harder decoys" ask (E4) is only partly met; E3 (queries with exactly 0 or 1 expected matches), E1 (family structure) and E2 (age vintage) are not addressed. Measured on the realistic set: `negative_share` 0.595, `all_yes_f1` 0.5765, `best_single_field_f1` 0.8566 (enforced, max 0.9), `multi_field_margin` 0.1199, `pairwise_two_of_three_f1` 0.8812 (tracked, max 0.95), `probable_duplicate_negatives` 0 (enforced), 0 positives dropped by rebalancing (near-miss negatives alone exceeded the 50% target). The final review also found typo duplicates and original-record matches among the decoys; both are now rejected in `near_miss.py` (default run: 11 typo-duplicate decoys rejected against the housed query, 4 against the pre-household original).
+**Status at release (2026-10-14):** caveats 1 and 5 are closed. Caveats 2, 3 and 4 remain open and disclosed. Also open: `decoy_no_overlap_rate` is 0.7147 (tracked, max 0.5, tracked-fail), so 72% of non-matching pool candidates in the realistic population tier still share nothing with their query and the "harder decoys" ask (E4) is only partly met; E3 (queries with exactly 0 or 1 expected matches), E1 (family structure) and E2 (age vintage) are not addressed. Measured on the realistic set: `negative_share` 0.556, `all_yes_f1` 0.6149, `best_single_field_f1` 0.8755 (enforced, max 0.9), `multi_field_margin` 0.1029, `pairwise_two_of_three_f1` 0.8991 (tracked, max 0.95), `probable_duplicate_negatives` 0 (enforced), 0 positives dropped by rebalancing (near-miss negatives alone exceeded the 50% target). The final review also found typo duplicates and original-record matches among the decoys; both are now rejected in `near_miss.py` (default run: 11 typo-duplicate decoys rejected against the housed query, 4 against the pre-household original).
 
 **Asks of the reviewer** (shortens the path): (a) run the realistic positives through the CMS harness
 once PR 4 lands; (b) share measured disagreement and share rates now, which closes caveat 3.

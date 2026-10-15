@@ -106,6 +106,7 @@ def _effective_profile(
     profile: DriftProfile | None,
     *,
     include_ssn_dropped: bool,
+    include_marriage_variant: bool,
     include_phone_variant: bool,
 ) -> DriftProfile:
     """The caller's profile (default: DriftProfile()) with any session-14
@@ -114,6 +115,7 @@ def _effective_profile(
         name
         for name, enabled in (
             ("ssn_dropped", include_ssn_dropped),
+            ("marriage_variant", include_marriage_variant),
             ("phone_variant", include_phone_variant),
         )
         if not enabled
@@ -130,6 +132,7 @@ def _generate_all_raw_pairs(
     include_compound_variants: bool = True,
     n_compound_mutations: int = 2,
     include_ssn_dropped: bool = True,
+    include_marriage_variant: bool = True,
     include_phone_variant: bool = True,
     include_sibling_negatives: bool = True,
     include_name_collision_negatives: bool = True,
@@ -149,7 +152,7 @@ def _generate_all_raw_pairs(
     normalization-edge-case true-matches and special-population
     true-non-matches (mined multi-generational-household pairs and
     constructed institutional pairs). Session 14 further extends this with
-    compound (multi-field) true-match variants, SSN-dropped/phone-
+    compound (multi-field) true-match variants, SSN-dropped/marriage/phone-
     number true-match scenarios, and sibling/name-collision hard negatives -
     all additive, default-on, appended alongside every prior category.
     """
@@ -157,6 +160,7 @@ def _generate_all_raw_pairs(
     effective_profile = _effective_profile(
         profile,
         include_ssn_dropped=include_ssn_dropped,
+        include_marriage_variant=include_marriage_variant,
         include_phone_variant=include_phone_variant,
     )
 
@@ -388,6 +392,7 @@ def generate_raw_pairs(
     include_compound_variants: bool = True,
     n_compound_mutations: int = 2,
     include_ssn_dropped: bool = True,
+    include_marriage_variant: bool = True,
     include_phone_variant: bool = True,
     include_sibling_negatives: bool = True,
     include_name_collision_negatives: bool = True,
@@ -418,6 +423,7 @@ def generate_raw_pairs(
         include_compound_variants=include_compound_variants,
         n_compound_mutations=n_compound_mutations,
         include_ssn_dropped=include_ssn_dropped,
+        include_marriage_variant=include_marriage_variant,
         include_phone_variant=include_phone_variant,
         include_sibling_negatives=include_sibling_negatives,
         include_name_collision_negatives=include_name_collision_negatives,

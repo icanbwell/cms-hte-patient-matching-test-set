@@ -37,7 +37,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fhir_conformance import SSN_SYSTEM, V2_0203_SYSTEM
+from fhir_conformance import MOTHERS_MAIDEN_NAME_URL, SSN_SYSTEM, V2_0203_SYSTEM
 
 _SAS_EPOCH = date(1900, 1, 1)
 _GENDER_MAP = {
@@ -47,9 +47,6 @@ _GENDER_MAP = {
     "F": "female",
     "U": "unknown",
 }
-MOTHERS_MAIDEN_NAME_URL = (
-    "http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName"
-)
 
 
 def _clean(value: str | None) -> str:

@@ -161,6 +161,12 @@ def identity_key_names(patient: Patient) -> str | None:
     return f"{first} {family}" if first and family else None
 
 
+def looks_like_same_person(a: Patient, b: Patient) -> bool:
+    """The predicate every negative-pair generator applies: an exact same-person
+    match (`is_possible_same_person`) or a typo duplicate (`is_probable_duplicate`)."""
+    return is_possible_same_person(a, b) or is_probable_duplicate(a, b)
+
+
 class SamePersonIndex:
     """O(1) lookup of every indexed patient id that could be the same person as
     a given record - the indexed equivalent of calling is_possible_same_person()

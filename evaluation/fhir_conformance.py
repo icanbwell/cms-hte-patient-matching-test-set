@@ -15,6 +15,9 @@ Patient = Dict[str, Any]
 
 SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
 V2_0203_SYSTEM = "http://terminology.hl7.org/CodeSystem/v2-0203"
+MOTHERS_MAIDEN_NAME_URL = (
+    "http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName"
+)
 
 NAME_USES = frozenset(
     {"usual", "official", "temp", "nickname", "anonymous", "old", "maiden"}
