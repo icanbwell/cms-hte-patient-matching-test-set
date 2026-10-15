@@ -23,6 +23,36 @@ records derived from a member organization's real data, per the current Doc's co
 options) is ever added here, it needs its own disclosure — a single repo-level note like this one
 stops being sufficient at that point.
 
+## Which file do I use?
+
+`evaluation/cases/` holds two datasets, each with two tiers (pairwise and population). Everything
+else in this README applies to both unless it says otherwise; the file formats are identical.
+
+| File | Dataset | Tier | Rows | Valid metrics |
+|---|---|---|---:|---|
+| `realistic_labeled_pairs.jsonl` | Realistic | Pairwise | 30,999 | Recall, FPR (precision-family metrics are not valid; see "Frequency and real-world representativeness") |
+| `realistic_population_queries.jsonl` + `realistic_population_candidates.jsonl` | Realistic | Population | 2,000 queries, 44,299 candidates | Precision, recall, FPR, FDR, F1, accuracy |
+| `realistic_manifest.json` | Realistic | n/a | n/a | Not test data: the generation parameters, targets with sources, measured shares and open caveats for the realistic files |
+| `sample_labeled_pairs.jsonl` | Curated | Pairwise | 14,295 | Recall, FPR |
+| `population_queries.jsonl` + `population_candidates.jsonl` | Curated | Population | 2,000 queries, 13,016 candidates | Precision, recall, FPR, FDR, F1, accuracy |
+
+- **Realistic** (`realistic_*`) is the v1 release candidate and the one to use for headline numbers. It
+  samples ONC by age band across all 9 shards, places patients in households with shared addresses and
+  contacts, and uses look-alike decoys found across all shards (pairwise `negative_share` 0.56; an
+  always-"match" F1 of 0.61). Its drift rates, household sharing rates and the 70% same-surname-adult share are
+  placeholders, and its drift positives have not been verified against the CMS reference algorithm
+  (see `realistic_manifest.json` `caveats` and "Age- and household-realistic dataset" below).
+  Birth dates are shifted forward 9 years from ONC's (see "Age vintage (BAI-1161)" in the dataset changelog).
+- **Curated** (`sample_*`, `population_*`) is the first 2,000 rows of one alphabetically sorted ONC
+  shard. It is kept because consumers already depend on it. It is 4% negatives (an always-"match" pairwise
+  F1 of 0.98), so use it for recall and FPR per category, not for precision-family metrics on the pairwise tier.
+- **Full-scale files** (`full_labeled_pairs.jsonl`, `full_population_*.jsonl`, from all ~1,000,000 ONC
+  records) are not committed. Generate them with `make generate-full-dataset`; see "Regenerating or extending this file".
+
+The scoring snippets in Option A and Option B below name the curated files. Substitute the `realistic_`
+file names to score the realistic set; the snippets are otherwise unchanged. Regenerate the realistic set with
+`make generate-realistic-dataset` and gate it with `make audit-realistic`.
+
 ## How this test data was generated
 
 ### Source population
@@ -221,10 +251,11 @@ SSN or first+family+DOB.
   loading and transforming the full ~1,000,000-record dataset at once has crashed a cluster
   before; see `SYNTHETIC_DATA_SETUP.md`'s "Memory & scale" section before raising this.
 - The generators are reproducible given the same seed/inputs, and the commands in "Regenerating
-  or extending this file" below re-run them. **As of dataset version 2 the three committed files
+  or extending this file" below re-run them. **As of dataset version 2 the three committed curated files
   (`sample_labeled_pairs.jsonl`, `population_candidates.jsonl`, `population_queries.jsonl`) were
   regenerated in full at the default seed** (the earlier append-only and negatives-only migrations
-  are superseded), so re-running the two export scripts reproduces them. The `case_exclusions.py`
+  are superseded), so re-running the two export scripts reproduces them. The three `realistic_*`
+  data files are produced separately by `make generate-realistic-dataset`. The `case_exclusions.py`
   filter (rule 29) is applied inside both generators.
 
 ### Frequency weighting (`prevalence_estimates.py`)
@@ -304,7 +335,7 @@ One JSON object per line (JSON Lines / `.jsonl`):
 | `target` | The "Internal Record" / candidate FHIR `Patient` resource. |
 | `expected_match` | The gold label — `true` if `source` and `target` represent the same person. |
 | `rationale` | Which category/provenance this case traces to (e.g. `fuzzy_variant/dob_day`, `hard_negative`, `special_population/shelter`, `normalization_edge_case/diacritic`) — per Design Principle 2, every case traces to a specific reason, not a black box. See `SYNTHETIC_DATA_COMPARISON.md`'s "Coverage against the Doc's §2 ground-truth pair categories" for what each `rationale` prefix means. |
-| `frequency` | A relative real-world-prevalence weight for this case's category — **currently `1.0` for every case** (uniform), meaning no real-world weighting has been applied yet. See "Frequency and real-world representativeness" below before using this field or the file's raw per-category case counts to infer anything about real-world prevalence. |
+| `frequency` | A relative real-world-prevalence weight for this case's category. Both committed pairwise files were generated with `researched_frequency()`, so it is `1.0` for categories with no public estimate (the placeholders, most cases) and a cited value for the rest (e.g. `0.0006` shelter, `0.2` diacritic). See "Frequency and real-world representativeness" below before using this field or the file's raw per-category case counts to infer anything about real-world prevalence. |
 
 **Data provenance, read before trusting a result:** every `source`/`target` pair here is either an
 ONC-derived record from the 2017 Patient Matching Algorithm Challenge (a public, synthetic, non-PHI dataset —
@@ -535,9 +566,18 @@ cases), not a different scoring shape. Report skipped evaluations the same way a
 
 ## Regenerating or extending this file
 
+Curated files:
+
 ```
 PYTHONPATH=. uv run python evaluation/export_test_dataset.py
 PYTHONPATH=. uv run python evaluation/export_population_dataset.py
+```
+
+Realistic files (all 9 shards, one at a time; never overwrites the curated files) and their gate:
+
+```
+make generate-realistic-dataset
+make audit-realistic
 ```
 
 Both scripts share the same `SAMPLE_SIZE` override as `evaluation/labeled_pairs.py`. Beyond that,

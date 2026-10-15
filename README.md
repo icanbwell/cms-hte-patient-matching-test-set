@@ -20,8 +20,11 @@ mutation/mining/construction methodology behind every case.
 - `evaluation/` — the generator: fuzzy-mutation and hard-negative-mining code that builds the
   labeled CMS test dataset. Start with `evaluation/DESIGN.md` and
   `evaluation/SYNTHETIC_DATA_SETUP.md`.
-- `evaluation/cases/` — the materialized, portable test-case dataset. See
-  [`evaluation/cases/README.md`](evaluation/cases/README.md) for how to run an algorithm against it.
+- `evaluation/cases/` — the materialized, portable test-case dataset: a **realistic** set
+  (`realistic_*`, the v1 release candidate, age- and household-realistic, use this for headline
+  metrics) and a **curated** set (`sample_*`, `population_*`), each with a pairwise and a population
+  tier. See [`evaluation/cases/README.md`](evaluation/cases/README.md#which-file-do-i-use) for which
+  file to use and how to run an algorithm against it.
 - `notebooks/` — `rule_eval_demo.ipynb`, a demo of the algorithm-agnostic statistical comparison
   harness (`evaluation/rule_eval.py`).
 - `docs/sessions/` — the session logs that narrate how this dataset and its generation code were
@@ -61,6 +64,8 @@ PYTHONPATH=. uv run python evaluation/labeled_pairs.py             # demo: print
 PYTHONPATH=. uv run python evaluation/export_test_dataset.py       # writes evaluation/cases/sample_labeled_pairs.jsonl
 PYTHONPATH=. uv run python evaluation/export_population_dataset.py # writes population_{candidates,queries}.jsonl
 SAMPLE_SIZE=20000 PYTHONPATH=. uv run python evaluation/labeled_pairs.py  # override sample size
+make generate-realistic-dataset                                    # writes realistic_*.jsonl + realistic_manifest.json (all 9 shards, one at a time)
+make audit-realistic                                               # release gate for the realistic files
 ```
 
 ## Data attribution
