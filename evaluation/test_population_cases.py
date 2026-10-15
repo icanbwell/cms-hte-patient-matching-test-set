@@ -46,6 +46,61 @@ class TestTopUpExcludesProbableDuplicates:
         assert any(c.startswith("o") for c in case.candidate_ids)
 
 
+class TestMatchCountThinning:
+    def _patients(self):
+        return [_patient(f"p{i}", f"Name{i}", f"Given{i}") for i in range(40)]
+
+    def _build(self, **rates):
+        profile = DriftProfile(
+            rates={"query_no_match": 0.0, "query_single_match": 0.0, **rates}
+        )
+        return build_population_dataset(
+            self._patients(), pool_size=20, profile=profile, seed=0
+        )
+
+    def test_default_profile_has_queries_with_zero_and_one_match(self):
+        dataset = build_population_dataset(
+            [_patient(f"p{i}", f"Name{i}", f"Given{i}") for i in range(200)],
+            pool_size=20,
+            seed=0,
+        )
+        counts = {len(c.expected_match_ids) for c in dataset.cases}
+        assert 0 in counts and 1 in counts and max(counts) > 1
+
+    def test_no_match_rate_one_leaves_every_query_without_matches(self):
+        dataset = self._build(query_no_match=1.0)
+        assert all(c.expected_match_ids == [] for c in dataset.cases)
+        assert all(len(c.candidate_ids) == 20 for c in dataset.cases)
+
+    def test_single_match_rate_one_keeps_exactly_one_match_per_query(self):
+        dataset = self._build(query_single_match=1.0)
+        for case in dataset.cases:
+            assert len(case.expected_match_ids) <= 1
+            assert set(case.expected_match_ids) <= set(case.candidate_ids)
+
+    def test_thinned_variants_are_not_left_as_orphan_candidates(self):
+        dataset = self._build(query_no_match=1.0)
+        referenced = {c for case in dataset.cases for c in case.candidate_ids}
+        sample_ids = {p["id"] for p in self._patients()}
+        extras = set(dataset.candidates) - referenced - sample_ids
+        # Decoys trimmed to pool_size (institutional ones here) already left
+        # unreferenced rows; a thinned match variant must not.
+        assert all("::institutional::" in extra for extra in extras)
+
+    def test_rationale_does_not_credit_a_thinned_match_category(self):
+        dataset = self._build(query_no_match=1.0)
+        for case in dataset.cases:
+            assert "fuzzy_variant" not in case.rationale
+            assert "ssn_dropped" not in case.rationale
+
+    def test_thinning_is_deterministic(self):
+        first = self._build(query_no_match=0.3, query_single_match=0.3)
+        second = self._build(query_no_match=0.3, query_single_match=0.3)
+        assert [c.expected_match_ids for c in first.cases] == [
+            c.expected_match_ids for c in second.cases
+        ]
+
+
 class TestBuildPopulationDataset:
     def test_every_case_query_id_maps_to_input_patient(self):
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]

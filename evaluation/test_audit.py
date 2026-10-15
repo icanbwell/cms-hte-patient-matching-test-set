@@ -14,6 +14,7 @@ from audit import (
     decoy_no_overlap_rate,
     id_equality_f1,
     identical_positive_pairs,
+    match_count_share,
     matches_first_rate,
     missing_hard_negative_categories,
     negative_share,
@@ -504,6 +505,23 @@ class TestIdEqualityF1:
         a, b = _patient("a"), _patient("b")
         rows = [_row("p", a, _patient("c"), True), _row("n", a, b, False)]
         assert id_equality_f1(rows) == 0.0
+
+
+class TestMatchCountShare:
+    def test_counts_queries_with_exactly_n_matches(self):
+        q = _patient("q")
+        rows = [
+            _query_row(q, [_patient("x")], expected=[]),
+            _query_row(q, [_patient("m"), _patient("x")], expected=["m"]),
+            _query_row(q, [_patient("m"), _patient("n")], expected=["m", "n"]),
+            _query_row(q, [_patient("x")], expected=[]),
+        ]
+        assert match_count_share(rows, 0) == 0.5
+        assert match_count_share(rows, 1) == 0.25
+        assert match_count_share(rows, 2) == 0.25
+
+    def test_is_zero_without_queries(self):
+        assert match_count_share([], 0) == 0.0
 
 
 class TestMatchesFirstRate:

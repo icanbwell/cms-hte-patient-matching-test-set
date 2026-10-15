@@ -42,6 +42,11 @@ PLACEHOLDER_RATES: Dict[str, float] = {
     "household_shared_phone": 0.50,
     "household_shared_email": 0.50,
     "minor_ssn_absent": 0.70,
+    # Population tier (population_cases.py): share of queries whose true matches
+    # are thinned to none (the person is not in the pool) or to exactly one. The
+    # remaining queries keep every match. Real shares are unknown (BAI-1159).
+    "query_no_match": 0.10,
+    "query_single_match": 0.15,
 }
 
 DEFAULT_SOURCE = (
