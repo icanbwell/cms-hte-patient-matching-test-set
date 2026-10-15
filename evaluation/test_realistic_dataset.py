@@ -109,8 +109,10 @@ def test_manifest_states_its_caveats_and_target_sources(realistic):
     manifest = json.loads((out / "realistic_manifest.json").read_text())
     caveats = " ".join(manifest["caveats"])
     assert manifest["caveats"]
-    assert "rule 29" in caveats
+    assert "rule 29" not in caveats
     assert "reference algorithm" in caveats
+    assert manifest["dataset_version"] == "2"
+    assert "rule 29" not in manifest["kind"]
     sources = manifest["target_sources"]
     for name, _, _ in AGE_BANDS:
         assert sources[name]

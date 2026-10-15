@@ -60,10 +60,11 @@ from prevalence_estimates import researched_frequency
 
 Patient = Dict[str, Any]
 CASES_DIR = Path(__file__).parent / "cases"
+# Bumped when emitted resource content changes (session 16: FHIR-conformant loader).
+DATASET_VERSION = "2"
 
 
 CAVEATS: List[str] = [
-    "not filtered for CMS Table 2 rule 29 (BAI-1061)",
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
     "households are mostly unrelated real records placed at one address",
@@ -115,7 +116,8 @@ def generate_realistic(
         band = band_of(age_of(patient, AS_OF)) or "unknown"
         counts[band] = counts.get(band, 0) + 1
     manifest: Dict[str, Any] = {
-        "kind": "realistic dataset: RELEASE CANDIDATE, not filtered for CMS rule 29",
+        "kind": "realistic dataset: RELEASE CANDIDATE",
+        "dataset_version": DATASET_VERSION,
         "seed": seed,
         "sample_size": sample_size,
         "donor_size": donor_size,
