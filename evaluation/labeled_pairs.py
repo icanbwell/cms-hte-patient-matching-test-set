@@ -157,7 +157,7 @@ def _generate_all_raw_pairs(
         include_phone_variant=include_phone_variant,
     )
 
-    for idx, p in enumerate(patients):
+    for p in patients:
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(p, rng=rng)
             if variant == p:
@@ -208,7 +208,6 @@ def _generate_all_raw_pairs(
                 )
         for scenario, result in generate_scenario_variants(
             p,
-            next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
             profile=effective_profile,
             seed=seed,

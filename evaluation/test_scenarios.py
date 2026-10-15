@@ -52,12 +52,11 @@ DONORS = [
 ]
 
 
-def _variants(patient, profile, *, donors=DONORS, seed=0, next_patient=None):
+def _variants(patient, profile, *, donors=DONORS, seed=0):
     return {
         s.name: r
         for s, r in generate_scenario_variants(
             patient,
-            next_patient=next_patient or _patient("n1", family="LEE"),
             donors=donors,
             profile=profile,
             seed=seed,

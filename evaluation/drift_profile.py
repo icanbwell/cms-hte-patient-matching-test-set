@@ -17,9 +17,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Mapping
 
-# Session-14 scenarios keep emitting for every applicable patient, exactly as before.
 # Scenario names removed from the registry that older profile JSON may still name.
 RETIRED_SCENARIOS = frozenset({"marriage_variant"})
+
+# Session-14 scenarios keep emitting for every applicable patient, exactly as before.
 
 LEGACY_RATES: Dict[str, float] = {
     "ssn_dropped": 1.0,

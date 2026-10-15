@@ -37,6 +37,7 @@ class TestDriftProfile:
             json.dumps({"source": "old", "rates": {"marriage_variant": 1.0}})
         )
         profile = DriftProfile.from_json(path)
+        assert "marriage_variant" not in profile.rates
         assert profile.rate("phone_churn") == DriftProfile().rate("phone_churn")
 
     def test_from_json_reads_rates_and_source(self, tmp_path):

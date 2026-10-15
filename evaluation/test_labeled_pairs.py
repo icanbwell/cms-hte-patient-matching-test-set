@@ -369,14 +369,14 @@ class TestDriftScenariosPerProvisionTier:
         assert "phone_churn" in types
         assert "address_move" not in types
 
-    def test_session_14_scenarios_are_unchanged_by_the_registry(self) -> None:
+    def test_ssn_dropped_scenario_is_unchanged_by_the_registry(self) -> None:
         patients = drift_population()
         pairs = [
             p
             for p in generate_raw_pairs(patients, seed=0)
-            if p.strata["pair_type"] in {"ssn_dropped"}
+            if p.strata["pair_type"] == "ssn_dropped"
         ]
-        ssn = [p for p in pairs if p.strata["pair_type"] == "ssn_dropped"]
+        ssn = pairs
         assert {p.pair_id for p in ssn} == {f"{x['id']}::ssn_dropped" for x in patients}
         assert all(not any(i for i in p.candidate_patient["identifier"]) for p in ssn)
 

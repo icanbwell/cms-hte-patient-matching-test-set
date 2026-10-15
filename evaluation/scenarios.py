@@ -39,7 +39,6 @@ Patient = Dict[str, Any]
 class ScenarioContext:
     rng: random.Random
     donors: Sequence[Patient]
-    next_patient: Patient | None
 
 
 @dataclass(frozen=True)
@@ -128,7 +127,6 @@ REGISTRY: Dict[str, Scenario] = {
 def generate_scenario_variants(
     patient: Patient,
     *,
-    next_patient: Patient | None,
     donors: Sequence[Patient],
     profile: DriftProfile,
     seed: int,
@@ -141,7 +139,7 @@ def generate_scenario_variants(
         rng = random.Random(f"{seed}:{name}:{patient['id']}")
         if rate <= 0.0 or (rate < 1.0 and rng.random() >= rate):
             continue
-        result = scenario.apply(patient, ScenarioContext(rng, donors, next_patient))
+        result = scenario.apply(patient, ScenarioContext(rng, donors))
         if result is None or result.variant == patient:
             continue
         yield scenario, result

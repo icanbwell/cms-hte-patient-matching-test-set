@@ -178,7 +178,7 @@ def build_population_dataset(
             match_members[query_id].append(candidate_id)
 
     profile = profile or DriftProfile()
-    for idx, (pid, patient) in enumerate(by_id.items()):
+    for pid, patient in by_id.items():
         for _ in range(n_fuzzy_variants_per_patient):
             variant, mutation_type = generate_fuzzy_variant(patient, rng=rng)
             if variant == patient:
@@ -210,7 +210,6 @@ def build_population_dataset(
             )
         for scenario, result in generate_scenario_variants(
             patient,
-            next_patient=patients[(idx + 1) % len(patients)],
             donors=donors,
             profile=profile,
             seed=seed,
