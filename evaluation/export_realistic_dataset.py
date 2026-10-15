@@ -162,8 +162,7 @@ def generate_realistic(
             decoy_batches,
             target_share=min(
                 1.0,
-                profile.rate("minors_with_same_surname_adult")
-                + FAMILY_ADULTS_HEADROOM,
+                profile.rate("minors_with_same_surname_adult") + FAMILY_ADULTS_HEADROOM,
             ),
             exclude_ids={d["id"] for d in sample.donors},
             seed=seed,
