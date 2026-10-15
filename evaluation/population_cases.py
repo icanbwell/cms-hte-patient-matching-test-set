@@ -66,7 +66,7 @@ from hard_negatives import (
     mine_shared_address_hard_negatives,
 )
 from household_assignment import iter_household_pairs
-from identity_guard import SamePersonIndex
+from identity_guard import ProbableDuplicateIndex, SamePersonIndex
 from mutations import (
     count_changed_fields,
     generate_compound_variant,
@@ -328,13 +328,16 @@ def build_population_dataset(
 
     all_ids = list(by_id)
     same_person = SamePersonIndex(patients)
+    duplicates = ProbableDuplicateIndex(patients)
     cases: List[PopulationCase] = []
     for pid, patient in by_id.items():
         pool = list(pool_members[pid])
         true_matches = list(match_members[pid])
 
         if len(pool) < pool_size:
-            excluded = same_person.matching_ids(patient)
+            excluded = same_person.matching_ids(patient) | duplicates.matching_ids(
+                patient
+            )
             distractors = [
                 x
                 for x in all_ids

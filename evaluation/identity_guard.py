@@ -167,6 +167,63 @@ def looks_like_same_person(a: Patient, b: Patient) -> bool:
     return is_possible_same_person(a, b) or is_probable_duplicate(a, b)
 
 
+def _near_keys(text: str) -> Set[str]:
+    """`text` and every one-character deletion of it: two strings within edit
+    distance 1 always share at least one of these."""
+    return {text} | {text[:i] + text[i + 1 :] for i in range(len(text))}
+
+
+def _dob_block_keys(dob: str) -> Set[str]:
+    keys = _near_keys(dob)
+    if len(dob) == 10 and dob[4] == dob[7] == "-":
+        keys.add(f"{dob[:4]}-{dob[8:10]}-{dob[5:7]}")  # month/day swap
+    return keys
+
+
+class ProbableDuplicateIndex:
+    """Blocked lookup of every indexed patient that `is_probable_duplicate` would
+    flag against a given record, without comparing it with every patient.
+
+    `is_probable_duplicate` needs either SSNs within edit distance 1, or birth
+    dates within edit distance 1 / a month-day swap (plus a shared phone or a
+    near-identical name). Records sharing an SSN or birth-date block key are the
+    only ones that can qualify, so only those are compared in full."""
+
+    def __init__(self, patients: Iterable[Patient]) -> None:
+        self._patients: Dict[str, Patient] = {}
+        self._blocks: Dict[Tuple[str, str], List[str]] = defaultdict(list)
+        for patient in patients:
+            patient_id = patient.get("id")
+            if patient_id is None:
+                continue
+            self._patients[patient_id] = patient
+            for key in self._keys(patient):
+                self._blocks[key].append(patient_id)
+
+    @staticmethod
+    def _keys(patient: Patient) -> Set[Tuple[str, str]]:
+        keys: Set[Tuple[str, str]] = set()
+        ssn = ssn_of(patient)
+        if ssn is not None:
+            keys |= {("ssn", k) for k in _near_keys(ssn)}
+        dob = str(patient.get("birthDate") or "")
+        if dob:
+            keys |= {("dob", k) for k in _dob_block_keys(dob)}
+        return keys
+
+    def matching_ids(self, patient: Patient) -> Set[str]:
+        """Ids of indexed patients that are probable duplicates of `patient`."""
+        candidates: Set[str] = set()
+        for key in self._keys(patient):
+            candidates.update(self._blocks.get(key, ()))
+        return {
+            other_id
+            for other_id in candidates
+            if other_id != patient.get("id")
+            and is_probable_duplicate(patient, self._patients[other_id])
+        }
+
+
 class SamePersonIndex:
     """O(1) lookup of every indexed patient id that could be the same person as
     a given record - the indexed equivalent of calling is_possible_same_person()
