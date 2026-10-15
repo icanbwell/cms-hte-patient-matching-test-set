@@ -13,6 +13,7 @@ from typing import Dict, List
 
 import export_full_onc_dataset as full
 import pytest
+from release_rows import opaque_id
 
 
 def _patient(id_: str, family: str, given: str, zip_code: str, dob: str):
@@ -90,7 +91,9 @@ class TestExportFullPopulationDataset:
     def test_one_query_per_patient_across_shards(self, fake_shards, tmp_path):
         cands, queries = tmp_path / "c.jsonl", tmp_path / "q.jsonl"
         full.export_full_population_dataset(cands, queries, pool_size=40)
-        assert {r["query_id"] for r in _read(queries)} == {"a1", "a2", "b1", "b2"}
+        assert {r["query_id"] for r in _read(queries)} == {
+            opaque_id(i) for i in ("a1", "a2", "b1", "b2")
+        }
 
     def test_every_referenced_candidate_is_written(self, fake_shards, tmp_path):
         cands, queries = tmp_path / "c.jsonl", tmp_path / "q.jsonl"

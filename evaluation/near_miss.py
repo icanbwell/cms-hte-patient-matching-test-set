@@ -28,13 +28,14 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Collection, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
-from hard_negatives import _levenshtein_distance
 from identity_guard import (
+    identity_key_names,
     is_possible_same_person,
     is_probable_duplicate,
-    normalize_phone,
     normalize_token,
+    phone_set,
 )
+from text_distance import levenshtein_distance
 
 Patient = Dict[str, Any]
 
@@ -106,8 +107,7 @@ def _first(patient: Patient) -> str:
 
 
 def _full_name(patient: Patient) -> str:
-    first, family = _first(patient), _family(patient)
-    return f"{first} {family}" if first and family else ""
+    return identity_key_names(patient) or ""
 
 
 def _dob(patient: Patient) -> str:
@@ -137,15 +137,6 @@ def _zip(patient: Patient) -> str:
 def _street(patient: Patient) -> str:
     lines = _address(patient).get("line") or []
     return normalize_token(lines[0]) if lines else ""
-
-
-def _phones(patient: Patient) -> Set[str]:
-    found = {
-        normalize_phone(t.get("value"))
-        for t in patient.get("telecom") or []
-        if t.get("system") == "phone"
-    }
-    return {p for p in found if len(p) == 10}
 
 
 def _emails(patient: Patient) -> Set[str]:
@@ -187,7 +178,7 @@ class _QueryIndex:
                 self._surname_zip[(family, zip_)].append(query_id)
             if street and zip_:
                 self._address[(street, zip_)].append(query_id)
-            for phone in _phones(query):
+            for phone in phone_set(query):
                 self._phone[phone].append(query_id)
             for email in _emails(query):
                 self._email[email].append(query_id)
@@ -217,7 +208,7 @@ class _QueryIndex:
         if street and zip_:
             for query_id in self._address.get((street, zip_), ()):
                 hit[query_id].add("address")
-        for phone in _phones(record):
+        for phone in phone_set(record):
             for query_id in self._phone.get(phone, ()):
                 hit[query_id].add("phone")
         for email in _emails(record):
@@ -237,7 +228,7 @@ def _classify(
     if "dob_zip" in keys and not same_family:
         return "dob_zip", {"postalCode": _raw_zip(record), "birthDate": _dob(record)}
     if "name" in keys and _dob(query) != _dob(record) and _zip(query) != _zip(record):
-        distance = _levenshtein_distance(_full_name(query), _full_name(record), 1)
+        distance = levenshtein_distance(_full_name(query), _full_name(record), 1)
         if distance <= 1:
             return "name", {"name_distance": str(distance)}
     if "surname_zip" in keys and not same_first:

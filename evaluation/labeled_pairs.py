@@ -161,8 +161,11 @@ def _generate_all_raw_pairs(
     )
 
     for p in patients:
+        # Per-patient RNG so a change to one patient's draws cannot shift the
+        # case ids of every later patient.
+        patient_rng = random.Random(f"{seed}:variants:{p['id']}")
         for _ in range(n_fuzzy_variants_per_patient):
-            variant, mutation_type = generate_fuzzy_variant(p, rng=rng)
+            variant, mutation_type = generate_fuzzy_variant(p, rng=patient_rng)
             if variant == p:
                 continue  # nothing to mutate (no DOB, no usable name)
             yield RawPair(
@@ -173,7 +176,7 @@ def _generate_all_raw_pairs(
                 strata={"pair_type": "fuzzy_variant", "mutation": mutation_type},
             )
         if include_normalization_edge_cases:
-            diacritic = diacritic_variant(p, rng=rng)
+            diacritic = diacritic_variant(p, rng=patient_rng)
             if not is_noop_variant(p, diacritic):
                 yield RawPair(
                     pair_id=f"{p['id']}::diacritic",
@@ -185,7 +188,7 @@ def _generate_all_raw_pairs(
                         "case": "diacritic",
                     },
                 )
-            punctuated = punctuation_variant(p, rng=rng)
+            punctuated = punctuation_variant(p, rng=patient_rng)
             if not is_noop_variant(p, punctuated):
                 yield RawPair(
                     pair_id=f"{p['id']}::punctuation",
@@ -199,7 +202,7 @@ def _generate_all_raw_pairs(
                 )
         if include_compound_variants:
             compound, mutation_types = generate_compound_variant(
-                p, n_mutations=n_compound_mutations, rng=rng
+                p, n_mutations=n_compound_mutations, rng=patient_rng
             )
             # A field group can legitimately no-op entirely (e.g. an empty
             # given name, a missing birthDate) even though a different group

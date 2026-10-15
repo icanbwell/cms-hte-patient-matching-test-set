@@ -6,6 +6,7 @@ import json
 
 from export_population_dataset import write_population_dataset
 from population_cases import build_population_dataset
+from release_rows import opaque_id
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -50,7 +51,7 @@ class TestWritePopulationDataset:
         )
 
         rows = [json.loads(line) for line in queries_path.read_text().splitlines()]
-        assert {row["query_id"] for row in rows} == {"p1", "p2"}
+        assert {row["query_id"] for row in rows} == {opaque_id("p1"), opaque_id("p2")}
 
     def test_creates_parent_directories_if_missing(self, tmp_path):
         dataset = build_population_dataset([_patient("p1")], seed=0)

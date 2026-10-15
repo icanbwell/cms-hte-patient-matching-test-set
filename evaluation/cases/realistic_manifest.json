@@ -1,6 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
+  "generator_fingerprint": "e7d95194dfde4aa0806c4d667c9ba21b9d330d474e1938a15439a26446a25305",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -101,8 +102,8 @@
       }
     }
   },
-  "negative_share": 0.5990827306403246,
+  "negative_share": 0.5991038667795653,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 28345,
+  "n_labeled_cases": 28344,
   "n_population_queries": 2000
 }

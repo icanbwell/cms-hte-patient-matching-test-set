@@ -10,8 +10,11 @@ from audit import (
     age_band_shares,
     all_yes_f1,
     category_of,
+    conformance_violations,
     decoy_no_overlap_rate,
+    id_equality_f1,
     identical_positive_pairs,
+    matches_first_rate,
     missing_hard_negative_categories,
     negative_share,
     pairwise_two_of_three_f1,
@@ -24,6 +27,7 @@ from audit import (
     shared_contact_rate,
     tier_parity_gap,
 )
+from fhir_conformance import export_ready
 from identity_guard import SSN_SYSTEM
 
 
@@ -67,7 +71,7 @@ class TestCategoryOf:
         "rationale,expected",
         [
             ("fuzzy_variant/family_typo", "fuzzy_variant"),
-            ("marriage_variant", "marriage_variant"),
+            ("address_move", "address_move"),
             ("sibling_negative (age_gap_years=1, family_name=X)", "sibling_negative"),
             ("compound_variant (mutations=a,b)", "compound_variant"),
         ],
@@ -90,11 +94,11 @@ class TestTierParity:
     def test_lists_pair_categories_missing_from_population_rationales(self):
         pair_rows = [
             _row("1", _patient("a"), _patient("a"), True, "fuzzy_variant/dob_day"),
-            _row("2", _patient("a"), _patient("a"), True, "marriage_variant"),
+            _row("2", _patient("a"), _patient("a"), True, "address_move"),
         ]
         query_rows = [{"rationale": "population/fuzzy_variant+hard_negative"}]
         assert population_categories(query_rows) == {"fuzzy_variant", "hard_negative"}
-        assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
+        assert tier_parity_gap(pair_rows, query_rows) == ["address_move"]
 
 
 class TestTierParityExemption:
@@ -107,10 +111,10 @@ class TestTierParityExemption:
                 False,
                 "placeholder_collision_negative/ssn",
             ),
-            _row("2", _patient("a"), _patient("a"), True, "marriage_variant"),
+            _row("2", _patient("a"), _patient("a"), True, "address_move"),
         ]
         query_rows = [{"rationale": "population/fuzzy_variant"}]
-        assert tier_parity_gap(pair_rows, query_rows) == ["marriage_variant"]
+        assert tier_parity_gap(pair_rows, query_rows) == ["address_move"]
 
 
 class TestPositiveFieldDisagreement:
@@ -473,6 +477,45 @@ class TestIdenticalPositivePairs:
             "same",
             "q::q",
         ]
+
+
+class TestConformanceViolations:
+    def test_reports_problems_in_every_file(self):
+        bad = {**_patient("b"), "telecom": [{"system": "phone", "value": ""}]}
+        pair_rows = [_row("p", _patient("a"), bad, True)]
+        query_rows = [_query_row(bad, [bad], expected=["b"])]
+        found = conformance_violations(pair_rows, query_rows, {"b": bad})
+        assert any(v.startswith("p.target:") for v in found)
+        assert any(v.startswith("b.query:") for v in found)
+        assert any(v.startswith("b:") for v in found)
+
+    def test_is_empty_for_conformant_patients(self):
+        good = export_ready(_patient("a"))
+        assert conformance_violations([_row("p", good, good, True)], [], {}) == []
+
+
+class TestIdEqualityF1:
+    def test_is_perfect_when_ids_reveal_the_label(self):
+        a = _patient("a")
+        rows = [_row("p", a, dict(a), True), _row("n", a, _patient("b"), False)]
+        assert id_equality_f1(rows) == 1.0
+
+    def test_is_zero_when_ids_are_label_free(self):
+        a, b = _patient("a"), _patient("b")
+        rows = [_row("p", a, _patient("c"), True), _row("n", a, b, False)]
+        assert id_equality_f1(rows) == 0.0
+
+
+class TestMatchesFirstRate:
+    def test_counts_queries_whose_matches_lead_the_pool(self):
+        q = _patient("q")
+        leading = _query_row(q, [_patient("m"), _patient("x")], expected=["m"])
+        trailing = _query_row(q, [_patient("x"), _patient("m")], expected=["m"])
+        assert matches_first_rate([leading, trailing]) == 0.5
+
+    def test_ignores_queries_without_matches(self):
+        q = _patient("q")
+        assert matches_first_rate([_query_row(q, [_patient("x")])]) == 0.0
 
 
 class TestPairwiseTwoOfThreeF1:

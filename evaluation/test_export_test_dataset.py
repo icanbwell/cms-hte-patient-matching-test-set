@@ -16,6 +16,7 @@ from export_test_dataset import (
     uniform_frequency,
     write_jsonl,
 )
+from release_rows import opaque_id
 
 
 def _patient(id_: str, family: str = "Smith", given: str = "Katherine"):
@@ -157,8 +158,8 @@ class TestWriteJsonl:
         assert len(lines) == 2
         first = json.loads(lines[0])
         assert first["case_id"] == "case-1"
-        assert first["source"]["id"] == "p1"
-        assert first["target"]["id"] == "p2"
+        assert first["source"]["id"] == opaque_id("p1")
+        assert first["target"]["id"] == opaque_id("case-1:target")
         assert first["expected_match"] is True
         assert first["rationale"] == "fuzzy_variant/dob_day"
         assert first["frequency"] == 1.0

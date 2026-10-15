@@ -13,6 +13,7 @@ Rates absent from the file default to 0.0 (scenario off).
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Mapping
@@ -83,6 +84,13 @@ class DriftProfile:
         defaults = {**LEGACY_RATES, **PLACEHOLDER_RATES}
         # Scenarios retired from the registry are dropped, not rejected, so older
         # profile files keep loading.
+        retired = sorted(set(data["rates"]) & RETIRED_SCENARIOS)
+        if retired:
+            warnings.warn(
+                f"{path}: ignoring retired scenario rates {retired}; "
+                "see the dataset changelog for their replacements",
+                stacklevel=2,
+            )
         file_rates = {
             k: v for k, v in data["rates"].items() if k not in RETIRED_SCENARIOS
         }

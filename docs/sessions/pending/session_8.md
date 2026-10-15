@@ -239,6 +239,7 @@ Real Databricks/legacy-service access can't be unit-tested locally — test the 
 ```python
 import pytest
 
+
 class TestDisagreementBucketing:
     """One behavior, one test body, many named cases - pytest.mark.parametrize, per
     conventions.md's testing-structure section."""
@@ -251,13 +252,14 @@ class TestDisagreementBucketing:
             ({"jon"}, {"john"}, "typo_transposition"),
         ],
     )
-    def test_bucket_classification(self, query_first_names, candidate_first_names, expected_bucket):
+    def test_bucket_classification(
+        self, query_first_names, candidate_first_names, expected_bucket
+    ):
         # Exact function signature depends on Task 5's PatientFields-diff shape, resolved at
         # implementation time - this table of cases is the contract, not the call signature.
         ...
 
-    def test_missing_dob_buckets_as_dob_conflict_not_typo(self):
-        ...
+    def test_missing_dob_buckets_as_dob_conflict_not_typo(self): ...
 
     def test_every_disagreement_gets_exactly_one_bucket(self):
         """No pair should be unclassified or double-counted across buckets."""
@@ -265,8 +267,7 @@ class TestDisagreementBucketing:
 
 
 class TestExplanationFormatter:
-    def test_format_explanation_includes_threshold_and_contributing_fields(self):
-        ...
+    def test_format_explanation_includes_threshold_and_contributing_fields(self): ...
 
     def test_format_explanation_never_includes_raw_phi_values(self):
         """Only field names/outcomes/scores - never the actual name/DOB/etc. values,

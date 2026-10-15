@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, pytest, ruff, mypy, uv. No new dependencies.
 
-**Spec:** `docs/sessions/pending/session_16.md` (Workstreams 1, 2 and 4, plus "Release caveats"). Ticket BAI-1156. This one PR covers former PRs 1, 2 and 4 and the decoy part of PR 3. Not in this PR: queries with 0 or 1 expected matches (E3), family structure (E1, PR 5), the age vintage (E2), and `strata.decoy_kinds` on query rows.
+**Spec:** `docs/sessions/completed/session_16.md` (Workstreams 1, 2 and 4, plus "Release caveats"). Ticket BAI-1156. This one PR covers former PRs 1, 2 and 4 and the decoy part of PR 3. Not in this PR: queries with 0 or 1 expected matches (E3), family structure (E1, PR 5), the age vintage (E2), and `strata.decoy_kinds` on query rows.
 
 **Commit structure:** one commit per task, so the PR reads as separable workstreams: Tasks 1-7 conformance and `marriage_variant` retirement, Tasks 8-13 near-miss negatives and gate, Tasks 14-15 release route, regeneration and docs.
 
@@ -58,7 +58,7 @@
 | `evaluation/export_realistic_dataset.py` (modify) | Second streaming pass, rebalance, manifest. |
 | `evaluation/test_*.py` (create/modify) | Tests per module; `test_committed_realistic.py` (create). |
 | `.gitignore`, `.github/workflows/build_and_test.yml`, `evaluation/cases/*` (modify) | Commit realistic files; gate them in CI. |
-| `evaluation/cases/README.md`, `CLAUDE.md`, `docs/sessions/pending/session_16.md` (modify) | Docs and changelog. |
+| `evaluation/cases/README.md`, `CLAUDE.md`, `docs/sessions/completed/session_16.md` (modify) | Docs and changelog. |
 
 ---
 
@@ -92,7 +92,9 @@ def _patient(**overrides):
         "name": [{"use": "official", "family": "Smith", "given": ["Jane"]}],
         "gender": "female",
         "telecom": [{"system": "phone", "value": "555-000-1111", "rank": 1}],
-        "identifier": [{"system": SSN_SYSTEM, "type": SSN_TYPE, "value": "892-39-5115"}],
+        "identifier": [
+            {"system": SSN_SYSTEM, "type": SSN_TYPE, "value": "892-39-5115"}
+        ],
     }
     base.update(overrides)
     return base
@@ -526,29 +528,30 @@ def _phone_numbers(raw: str | None) -> List[str]:
 Delete `"telecom": [], "address": [], "identifier": [],` from the `patient` dict built in Task 2, and replace everything after the `birthDate` block (from `if row.get("PHONE"):` to `return patient`) with:
 
 ```python
-    telecom: List[Dict[str, Any]] = []
-    phones = _phone_numbers(row.get("PHONE")) + _phone_numbers(row.get("PHONE2"))
-    for rank, value in enumerate(phones, start=1):
-        telecom.append({"system": "phone", "value": value, "rank": rank})
-    email = _clean(row.get("EMAIL"))
-    if email:
-        telecom.append({"system": "email", "value": email, "rank": 1})
-    if telecom:
-        patient["telecom"] = telecom
-    line1 = _clean(row.get("ADDRESS1"))
-    if line1:
-        address: Dict[str, Any] = {
-            "line": [line1] + ([_clean(row["ADDRESS2"])] if _clean(row.get("ADDRESS2")) else [])
-        }
-        for key, column in (("city", "CITY"), ("state", "STATE"), ("postalCode", "ZIP")):
-            part = _clean(row.get(column))
-            if part:
-                address[key] = part
-        patient["address"] = [address]
-    ssn = _clean(row.get("SSN"))
-    if ssn:
-        patient["identifier"] = [ssn_identifier(ssn)]
-    return patient
+telecom: List[Dict[str, Any]] = []
+phones = _phone_numbers(row.get("PHONE")) + _phone_numbers(row.get("PHONE2"))
+for rank, value in enumerate(phones, start=1):
+    telecom.append({"system": "phone", "value": value, "rank": rank})
+email = _clean(row.get("EMAIL"))
+if email:
+    telecom.append({"system": "email", "value": email, "rank": 1})
+if telecom:
+    patient["telecom"] = telecom
+line1 = _clean(row.get("ADDRESS1"))
+if line1:
+    address: Dict[str, Any] = {
+        "line": [line1]
+        + ([_clean(row["ADDRESS2"])] if _clean(row.get("ADDRESS2")) else [])
+    }
+    for key, column in (("city", "CITY"), ("state", "STATE"), ("postalCode", "ZIP")):
+        part = _clean(row.get(column))
+        if part:
+            address[key] = part
+    patient["address"] = [address]
+ssn = _clean(row.get("SSN"))
+if ssn:
+    patient["identifier"] = [ssn_identifier(ssn)]
+return patient
 ```
 
 Also update the `birthDate` guard comment if needed, but leave the `if row.get("DOB"):` block as is. Restore the full `violations(patient) == []` assertion in `test_empty_first_name_emits_no_given` if Task 2 weakened it.
@@ -619,9 +622,7 @@ Expected: the new placeholder test FAILS with `identifier[0]: SSN identifier lac
 In `evaluation/placeholders.py` replace
 
 ```python
-                modified.setdefault("identifier", []).append(
-                    {"system": SSN_SYSTEM, "value": value}
-                )
+modified.setdefault("identifier", []).append({"system": SSN_SYSTEM, "value": value})
 ```
 
 with
@@ -666,7 +667,11 @@ def test_write_jsonl_drops_empty_arrays_and_strings(tmp_path):
     patient = _patient("p1")  # has identifier: [] and telecom: []
     patient["name"][0]["suffix"] = []
     record = LabeledCaseRecord(
-        case_id="p1::x", source=patient, target=patient, expected_match=True, rationale="r"
+        case_id="p1::x",
+        source=patient,
+        target=patient,
+        expected_match=True,
+        rationale="r",
     )
     path = tmp_path / "out.jsonl"
     write_jsonl([record], path)
@@ -681,7 +686,9 @@ Add to `evaluation/test_export_population_dataset.py`:
 
 ```python
 def test_population_files_drop_empty_arrays(tmp_path):
-    dataset = build_population_dataset([_patient("p1"), _patient("p2", family="Jones", given="Robert")], seed=0)
+    dataset = build_population_dataset(
+        [_patient("p1"), _patient("p2", family="Jones", given="Robert")], seed=0
+    )
     candidates_path = tmp_path / "c.jsonl"
     queries_path = tmp_path / "q.jsonl"
     write_population_dataset(dataset, candidates_path, queries_path)
@@ -925,7 +932,10 @@ class TestKinds:
         assert dict(result.near_misses[0].shared_fields) == {"name_distance": "0"}
 
     def test_name_two_edits_away_is_not_a_near_miss(self):
-        assert _find([_p("d", "JANE", "SMOOTH", "1990-05-05", zip_="20002")]).near_misses == []
+        assert (
+            _find([_p("d", "JANE", "SMOOTH", "1990-05-05", zip_="20002")]).near_misses
+            == []
+        )
 
     def test_same_surname_and_zip_with_close_birth_years_is_a_sibling(self):
         result = _find([_p("d", "JOHN", "SMITH", "1982-05-05")])
@@ -945,17 +955,31 @@ class TestKinds:
     def test_shared_phone_with_a_different_surname_is_a_phone_miss(self):
         query = _p("q", "JANE", "SMITH", "1980-01-01", phone="347-984-6839")
         result = _find(
-            [_p("d", "ROBERT", "JONES", "1950-05-05", zip_="20002", street="9 ELM ST", phone="(347) 984-6839")],
+            [
+                _p(
+                    "d",
+                    "ROBERT",
+                    "JONES",
+                    "1950-05-05",
+                    zip_="20002",
+                    street="9 ELM ST",
+                    phone="(347) 984-6839",
+                )
+            ],
             queries=(query,),
         )
         assert _kinds(result) == {("d", "phone")}
 
     def test_shared_dob_only_is_a_dob_only_miss(self):
-        result = _find([_p("d", "ROBERT", "JONES", "1980-01-01", zip_="20002", street="9 ELM ST")])
+        result = _find(
+            [_p("d", "ROBERT", "JONES", "1980-01-01", zip_="20002", street="9 ELM ST")]
+        )
         assert _kinds(result) == {("d", "dob_only")}
 
     def test_a_record_qualifying_for_several_kinds_is_filed_under_the_first(self):
-        result = _find([_p("d", "ROBERT", "JONES", "1980-01-01")])  # dob_zip, address, dob_only
+        result = _find(
+            [_p("d", "ROBERT", "JONES", "1980-01-01")]
+        )  # dob_zip, address, dob_only
         assert _kinds(result) == {("d", "dob_zip")}
 
     def test_every_kind_maps_to_a_pair_type(self):
@@ -979,13 +1003,18 @@ class TestGuards:
 
     def test_a_query_with_no_look_alikes_yields_nothing(self):
         lonely = {"resourceType": "Patient", "id": "lonely"}
-        result = _find([_p("d", "ROBERT", "JONES", "1950-05-05", zip_="20002")], queries=(lonely,))
+        result = _find(
+            [_p("d", "ROBERT", "JONES", "1950-05-05", zip_="20002")], queries=(lonely,)
+        )
         assert result.near_misses == []
 
 
 class TestCapsAndDeterminism:
     def _flood(self):
-        return [_p(f"d{i}", "ROBERT", f"JONES{i}", "1980-01-01", zip_=f"2{i:04d}") for i in range(10)]
+        return [
+            _p(f"d{i}", "ROBERT", f"JONES{i}", "1980-01-01", zip_=f"2{i:04d}")
+            for i in range(10)
+        ]
 
     def test_per_kind_cap_limits_kept_decoys_and_reports_seen(self):
         result = _find(self._flood(), per_kind_cap=3)
@@ -996,7 +1025,9 @@ class TestCapsAndDeterminism:
     def test_same_seed_gives_the_same_decoys(self):
         first = _find(self._flood(), seed=7)
         second = _find(self._flood(), seed=7)
-        assert [m.decoy["id"] for m in first.near_misses] == [m.decoy["id"] for m in second.near_misses]
+        assert [m.decoy["id"] for m in first.near_misses] == [
+            m.decoy["id"] for m in second.near_misses
+        ]
 
     def test_batches_are_consumed_once_from_a_generator(self):
         batches = (batch for batch in [self._flood()[:5], self._flood()[5:]])
@@ -1189,7 +1220,12 @@ class _QueryIndex:
         self._email: Dict[str, List[str]] = defaultdict(list)
         self._dob: Dict[str, List[str]] = defaultdict(list)
         for query_id, query in self.queries.items():
-            dob, zip_, family, street = _dob(query), _zip(query), _family(query), _street(query)
+            dob, zip_, family, street = (
+                _dob(query),
+                _zip(query),
+                _family(query),
+                _street(query),
+            )
             if dob and zip_:
                 self._dob_zip[(dob, zip_)].append(query_id)
             name = _full_name(query)
@@ -1210,7 +1246,12 @@ class _QueryIndex:
     def keys_hit(self, record: Patient) -> Dict[str, Set[str]]:
         """query id -> the key families the record shares with that query."""
         hit: Dict[str, Set[str]] = defaultdict(set)
-        dob, zip_, family, street = _dob(record), _zip(record), _family(record), _street(record)
+        dob, zip_, family, street = (
+            _dob(record),
+            _zip(record),
+            _family(record),
+            _street(record),
+        )
         if dob and zip_:
             for query_id in self._dob_zip.get((dob, zip_), ()):
                 hit[query_id].add("dob_zip")
@@ -1313,7 +1354,9 @@ def find_near_misses(
                 kind, shared = found
                 slot = (query_id, kind)
                 seen[slot] += 1
-                miss = NearMiss(query=query, decoy=record, kind=kind, shared_fields=shared)
+                miss = NearMiss(
+                    query=query, decoy=record, kind=kind, shared_fields=shared
+                )
                 pool = kept[slot]
                 if len(pool) < per_kind_cap:
                     pool.append(miss)
@@ -1371,8 +1414,14 @@ Append to `evaluation/test_audit.py` (reuse its `_row(case_id, source, target, e
 ```python
 class TestNegativeBalance:
     def _rows(self, positives, negatives):
-        rows = [_row(f"p{i}", _patient("a"), _patient("b"), True, "fuzzy_variant") for i in range(positives)]
-        rows += [_row(f"n{i}", _patient("a"), _patient("b"), False, "hard_negative") for i in range(negatives)]
+        rows = [
+            _row(f"p{i}", _patient("a"), _patient("b"), True, "fuzzy_variant")
+            for i in range(positives)
+        ]
+        rows += [
+            _row(f"n{i}", _patient("a"), _patient("b"), False, "hard_negative")
+            for i in range(negatives)
+        ]
         return rows
 
     def test_negative_share_is_the_fraction_of_non_matches(self):
@@ -1461,7 +1510,9 @@ def all_yes_f1(pair_rows: Sequence[Row]) -> float:
 
 def missing_hard_negative_categories(pair_rows: Sequence[Row]) -> List[str]:
     """Required hard-negative categories with no non-match row."""
-    present = {category_of(r["rationale"]) for r in pair_rows if not r["expected_match"]}
+    present = {
+        category_of(r["rationale"]) for r in pair_rows if not r["expected_match"]
+    }
     return [c for c in REQUIRED_HARD_NEGATIVE_CATEGORIES if c not in present]
 
 
@@ -1560,13 +1611,19 @@ from negative_balance import rebalance_negatives
 
 def _rec(case_id: str, expected: bool, rationale: str) -> LabeledCaseRecord:
     return LabeledCaseRecord(
-        case_id=case_id, source={}, target={}, expected_match=expected, rationale=rationale
+        case_id=case_id,
+        source={},
+        target={},
+        expected_match=expected,
+        rationale=rationale,
     )
 
 
 def _records(positives: dict, negatives: int):
     records = [
-        _rec(f"{cat}{i}", True, f"{cat}/x") for cat, n in positives.items() for i in range(n)
+        _rec(f"{cat}{i}", True, f"{cat}/x")
+        for cat, n in positives.items()
+        for i in range(n)
     ]
     records += [_rec(f"neg{i}", False, "hard_negative") for i in range(negatives)]
     return records
@@ -1577,7 +1634,9 @@ def _share(records):
 
 
 def test_subsamples_positives_to_reach_the_target_share():
-    out = rebalance_negatives(_records({"a": 100, "b": 100}, 100), target_share=0.5, seed=0)
+    out = rebalance_negatives(
+        _records({"a": 100, "b": 100}, 100), target_share=0.5, seed=0
+    )
     assert _share(out) == pytest.approx(0.5)
     kept = Counter(category_of(r.rationale) for r in out if r.expected_match)
     assert kept["a"] == kept["b"] == 50
@@ -1592,7 +1651,9 @@ def test_never_drops_a_negative():
 
 
 def test_small_categories_keep_their_floor():
-    out = rebalance_negatives(_records({"rare": 10, "big": 500}, 100), target_share=0.5, seed=0)
+    out = rebalance_negatives(
+        _records({"rare": 10, "big": 500}, 100), target_share=0.5, seed=0
+    )
     kept = Counter(category_of(r.rationale) for r in out if r.expected_match)
     assert kept["rare"] == 10
     assert kept["big"] == 90
@@ -1605,7 +1666,9 @@ def test_no_op_when_already_balanced_enough():
 
 def test_reports_a_shortfall_by_leaving_the_share_below_target_rather_than_failing():
     # 10 negatives cannot support 500 positives at 50% once floors apply.
-    out = rebalance_negatives(_records({"a": 500, "b": 500}, 10), target_share=0.5, seed=0)
+    out = rebalance_negatives(
+        _records({"a": 500, "b": 500}, 10), target_share=0.5, seed=0
+    )
     assert _share(out) < 0.5
     assert sum(1 for r in out if r.expected_match) == 50  # two floors of 25
 
@@ -1749,12 +1812,17 @@ def _near_patient(id_: str, family: str, given: str, dob: str = "1980-06-15"):
         "id": id_,
         "name": [{"family": family, "given": [given]}],
         "birthDate": dob,
-        "address": [{"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}],
+        "address": [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ],
     }
 
 
 def test_near_misses_join_the_query_pool_as_non_matches():
-    patients = [_near_patient("p1", "Smith", "Katherine"), _near_patient("p2", "Jones", "Robert", "1970-01-01")]
+    patients = [
+        _near_patient("p1", "Smith", "Katherine"),
+        _near_patient("p2", "Jones", "Robert", "1970-01-01"),
+    ]
     decoy = _near_patient("d1", "Brown", "Alice")
     miss = NearMiss(
         query=patients[0],
@@ -1781,7 +1849,9 @@ def test_near_misses_never_displace_true_matches_when_the_pool_is_trimmed():
         )
         for i in range(60)
     ]
-    dataset = build_population_dataset(patients, near_misses=misses, pool_size=40, seed=0)
+    dataset = build_population_dataset(
+        patients, near_misses=misses, pool_size=40, seed=0
+    )
     case = dataset.cases[0]
     assert len(case.candidate_ids) == 40
     assert set(case.expected_match_ids) <= set(case.candidate_ids)
@@ -1870,13 +1940,20 @@ def test_near_miss_negatives_appear_in_both_tiers(realistic):
     near = [r for r in pairs if "found_by=near_miss" in r["rationale"]]
     assert near and all(r["expected_match"] is False for r in near)
     queries = read_jsonl(out / "realistic_population_queries.jsonl")
-    assert any("near_miss_negative" in q["rationale"] or "hard_negative" in q["rationale"] for q in queries)
+    assert any(
+        "near_miss_negative" in q["rationale"] or "hard_negative" in q["rationale"]
+        for q in queries
+    )
 
 
 def test_manifest_reports_near_miss_yield_and_negative_share(realistic):
     dataset, _ = realistic
     manifest = dataset.manifest
-    assert set(manifest["near_miss"]["yield_by_kind"]) >= {"dob_zip", "name", "dob_only"}
+    assert set(manifest["near_miss"]["yield_by_kind"]) >= {
+        "dob_zip",
+        "name",
+        "dob_only",
+    }
     assert manifest["near_miss"]["per_kind_cap"] == 3
     assert manifest["negative_share"] >= 0.45
     assert manifest["n_positives_dropped"] >= 0
@@ -1968,9 +2045,9 @@ and add to the manifest dict (after `"profile_rates"`):
 (Keep `"n_labeled_cases": len(records)`, which is already computed after this point.) In `__main__`, replace the `generate_realistic(...)` call arguments by adding:
 
 ```python
-        decoy_batches=iter_shard_batches,
-        target_negative_share=0.5,
-        per_kind_cap=int(os.environ.get("NEAR_MISS_CAP", DEFAULT_PER_KIND_CAP)),
+decoy_batches = (iter_shard_batches,)
+target_negative_share = (0.5,)
+per_kind_cap = (int(os.environ.get("NEAR_MISS_CAP", DEFAULT_PER_KIND_CAP)),)
 ```
 
 and add `NEAR_MISS_CAP (3)` to the docstring's Environment line.
@@ -2139,7 +2216,7 @@ git commit -m "BAI-1156 commit the realistic dataset and gate it in CI"
 ### Task 15: Regenerate the committed set, document, verify
 
 **Files:**
-- Modify: `evaluation/cases/sample_labeled_pairs.jsonl`, `population_candidates.jsonl`, `population_queries.jsonl`, `evaluation/cases/README.md`, `CLAUDE.md`, `docs/sessions/pending/session_16.md`
+- Modify: `evaluation/cases/sample_labeled_pairs.jsonl`, `population_candidates.jsonl`, `population_queries.jsonl`, `evaluation/cases/README.md`, `CLAUDE.md`, `docs/sessions/completed/session_16.md`
 
 **Interfaces:**
 - Consumes: everything above.
@@ -2197,7 +2274,7 @@ Expected: `non-conformant patients: 0`; `make audit` shows `same_person_negative
 
 `CLAUDE.md`: in the Architecture list add a bullet "**`near_miss.py`** — streaming reverse-blocking finder: real look-alike decoys for sampled queries across all shards; feeds both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`). **`negative_balance.py`** rebalances the pairwise tier toward 50% negatives." and replace the sentence that says realistic files are git-ignored (in the `export_realistic_dataset.py` bullet: "the committed files are never overwritten" stays; add "the realistic files are committed as the v1 release").
 
-`docs/sessions/pending/session_16.md`: under Rollout add "**Decision (2026-10-14):** shipped as one PR (former PRs 1, 2, 4 and the decoy part of PR 3), one commit per workstream. Still deferred: queries with 0 or 1 expected matches, `strata.decoy_kinds`, family structure (PR 5), age vintage." and under "Release caveats" mark caveats 1 and 5 closed.
+`docs/sessions/completed/session_16.md`: under Rollout add "**Decision (2026-10-14):** shipped as one PR (former PRs 1, 2, 4 and the decoy part of PR 3), one commit per workstream. Still deferred: queries with 0 or 1 expected matches, `strata.decoy_kinds`, family structure (PR 5), age vintage." and under "Release caveats" mark caveats 1 and 5 closed.
 
 - [ ] **Step 4: Full verification**
 
@@ -2210,7 +2287,7 @@ Expected: all green; `git status` shows only the files edited in this task.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add evaluation/cases CLAUDE.md docs/sessions/pending/session_16.md
+git add evaluation/cases CLAUDE.md docs/sessions/completed/session_16.md
 git commit -m "BAI-1156 regenerate committed datasets with conformant resources; document dataset version 2"
 ```
 

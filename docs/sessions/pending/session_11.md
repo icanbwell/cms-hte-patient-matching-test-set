@@ -112,7 +112,9 @@ from typing import Any, Dict, List, Tuple
 
 Patient = Dict[str, Any]
 
-SYNTHETIC_PAYER_NAMESPACE = "https://synthetic-test-payer.example.org/fhir/sid/insurance-id"
+SYNTHETIC_PAYER_NAMESPACE = (
+    "https://synthetic-test-payer.example.org/fhir/sid/insurance-id"
+)
 SYNTHETIC_ASSIGNER_DISPLAY = "SYNTHETIC TEST PAYER"
 
 # See module docstring - verify these against session_6's actual
@@ -170,17 +172,23 @@ def build_family_plan(
     shared_dob = base_patients[0].get("birthDate")
     for suffix, patient in enumerate(base_patients):
         member_id = f"{subscriber_base_id}-{suffix:02d}"
-        member = _with_insurance_identifier(patient, code=MEMBER_ID_TYPE_CODE, value=member_id)
+        member = _with_insurance_identifier(
+            patient, code=MEMBER_ID_TYPE_CODE, value=member_id
+        )
         member = _with_insurance_identifier(
             member, code=SUBSCRIBER_ID_TYPE_CODE, value=subscriber_base_id
         )
         if force_shared_dob:
             member["birthDate"] = shared_dob
         members.append(member)
-    return FamilyPlanFixture(subscriber_base_id=subscriber_base_id, members=tuple(members))
+    return FamilyPlanFixture(
+        subscriber_base_id=subscriber_base_id, members=tuple(members)
+    )
 
 
-def member_id_true_match_pairs(fixture: FamilyPlanFixture) -> List[Tuple[Patient, Patient]]:
+def member_id_true_match_pairs(
+    fixture: FamilyPlanFixture,
+) -> List[Tuple[Patient, Patient]]:
     """Each member paired with an identical copy of itself (query vs.
     responder record) - full Member ID + Payer namespace + demographics all
     matching - exercises Table 2 rules 27-30 (Member-ID-anchored, always-on
@@ -224,7 +232,8 @@ def recycled_member_id_negative_pairs(
         recycled["identifier"] = [
             ident
             for ident in recycled.get("identifier", [])
-            if ident.get("type", {}).get("coding", [{}])[0].get("code") != MEMBER_ID_TYPE_CODE
+            if ident.get("type", {}).get("coding", [{}])[0].get("code")
+            != MEMBER_ID_TYPE_CODE
         ]
         recycled = _with_insurance_identifier(
             recycled,
@@ -232,7 +241,8 @@ def recycled_member_id_negative_pairs(
             value=next(
                 ident["value"]
                 for ident in member_a.get("identifier", [])
-                if ident.get("type", {}).get("coding", [{}])[0].get("code") == MEMBER_ID_TYPE_CODE
+                if ident.get("type", {}).get("coding", [{}])[0].get("code")
+                == MEMBER_ID_TYPE_CODE
             ),
         )
         pairs.append((member_a, recycled))
@@ -255,37 +265,57 @@ def build_insurance_identifier_pairs(
     normalized patient list, not the full sample.
     """
     if len(patients) < 4:
-        raise ValueError("build_insurance_identifier_pairs needs at least 4 base patients")
+        raise ValueError(
+            "build_insurance_identifier_pairs needs at least 4 base patients"
+        )
     normalizer = NormalizationManager()
     extractor = FieldExtractor()
     normalized = [normalizer.normalize(p) for p in patients[:4]]
 
-    plan_a = build_family_plan(normalized[:2], subscriber_base_id="SYN-SUB-0001", force_shared_dob=True)
+    plan_a = build_family_plan(
+        normalized[:2], subscriber_base_id="SYN-SUB-0001", force_shared_dob=True
+    )
     plan_b = build_family_plan(normalized[2:4], subscriber_base_id="SYN-SUB-0002")
 
     pairs: List[LabeledPair] = []
     for i, (query, candidate) in enumerate(member_id_true_match_pairs(plan_a)):
         pairs.append(
             LabeledPair(
-                features={"query": extractor.extract(query), "candidate": extractor.extract(candidate)},
+                features={
+                    "query": extractor.extract(query),
+                    "candidate": extractor.extract(candidate),
+                },
                 is_true_match=True,
                 strata={"pair_type": "insurance_member_id_match"},
                 pair_id=f"synthetic-member-match-{i}",
             )
         )
-    for i, (query, candidate) in enumerate(subscriber_id_administrative_restriction_pairs(plan_a)):
+    for i, (query, candidate) in enumerate(
+        subscriber_id_administrative_restriction_pairs(plan_a)
+    ):
         pairs.append(
             LabeledPair(
-                features={"query": extractor.extract(query), "candidate": extractor.extract(candidate)},
+                features={
+                    "query": extractor.extract(query),
+                    "candidate": extractor.extract(candidate),
+                },
                 is_true_match=False,
-                strata={"pair_type": "administrative_restriction", "combination": "subscriber_id_dob"},
+                strata={
+                    "pair_type": "administrative_restriction",
+                    "combination": "subscriber_id_dob",
+                },
                 pair_id=f"synthetic-admin-restriction-{i}",
             )
         )
-    for i, (query, candidate) in enumerate(recycled_member_id_negative_pairs(plan_a, plan_b)):
+    for i, (query, candidate) in enumerate(
+        recycled_member_id_negative_pairs(plan_a, plan_b)
+    ):
         pairs.append(
             LabeledPair(
-                features={"query": extractor.extract(query), "candidate": extractor.extract(candidate)},
+                features={
+                    "query": extractor.extract(query),
+                    "candidate": extractor.extract(candidate),
+                },
                 is_true_match=False,
                 strata={"pair_type": "recycled_member_id_negative"},
                 pair_id=f"synthetic-recycled-{i}",
@@ -390,15 +420,21 @@ def _patient(id_, family="Rivera", given="Ana", dob="1970-05-01"):
 class TestBuildFamilyPlan:
     def test_every_member_shares_the_subscriber_id(self):
         fixture = build_family_plan(
-            [_patient("p1"), _patient("p2", given="Luis")], subscriber_base_id="SYN-SUB-TEST"
+            [_patient("p1"), _patient("p2", given="Luis")],
+            subscriber_base_id="SYN-SUB-TEST",
         )
         for member in fixture.members:
-            ids = {i["value"] for i in member["identifier"] if i["type"]["coding"][0]["code"] == SUBSCRIBER_ID_TYPE_CODE}
+            ids = {
+                i["value"]
+                for i in member["identifier"]
+                if i["type"]["coding"][0]["code"] == SUBSCRIBER_ID_TYPE_CODE
+            }
             assert ids == {"SYN-SUB-TEST"}
 
     def test_every_member_has_a_distinct_member_id(self):
         fixture = build_family_plan(
-            [_patient("p1"), _patient("p2", given="Luis")], subscriber_base_id="SYN-SUB-TEST"
+            [_patient("p1"), _patient("p2", given="Luis")],
+            subscriber_base_id="SYN-SUB-TEST",
         )
         member_ids = [
             i["value"]
@@ -410,7 +446,10 @@ class TestBuildFamilyPlan:
 
     def test_force_shared_dob_overwrites_every_member(self):
         fixture = build_family_plan(
-            [_patient("p1", dob="1970-05-01"), _patient("p2", given="Luis", dob="1995-11-20")],
+            [
+                _patient("p1", dob="1970-05-01"),
+                _patient("p2", given="Luis", dob="1995-11-20"),
+            ],
             subscriber_base_id="SYN-SUB-TEST",
             force_shared_dob=True,
         )
@@ -443,23 +482,46 @@ class TestSubscriberIdAdministrativeRestrictionPairs:
         pairs = subscriber_id_administrative_restriction_pairs(fixture)
         assert len(pairs) == 1
         query, candidate = pairs[0]
-        query_member_id = next(i["value"] for i in query["identifier"] if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE)
-        candidate_member_id = next(i["value"] for i in candidate["identifier"] if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE)
+        query_member_id = next(
+            i["value"]
+            for i in query["identifier"]
+            if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE
+        )
+        candidate_member_id = next(
+            i["value"]
+            for i in candidate["identifier"]
+            if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE
+        )
         assert query_member_id != candidate_member_id
         assert query["birthDate"] == candidate["birthDate"]
 
 
 class TestRecycledMemberIdNegativePairs:
     def test_candidate_gets_query_familys_member_id_with_different_demographics(self):
-        fixture_a = build_family_plan([_patient("p1", family="Rivera")], subscriber_base_id="SYN-SUB-A")
-        fixture_b = build_family_plan([_patient("p2", family="Chen", given="Wei", dob="2001-02-02")], subscriber_base_id="SYN-SUB-B")
+        fixture_a = build_family_plan(
+            [_patient("p1", family="Rivera")], subscriber_base_id="SYN-SUB-A"
+        )
+        fixture_b = build_family_plan(
+            [_patient("p2", family="Chen", given="Wei", dob="2001-02-02")],
+            subscriber_base_id="SYN-SUB-B",
+        )
         pairs = recycled_member_id_negative_pairs(fixture_a, fixture_b)
         assert len(pairs) == 1
         query, recycled_candidate = pairs[0]
-        query_member_id = next(i["value"] for i in query["identifier"] if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE)
-        candidate_member_id = next(i["value"] for i in recycled_candidate["identifier"] if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE)
+        query_member_id = next(
+            i["value"]
+            for i in query["identifier"]
+            if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE
+        )
+        candidate_member_id = next(
+            i["value"]
+            for i in recycled_candidate["identifier"]
+            if i["type"]["coding"][0]["code"] == MEMBER_ID_TYPE_CODE
+        )
         assert query_member_id == candidate_member_id
-        assert recycled_candidate["name"][0]["family"] == "Chen"  # demographics unchanged
+        assert (
+            recycled_candidate["name"][0]["family"] == "Chen"
+        )  # demographics unchanged
 ```
 
 Plus an integration test (in `evaluation/test_labeled_pairs.py`, `importorskip("numpy")`) that

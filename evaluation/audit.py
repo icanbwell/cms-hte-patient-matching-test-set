@@ -14,8 +14,9 @@ import re
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Sequence, Tuple
 
+from fhir_conformance import violations
 from identity_guard import (
     is_placeholder_ssn,
     is_possible_same_person,
@@ -29,6 +30,7 @@ from naive_baselines import (
     pair_features,
 )
 from population_targets import AGE_BANDS, AS_OF, age_band_targets
+from rationale import category_of
 from rule_eval import LabeledPair, evaluate
 
 Patient = Dict[str, Any]
@@ -86,11 +88,6 @@ def _read_nonempty(path: Path) -> List[Row]:
     return rows
 
 
-def category_of(rationale: str) -> str:
-    """'sibling_negative (age_gap_years=1)' -> 'sibling_negative'; 'fuzzy_variant/x' -> 'fuzzy_variant'."""
-    return re.split(r"[/ (]", rationale, maxsplit=1)[0]
-
-
 def population_categories(query_rows: Sequence[Row]) -> set[str]:
     """Categories named in population rationales, e.g. 'population/a+b' -> {'a','b'}."""
     found: set[str] = set()
@@ -135,7 +132,7 @@ def _audit_ssn(p: Patient) -> str | None:
     return None
 
 
-def _audit_phones(p: Patient) -> frozenset[str]:
+def _audit_phones(p: Patient) -> FrozenSet[str]:
     return frozenset(v for v in _phones(p) if len(v) == 10)
 
 
@@ -228,6 +225,52 @@ def identical_positive_pairs(
             if q["query"] == candidates[candidate_id]:
                 flagged.append(f"{q['query_id']}::{candidate_id}")
     return flagged
+
+
+def id_equality_f1(pair_rows: Sequence[Row]) -> float:
+    """F1 of the rule "match iff source.id == target.id" on the pairwise tier.
+    Ids must carry no label, so this is 0 (release_rows.py hashes them)."""
+    tp = sum(1 for r in pair_rows if r["expected_match"] and _same_id(r))
+    fp = sum(1 for r in pair_rows if not r["expected_match"] and _same_id(r))
+    fn = sum(1 for r in pair_rows if r["expected_match"] and not _same_id(r))
+    return 2 * tp / (2 * tp + fp + fn) if tp else 0.0
+
+
+def _same_id(row: Row) -> bool:
+    return row["source"].get("id") == row["target"].get("id")
+
+
+def matches_first_rate(query_rows: Sequence[Row]) -> float:
+    """Share of queries whose true matches are exactly the leading entries of
+    `candidate_ids`. Pool order must not reveal the label, so this is ~0."""
+    scored = [q for q in query_rows if q["expected_match_ids"]]
+    if not scored:
+        return 0.0
+    leading = sum(
+        1
+        for q in scored
+        if set(q["candidate_ids"][: len(q["expected_match_ids"])])
+        == set(q["expected_match_ids"])
+    )
+    return leading / len(scored)
+
+
+def conformance_violations(
+    pair_rows: Sequence[Row],
+    query_rows: Sequence[Row],
+    candidates: Dict[str, Patient],
+) -> List[str]:
+    """Every FHIR structural problem across the three files, as
+    "<where>: <problem>" (see fhir_conformance.violations)."""
+    found: List[str] = []
+    for r in pair_rows:
+        for side in ("source", "target"):
+            found += [f"{r['case_id']}.{side}: {v}" for v in violations(r[side])]
+    for q in query_rows:
+        found += [f"{q['query_id']}.query: {v}" for v in violations(q["query"])]
+    for candidate_id, patient in candidates.items():
+        found += [f"{candidate_id}: {v}" for v in violations(patient)]
+    return found
 
 
 def _two_of_three(source: Patient, target: Patient) -> bool:
@@ -481,6 +524,11 @@ def build_report(
         "identical_positive_pairs": identical_positive_pairs(
             pair_rows, query_rows, candidates
         ),
+        "conformance_violations": conformance_violations(
+            pair_rows, query_rows, candidates
+        ),
+        "id_equality_f1": id_equality_f1(pair_rows),
+        "matches_first_rate": matches_first_rate(query_rows),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),
         "negative_share": negative_share(pair_rows),
         "all_yes_f1": all_yes_f1(pair_rows),

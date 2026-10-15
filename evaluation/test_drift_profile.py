@@ -36,7 +36,8 @@ class TestDriftProfile:
         path.write_text(
             json.dumps({"source": "old", "rates": {"marriage_variant": 1.0}})
         )
-        profile = DriftProfile.from_json(path)
+        with pytest.warns(UserWarning, match="retired scenario rates"):
+            profile = DriftProfile.from_json(path)
         assert "marriage_variant" not in profile.rates
         assert profile.rate("phone_churn") == DriftProfile().rate("phone_churn")
 

@@ -38,6 +38,7 @@ import string
 from datetime import date, timedelta
 from typing import Any, Callable, Dict, List, Tuple
 
+from fhir_conformance import SSN_SYSTEM
 from nicknames import NickNamer
 
 Patient = Dict[str, Any]
@@ -306,9 +307,6 @@ def substitute_nickname(
 # --------------------------------------------------------------------------------------
 # Identifier mutations
 # --------------------------------------------------------------------------------------
-
-# Matches onc_loader.py's own SSN identifier.system value exactly.
-SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
 
 
 def ssn_dropped_variant(patient: Patient) -> Patient:

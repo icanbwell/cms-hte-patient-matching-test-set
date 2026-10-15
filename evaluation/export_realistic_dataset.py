@@ -31,6 +31,7 @@ NEAR_MISS_CAP (3).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -65,6 +66,32 @@ Patient = Dict[str, Any]
 CASES_DIR = Path(__file__).parent / "cases"
 # Bumped when emitted resource content changes (session 16: FHIR-conformant loader).
 DATASET_VERSION = "2"
+TARGET_NEGATIVE_SHARE = 0.5
+
+# Modules that decide what the committed realistic files contain. The audit,
+# release gate, baselines and tests only read those files, so editing them does
+# not make the files stale.
+_NOT_GENERATORS = frozenset(
+    {
+        "audit",
+        "release_gate",
+        "rule_eval",
+        "naive_baselines",
+    }
+)
+
+
+def generator_fingerprint() -> str:
+    """Hash of every generator module's source. The manifest records it and a
+    test compares it, so a code change that is not followed by a regeneration
+    fails CI instead of leaving stale committed data that still passes the gate."""
+    digest = hashlib.sha256()
+    for path in sorted(Path(__file__).parent.glob("*.py")):
+        if path.stem.startswith("test_") or path.stem in _NOT_GENERATORS:
+            continue
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 CAVEATS: List[str] = [
@@ -99,6 +126,8 @@ def generate_realistic(
     target_negative_share: float | None = None,
     per_kind_cap: int = DEFAULT_PER_KIND_CAP,
 ) -> RealisticDataset:
+    if per_kind_cap < 1:
+        raise ValueError(f"per_kind_cap must be at least 1, got {per_kind_cap}")
     sample = stratified_sample(batches, sample_size, donor_n=donor_size, seed=seed)
     housed = assign_households(sample.patients, profile=profile, seed=seed)
     near_result = None
@@ -143,6 +172,7 @@ def generate_realistic(
     manifest: Dict[str, Any] = {
         "kind": "realistic dataset: RELEASE CANDIDATE",
         "dataset_version": DATASET_VERSION,
+        "generator_fingerprint": generator_fingerprint(),
         "seed": seed,
         "sample_size": sample_size,
         "donor_size": donor_size,
@@ -190,7 +220,7 @@ if __name__ == "__main__":
         seed=int(os.environ.get("SEED", "0")),
         profile=load_profile(),
         decoy_batches=iter_shard_batches,
-        target_negative_share=0.5,
+        target_negative_share=TARGET_NEGATIVE_SHARE,
         per_kind_cap=int(os.environ.get("NEAR_MISS_CAP", DEFAULT_PER_KIND_CAP)),
     )
     output_dir = Path(os.environ.get("OUTPUT_DIR", str(CASES_DIR)))

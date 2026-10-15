@@ -9,7 +9,7 @@ per release (session 16 design doc, Workstream 1).
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Tuple
 
 Patient = Dict[str, Any]
 
@@ -21,7 +21,7 @@ NAME_USES = frozenset(
 )
 TELECOM_SYSTEMS = frozenset({"phone", "fax", "email", "pager", "url", "sms", "other"})
 
-_EMPTY: tuple[str, List[Any], Dict[str, Any], None] = ("", [], {}, None)
+_EMPTY: Tuple[Any, ...] = ("", [], {}, None)
 
 
 def prune_empty(value: Any) -> Any:

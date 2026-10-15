@@ -82,6 +82,20 @@ class TestRule29Exclusion:
             p, _variant(p, birthDate="1976-05-24", name=nick)
         )
 
+    def test_onc_alias_entry_counts_as_a_first_name(self):
+        # ONC ALIAS is a `use: nickname` entry, not part of `given`; the
+        # candidate's first name is the source's alias.
+        p = _patient(
+            name=[
+                {"use": "official", "family": "Smith", "given": ["Katherine"]},
+                {"use": "nickname", "text": "Zelda"},
+            ]
+        )
+        alias_only = [{"family": "Smith", "given": ["Zelda"]}]
+        assert only_matchable_by_removed_rule_29(
+            p, _variant(p, birthDate="1976-05-24", name=alias_only)
+        )
+
     def test_diacritics_do_not_hide_a_name_match(self):
         p = _patient(name=[{"family": "Munoz", "given": ["Allison"]}])
         accented = [{"family": "Muñoz", "given": ["Allison"]}]

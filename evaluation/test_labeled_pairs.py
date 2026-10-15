@@ -341,6 +341,23 @@ class TestGenerateRawPairs:
         }
 
 
+class TestPerPatientSeeding:
+    def test_a_patients_case_ids_do_not_depend_on_other_patients(self):
+        a, b = _patient("a", "Jones", "Robert"), _patient("b")
+
+        def ids_for(patients, pid):
+            return sorted(
+                pair.pair_id
+                for pair in generate_raw_pairs(patients, seed=0)
+                if pair.pair_id.startswith(f"{pid}::")
+                and pair.strata["pair_type"]
+                in ("fuzzy_variant", "normalization_edge_case", "compound_variant")
+            )
+
+        assert ids_for([a, b], "b") == ids_for([b], "b")
+        assert ids_for([b, a], "b") == ids_for([b], "b")
+
+
 class TestDriftScenariosPerProvisionTier:
     def test_new_scenarios_emit_true_match_pairs_with_stable_ids_and_subtypes(
         self,

@@ -15,8 +15,8 @@ import random
 from collections import defaultdict
 from typing import Dict, List, Set
 
-from audit import category_of
 from export_test_dataset import LabeledCaseRecord
+from rationale import category_of
 
 
 def rebalance_negatives(

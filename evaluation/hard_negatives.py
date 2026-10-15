@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 from identity_guard import is_possible_same_person
+from text_distance import levenshtein_distance
 
 Patient = Dict[str, Any]
 
@@ -124,38 +125,6 @@ def _full_name(patient: Patient) -> str:
     return f"{first} {family}".strip().upper()
 
 
-def _levenshtein_distance(a: str, b: str, max_distance: int | None = None) -> int:
-    """Standard edit distance, stdlib-only - session 13 confirmed rapidfuzz
-    is not an actual dependency of this repo (cited only in a docstring,
-    never imported), so this avoids adding one just for this.
-
-    `max_distance`, if given, aborts as soon as every entry in the current
-    row exceeds it (the true distance can only grow from there), returning
-    `max_distance + 1` rather than the exact distance - callers that only
-    need a "<= max_distance?" answer avoid the full O(len(a)*len(b)) matrix
-    on pairs that are obviously too far apart."""
-    if a == b:
-        return 0
-    if not a or not b:
-        return max(len(a), len(b))
-    if max_distance is not None and abs(len(a) - len(b)) > max_distance:
-        return max_distance + 1
-    previous = list(range(len(b) + 1))
-    for i, ca in enumerate(a, start=1):
-        current = [i] + [0] * len(b)
-        for j, cb in enumerate(b, start=1):
-            cost = 0 if ca == cb else 1
-            current[j] = min(
-                previous[j] + 1,
-                current[j - 1] + 1,
-                previous[j - 1] + cost,
-            )
-        if max_distance is not None and min(current) > max_distance:
-            return max_distance + 1
-        previous = current
-    return previous[-1]
-
-
 def mine_name_collision_negatives(
     patients: Iterable[Patient], *, max_name_distance: int = 1
 ) -> List[HardNegativeCandidate]:
@@ -179,7 +148,7 @@ def mine_name_collision_negatives(
     Within a bucket, patients are sorted by full-name length and only
     compared against others within `max_name_distance` of that length (an
     edit-distance-<=max_name_distance pair can never differ in length by
-    more than that), and `_levenshtein_distance`'s own early-abort skips the
+    more than that), and `levenshtein_distance`'s own early-abort skips the
     rest of a doomed comparison besides. This is a real constant-factor
     speedup (~4.5x measured on the vendored ONC shard at n=8000) but NOT an
     asymptotic-complexity fix: real surnames cluster tightly in length, so
@@ -217,7 +186,7 @@ def mine_name_collision_negatives(
                     continue
                 if name_a == name_b or is_possible_same_person(a, b):
                     continue
-                distance = _levenshtein_distance(name_a, name_b, max_name_distance)
+                distance = levenshtein_distance(name_a, name_b, max_name_distance)
                 if distance > max_name_distance:
                     continue
                 candidates.append(

@@ -184,20 +184,24 @@ def build_population_dataset(
 
     profile = profile or DriftProfile()
     for pid, patient in by_id.items():
+        # Same per-patient stream as labeled_pairs.py, so a case id names the
+        # same variant in both tiers and one patient's draws cannot shift
+        # another's.
+        patient_rng = random.Random(f"{seed}:variants:{pid}")
         for _ in range(n_fuzzy_variants_per_patient):
-            variant, mutation_type = generate_fuzzy_variant(patient, rng=rng)
+            variant, mutation_type = generate_fuzzy_variant(patient, rng=patient_rng)
             if variant == patient:
                 continue  # nothing to mutate (no DOB, no usable name)
             add_candidate(
                 pid, f"{pid}::{mutation_type}", variant, True, "fuzzy_variant"
             )
         if include_normalization_edge_cases:
-            diacritic = diacritic_variant(patient, rng=rng)
+            diacritic = diacritic_variant(patient, rng=patient_rng)
             if not is_noop_variant(patient, diacritic):
                 add_candidate(
                     pid, f"{pid}::diacritic", diacritic, True, "normalization_edge_case"
                 )
-            punctuated = punctuation_variant(patient, rng=rng)
+            punctuated = punctuation_variant(patient, rng=patient_rng)
             if not is_noop_variant(patient, punctuated):
                 add_candidate(
                     pid,
@@ -345,6 +349,9 @@ def build_population_dataset(
             decoys = [c for c in pool if c not in match_members[pid]]
             pool = true_matches + decoys[: max(0, pool_size - len(true_matches))]
 
+        # Matches are collected before decoys, so an unshuffled pool lists every
+        # true match first and its position reveals the label.
+        random.Random(f"{seed}:pool_order:{pid}").shuffle(pool)
         cats = categories[pid]
         rationale = "population/" + "+".join(sorted(cats)) if cats else "population"
         cases.append(

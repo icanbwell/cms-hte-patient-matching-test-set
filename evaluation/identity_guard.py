@@ -7,9 +7,12 @@ import unicodedata
 from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Set, Tuple
 
+from fhir_conformance import SSN_SYSTEM
+from text_distance import levenshtein_distance
+
 Patient = Dict[str, Any]
 
-SSN_SYSTEM = "http://hl7.org/fhir/sid/us-ssn"
+US_PHONE_DIGITS = 10
 
 PLACEHOLDER_SSNS: FrozenSet[str] = frozenset(
     {
@@ -86,28 +89,6 @@ def is_possible_same_person(a: Patient, b: Patient) -> bool:
     return key_a is not None and key_a == key_b
 
 
-def _edit_distance(a: str, b: str, limit: int) -> int:
-    """Levenshtein distance, returning limit + 1 once it is known to exceed limit.
-
-    Local copy: hard_negatives imports this module, so importing its helper here
-    would be a cycle."""
-    if a == b:
-        return 0
-    if abs(len(a) - len(b)) > limit:
-        return limit + 1
-    previous = list(range(len(b) + 1))
-    for i, ca in enumerate(a, start=1):
-        current = [i] + [0] * len(b)
-        for j, cb in enumerate(b, start=1):
-            current[j] = min(
-                previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb)
-            )
-        if min(current) > limit:
-            return limit + 1
-        previous = current
-    return previous[-1]
-
-
 def _month_day_swapped(dob_a: str, dob_b: str) -> bool:
     """True if two ISO dates share a year and swap month and day (1980-03-11 / 1980-11-03)."""
     if len(dob_a) != 10 or len(dob_b) != 10 or dob_a[:4] != dob_b[:4]:
@@ -125,16 +106,18 @@ def _dobs_close(a: Patient, b: Patient) -> bool:
     dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
     if not (dob_a and dob_b):
         return False
-    return _edit_distance(dob_a, dob_b, 1) <= 1 or _month_day_swapped(dob_a, dob_b)
+    return levenshtein_distance(dob_a, dob_b, 1) <= 1 or _month_day_swapped(
+        dob_a, dob_b
+    )
 
 
-def _phone_set(patient: Patient) -> Set[str]:
+def phone_set(patient: Patient) -> Set[str]:
     found = {
         normalize_phone(t.get("value"))
         for t in patient.get("telecom") or []
         if t.get("system") == "phone"
     }
-    return {p for p in found if len(p) == 10}
+    return {p for p in found if len(p) == US_PHONE_DIGITS}
 
 
 def is_probable_duplicate(a: Patient, b: Patient) -> bool:
@@ -149,15 +132,21 @@ def is_probable_duplicate(a: Patient, b: Patient) -> bool:
     match with a clearly different birth date is a legitimate hard negative and
     is not flagged."""
     ssn_a, ssn_b = ssn_of(a), ssn_of(b)
-    if ssn_a is not None and ssn_b is not None and _edit_distance(ssn_a, ssn_b, 1) <= 1:
+    if (
+        ssn_a is not None
+        and ssn_b is not None
+        and levenshtein_distance(ssn_a, ssn_b, 1) <= 1
+    ):
         return True
     if not _dobs_close(a, b):
         return False
-    if _phone_set(a) & _phone_set(b):
+    if phone_set(a) & phone_set(b):
         return True
     key_a, key_b = identity_key_names(a), identity_key_names(b)
     return (
-        key_a is not None and key_b is not None and _edit_distance(key_a, key_b, 1) <= 1
+        key_a is not None
+        and key_b is not None
+        and levenshtein_distance(key_a, key_b, 1) <= 1
     )
 
 
