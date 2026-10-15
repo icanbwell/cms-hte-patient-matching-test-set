@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict
+
 from fhir_conformance import SSN_SYSTEM, V2_0203_SYSTEM, prune_empty, violations
 
 SSN_TYPE = {"coding": [{"system": V2_0203_SYSTEM, "code": "SS"}]}
@@ -79,13 +81,19 @@ class TestViolations:
 
 class TestPruneEmpty:
     def test_removes_empty_values_recursively(self) -> None:
-        value = {"a": "", "b": [], "c": {}, "d": None, "e": {"f": [""], "g": 1}}
+        value: Dict[str, Any] = {
+            "a": "",
+            "b": [],
+            "c": {},
+            "d": None,
+            "e": {"f": [""], "g": 1},
+        }
         assert prune_empty(value) == {"e": {"g": 1}}
 
     def test_keeps_zero_and_false(self) -> None:
         assert prune_empty({"rank": 0, "active": False}) == {"rank": 0, "active": False}
 
     def test_does_not_mutate_its_input(self) -> None:
-        value = {"identifier": []}
+        value: Dict[str, Any] = {"identifier": []}
         prune_empty(value)
         assert value == {"identifier": []}
