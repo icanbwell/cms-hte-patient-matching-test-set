@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from fhir_conformance import violations
-from onc_loader import MOTHERS_MAIDEN_NAME_URL, _row_to_patient
+from fhir_conformance import V2_0203_SYSTEM, violations
+from onc_loader import MOTHERS_MAIDEN_NAME_URL, _row_to_patient, ssn_identifier
 
 
 def _row(**overrides):
@@ -47,6 +47,7 @@ class TestPhone2Loading:
         assert patient["telecom"][-1] == {
             "system": "email",
             "value": "jane@example.com",
+            "rank": 1,
         }
 
     def test_missing_phone2_yields_a_single_phone_entry(self) -> None:
@@ -56,15 +57,14 @@ class TestPhone2Loading:
 
     def test_missing_both_phones_yields_no_phone_entries(self) -> None:
         patient = _row_to_patient(_row())
-        assert not any(t["system"] == "phone" for t in patient["telecom"])
+        assert not any(t["system"] == "phone" for t in patient.get("telecom", []))
 
 
 class TestNames:
     def test_empty_first_name_emits_no_given(self) -> None:
         patient = _row_to_patient(_row(FIRST=""))
         assert "given" not in patient["name"][0]
-        # restored to == [] in Task 3
-        assert not [v for v in violations(patient) if v.startswith("name")]
+        assert violations(patient) == []
 
     def test_blank_suffix_and_middle_are_omitted(self) -> None:
         patient = _row_to_patient(_row(MIDDLE="", SUFFIX=""))
@@ -97,3 +97,50 @@ class TestMothersMaidenName:
 
     def test_absent_when_the_column_is_empty(self) -> None:
         assert "extension" not in _row_to_patient(_row())
+
+
+class TestTelecom:
+    def test_caret_joined_phone_is_split_into_one_entry_per_number(self) -> None:
+        patient = _row_to_patient(_row(PHONE2="555-000-1111^^555-222-3333"))
+        assert [t["value"] for t in patient["telecom"]] == [
+            "555-000-1111",
+            "555-222-3333",
+        ]
+        assert violations(patient) == []
+
+    def test_empty_parts_around_carets_are_dropped(self) -> None:
+        for raw in ("^^", "555-000-1111^", "^555-000-1111", "^^555-000-1111^^"):
+            patient = _row_to_patient(_row(PHONE=raw))
+            values = [t["value"] for t in patient.get("telecom", [])]
+            assert all("^" not in v and v for v in values), raw
+
+    def test_rank_follows_column_order_per_system(self) -> None:
+        patient = _row_to_patient(_row(PHONE="1", PHONE2="2", EMAIL="a@b.c"))
+        assert [(t["system"], t["rank"]) for t in patient["telecom"]] == [
+            ("phone", 1),
+            ("phone", 2),
+            ("email", 1),
+        ]
+
+    def test_telecom_carries_no_use_or_period(self) -> None:
+        patient = _row_to_patient(_row(PHONE="555-000-1111"))
+        assert set(patient["telecom"][0]) == {"system", "value", "rank"}
+
+
+class TestAddressAndIdentifier:
+    def test_blank_city_state_zip_are_omitted(self) -> None:
+        patient = _row_to_patient(_row(ADDRESS1="1 MAIN ST"))
+        assert patient["address"] == [{"line": ["1 MAIN ST"]}]
+
+    def test_ssn_identifier_is_typed(self) -> None:
+        patient = _row_to_patient(_row(SSN="892-39-5115"))
+        assert patient["identifier"] == [ssn_identifier("892-39-5115")]
+        assert patient["identifier"][0]["type"]["coding"] == [
+            {"system": V2_0203_SYSTEM, "code": "SS"}
+        ]
+
+    def test_empty_row_has_no_empty_lists(self) -> None:
+        patient = _row_to_patient(_row())
+        assert violations(patient) == []
+        for key in ("telecom", "address", "identifier"):
+            assert key not in patient

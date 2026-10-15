@@ -32,9 +32,12 @@ for this dataset copy, since there is no found duplication to contradict it.
 from __future__ import annotations
 
 import csv
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
+
+from fhir_conformance import SSN_SYSTEM, V2_0203_SYSTEM
 
 _SAS_EPOCH = date(1900, 1, 1)
 _GENDER_MAP = {
@@ -71,6 +74,20 @@ def _human_names(row: Dict[str, str]) -> List[Dict[str, Any]]:
     return names
 
 
+def ssn_identifier(value: str) -> Dict[str, Any]:
+    """A US SSN identifier with the v2-0203 `SS` type coding."""
+    return {
+        "system": SSN_SYSTEM,
+        "type": {"coding": [{"system": V2_0203_SYSTEM, "code": "SS"}]},
+        "value": value,
+    }
+
+
+def _phone_numbers(raw: str | None) -> List[str]:
+    """ONC phone columns sometimes hold several numbers joined by HL7 '^'."""
+    return [part for part in (p.strip() for p in re.split(r"\^+", raw or "")) if part]
+
+
 def _decode_sas_date(raw: str) -> str:
     """ONC's DOB column is a SAS-style day-offset from 1900-01-01, minus 2.
 
@@ -87,9 +104,6 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
         "resourceType": "Patient",
         "id": row["EnterpriseID"],
         "gender": _GENDER_MAP.get(row.get("GENDER", "").upper(), "unknown"),
-        "telecom": [],
-        "address": [],
-        "identifier": [],
     }
     names = _human_names(row)
     if names:
@@ -105,26 +119,31 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
     # than crashing.
     if row.get("DOB"):
         patient["birthDate"] = _decode_sas_date(row["DOB"])
-    if row.get("PHONE"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE"]})
-    if row.get("PHONE2"):
-        patient["telecom"].append({"system": "phone", "value": row["PHONE2"]})
-    if row.get("EMAIL"):
-        patient["telecom"].append({"system": "email", "value": row["EMAIL"]})
-    if row.get("ADDRESS1"):
-        lines = [row["ADDRESS1"]] + ([row["ADDRESS2"]] if row.get("ADDRESS2") else [])
-        patient["address"].append(
-            {
-                "line": lines,
-                "city": row.get("CITY", ""),
-                "state": row.get("STATE", ""),
-                "postalCode": row.get("ZIP", ""),
-            }
-        )
-    if row.get("SSN"):
-        patient["identifier"].append(
-            {"system": "http://hl7.org/fhir/sid/us-ssn", "value": row["SSN"]}
-        )
+    telecom: List[Dict[str, Any]] = []
+    phones = _phone_numbers(row.get("PHONE")) + _phone_numbers(row.get("PHONE2"))
+    for rank, value in enumerate(phones, start=1):
+        telecom.append({"system": "phone", "value": value, "rank": rank})
+    email = _clean(row.get("EMAIL"))
+    if email:
+        telecom.append({"system": "email", "value": email, "rank": 1})
+    if telecom:
+        patient["telecom"] = telecom
+    line1 = _clean(row.get("ADDRESS1"))
+    if line1:
+        line2 = _clean(row.get("ADDRESS2"))
+        address: Dict[str, Any] = {"line": [line1] + ([line2] if line2 else [])}
+        for key, column in (
+            ("city", "CITY"),
+            ("state", "STATE"),
+            ("postalCode", "ZIP"),
+        ):
+            part = _clean(row.get(column))
+            if part:
+                address[key] = part
+        patient["address"] = [address]
+    ssn = _clean(row.get("SSN"))
+    if ssn:
+        patient["identifier"] = [ssn_identifier(ssn)]
     return patient
 
 
