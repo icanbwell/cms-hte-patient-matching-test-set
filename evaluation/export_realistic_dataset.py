@@ -81,6 +81,10 @@ CASES_DIR = Path(__file__).parent / "cases"
 # Bumped when emitted resource content changes (session 16: FHIR-conformant loader).
 DATASET_VERSION = "2"
 TARGET_NEGATIVE_SHARE = 0.5
+# The gate floor for minors_with_same_surname_adult_share is the profile rate (0.70).
+# Household placement loses a few children after the sample is built (size limits), so the
+# generator aims this much higher to leave headroom above the floor. The floor is not lowered.
+FAMILY_ADULTS_HEADROOM = 0.05
 
 # Modules that decide what the committed realistic files contain. The audit,
 # release gate, baselines and tests only read those files, so editing them does
@@ -156,7 +160,11 @@ def generate_realistic(
         family = add_family_adults(
             sample.patients,
             decoy_batches,
-            target_share=profile.rate("minors_with_same_surname_adult"),
+            target_share=min(
+                1.0,
+                profile.rate("minors_with_same_surname_adult")
+                + FAMILY_ADULTS_HEADROOM,
+            ),
             exclude_ids={d["id"] for d in sample.donors},
             seed=seed,
         )
@@ -224,6 +232,11 @@ def generate_realistic(
         "family_adults": (
             {
                 "target_share": profile.rate("minors_with_same_surname_adult"),
+                "generator_target_share": min(
+                    1.0,
+                    profile.rate("minors_with_same_surname_adult")
+                    + FAMILY_ADULTS_HEADROOM,
+                ),
                 "n_added": family.n_added,
                 "n_minors": family.n_minors,
                 "minors_covered_before": family.n_covered_before,
