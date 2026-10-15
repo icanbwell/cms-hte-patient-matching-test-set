@@ -132,6 +132,96 @@ class TestGuards:
         assert result.near_misses == []
 
 
+class TestDuplicateGuards:
+    def test_ssn_one_digit_off_is_rejected(self):
+        query = _p("q", "JANE", "SMITH", "1980-01-01", ssn="892-39-5115")
+        typo = _p("t", "ROBERT", "JONES", "1980-01-01", ssn="892-39-5116")
+        assert _find([typo], queries=(query,)).near_misses == []
+
+    def test_name_typo_with_close_dob_is_rejected(self):
+        query = _p("q", "EUGENE", "BENALLY", "1971-02-02", zip_="30003")
+        typo = _p("t", "ETGENE", "BENALLY", "1971-02-03", zip_="30003")
+        assert _find([typo], queries=(query,)).near_misses == []
+
+    def test_identical_name_with_dob_one_digit_apart_is_rejected(self):
+        query = _p("q", "ROSALIND", "VANDERMEER", "1980-06-15")
+        twin = _p("t", "ROSALIND", "VANDERMEER", "1980-06-25", zip_="20002")
+        assert _find([twin], queries=(query,)).near_misses == []
+
+    def test_shared_phone_with_close_dob_is_rejected(self):
+        query = _p("q", "HARRIS", "GREENE", "1980-06-15", phone="347-984-6839")
+        typo = _p(
+            "t", "HARRISS", "GREEN", "1980-06-16", zip_="20002", phone="3479846839"
+        )
+        assert _find([typo], queries=(query,)).near_misses == []
+
+    def test_identical_name_with_a_clearly_different_dob_is_kept(self):
+        query = _p("q", "ROSALIND", "VANDERMEER", "1950-06-15")
+        other = _p("t", "ROSALIND", "VANDERMEER", "1971-06-15", zip_="20002")
+        assert _kinds(_find([other], queries=(query,))) == {("t", "name")}
+
+    def test_decoy_matching_the_original_is_rejected_when_originals_given(self):
+        # Household assignment dropped the minor's SSN from the housed query.
+        original = _p("q", "DONNA", "RACETTE", "2010-01-01", ssn="892-39-5115")
+        housed = _p("q", "DONNA", "RACETTE", "2010-01-01")
+        records = [
+            _p("d", "ROBERT", "JONES", "2010-01-01", zip_="20002", ssn="892-39-5115")
+        ]
+        assert _find(records, queries=(housed,)).near_misses != []
+        result = _find(records, queries=(housed,), originals={"q": original})
+        assert result.near_misses == []
+
+    def test_originals_for_other_queries_do_not_leak(self):
+        original = _p("other", "DONNA", "RACETTE", "2010-01-01", ssn="892-39-5115")
+        records = [_p("d", "ROBERT", "JONES", "1980-01-01", ssn="892-39-5115")]
+        result = _find(records, originals={"other": original})
+        assert _kinds(result) == {("d", "dob_zip")}
+
+
+class TestNameEditHits:
+    def test_one_sided_insertion_is_a_name_hit(self):
+        result = _find([_p("d", "JANE", "SMITHE", "1990-05-05", zip_="20002")])
+        assert dict(result.near_misses[0].shared_fields) == {"name_distance": "1"}
+
+    def test_one_sided_deletion_is_a_name_hit(self):
+        result = _find([_p("d", "JANE", "SMIT", "1990-05-05", zip_="20002")])
+        assert dict(result.near_misses[0].shared_fields) == {"name_distance": "1"}
+
+
+class TestReservoir:
+    def _big_flood(self, n=200):
+        return [
+            _p(f"d{i:03d}", "ROBERT", f"JONES{i}", "1980-01-01", zip_=f"2{i:04d}")
+            for i in range(n)
+        ]
+
+    def _ids(self, seed):
+        result = _find(self._big_flood(), per_kind_cap=3, seed=seed)
+        return {m.decoy["id"] for m in result.near_misses}
+
+    def test_late_records_can_replace_early_ones(self):
+        survivors = set().union(*(self._ids(seed) for seed in range(10)))
+        assert any(i >= "d100" for i in survivors)  # beyond the first `cap` arrivals
+        assert len(self._ids(0)) == 3
+
+    def test_different_seeds_give_different_selections(self):
+        selections = {frozenset(self._ids(seed)) for seed in range(10)}
+        assert len(selections) > 1
+
+
+class TestEmailKind:
+    def test_shared_email_with_a_different_surname_is_an_email_miss(self):
+        query = _p("q", "JANE", "SMITH", "1980-01-01")
+        query["telecom"] = [{"system": "email", "value": "Jane@Example.com"}]
+        decoy = _p(
+            "d", "ROBERT", "JONES", "1950-05-05", zip_="20002", street="9 ELM ST"
+        )
+        decoy["telecom"] = [{"system": "email", "value": "jane@example.com "}]
+        result = _find([decoy], queries=(query,))
+        assert _kinds(result) == {("d", "email")}
+        assert result.near_misses[0].pair_type == "near_miss_negative"
+
+
 class TestCapsAndDeterminism:
     def _flood(self):
         return [

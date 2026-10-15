@@ -14,7 +14,9 @@ a hit is verified with a real edit-distance check.
 
 Decoys are real ONC records, never fabricated, and are never the query, never
 in `exclude_ids` (the sample and donor ids), and never
-`is_possible_same_person` as the query. Per (query, kind) at most
+`is_possible_same_person` or `is_probable_duplicate` (typo duplicate) of the
+query, nor of the query's pre-household original when `originals` is given
+(household assignment drops minors' SSNs, which would hide an SSN match). Per (query, kind) at most
 `per_kind_cap` decoys are kept, by seeded reservoir sampling, so a common DOB
 or surname cannot flood a query.
 """
@@ -27,7 +29,12 @@ from dataclasses import dataclass
 from typing import Any, Collection, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 from hard_negatives import _levenshtein_distance
-from identity_guard import is_possible_same_person, normalize_phone, normalize_token
+from identity_guard import (
+    is_possible_same_person,
+    is_probable_duplicate,
+    normalize_phone,
+    normalize_token,
+)
 
 Patient = Dict[str, Any]
 
@@ -254,6 +261,12 @@ def _classify(
     return None
 
 
+def _same_person_as(query: Patient, record: Patient) -> bool:
+    return is_possible_same_person(query, record) or is_probable_duplicate(
+        query, record
+    )
+
+
 def _interleave(per_kind: Mapping[str, List[NearMiss]]) -> List[NearMiss]:
     ordered = {
         kind: sorted(per_kind.get(kind, []), key=lambda m: str(m.decoy["id"]))
@@ -275,9 +288,11 @@ def find_near_misses(
     exclude_ids: Collection[str] = (),
     per_kind_cap: int = DEFAULT_PER_KIND_CAP,
     seed: int = 0,
+    originals: Mapping[str, Patient] | None = None,
 ) -> NearMissResult:
     """Stream `batches` once and return up to `per_kind_cap` real look-alikes
-    per (query, kind). See the module docstring."""
+    per (query, kind). See the module docstring. `originals` maps a query id to
+    its pre-household record; decoys are also screened against it."""
     index = _QueryIndex(queries)
     excluded = set(exclude_ids)
     rngs = {qid: random.Random(f"{seed}:near_miss:{qid}") for qid in index.queries}
@@ -290,7 +305,10 @@ def find_near_misses(
                 continue
             for query_id, keys in index.keys_hit(record).items():
                 query = index.queries[query_id]
-                if record_id == query_id or is_possible_same_person(query, record):
+                if record_id == query_id or _same_person_as(query, record):
+                    continue
+                original = (originals or {}).get(query_id)
+                if original is not None and _same_person_as(original, record):
                     continue
                 found = _classify(query, record, keys)
                 if found is None:

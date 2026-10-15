@@ -110,6 +110,7 @@ def generate_realistic(
             | {d["id"] for d in sample.donors},
             per_kind_cap=per_kind_cap,
             seed=seed,
+            originals={p["id"]: p for p in sample.patients},
         )
     near_misses = near_result.near_misses if near_result else []
     records = build_test_case_records(

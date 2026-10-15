@@ -86,6 +86,92 @@ def is_possible_same_person(a: Patient, b: Patient) -> bool:
     return key_a is not None and key_a == key_b
 
 
+def _edit_distance(a: str, b: str, limit: int) -> int:
+    """Levenshtein distance, returning limit + 1 once it is known to exceed limit.
+
+    Local copy: hard_negatives imports this module, so importing its helper here
+    would be a cycle."""
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            current[j] = min(
+                previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb)
+            )
+        if min(current) > limit:
+            return limit + 1
+        previous = current
+    return previous[-1]
+
+
+def _month_day_swapped(dob_a: str, dob_b: str) -> bool:
+    """True if two ISO dates share a year and swap month and day (1980-03-11 / 1980-11-03)."""
+    if len(dob_a) != 10 or len(dob_b) != 10 or dob_a[:4] != dob_b[:4]:
+        return False
+    return (
+        dob_a[4] == dob_b[4] == "-"
+        and dob_a[7] == dob_b[7] == "-"
+        and dob_a[5:7] == dob_b[8:10]
+        and dob_a[8:10] == dob_b[5:7]
+    )
+
+
+def _dobs_close(a: Patient, b: Patient) -> bool:
+    """Birth dates within edit distance 1, or a month/day swap."""
+    dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
+    if not (dob_a and dob_b):
+        return False
+    return _edit_distance(dob_a, dob_b, 1) <= 1 or _month_day_swapped(dob_a, dob_b)
+
+
+def _phone_set(patient: Patient) -> Set[str]:
+    found = {
+        normalize_phone(t.get("value"))
+        for t in patient.get("telecom") or []
+        if t.get("system") == "phone"
+    }
+    return {p for p in found if len(p) == 10}
+
+
+def is_probable_duplicate(a: Patient, b: Patient) -> bool:
+    """True if a and b are very likely one person recorded twice with a typo.
+
+    Looser than is_possible_same_person (which is exact-match): ANY of
+      - both have a real SSN and the SSNs are within edit distance 1;
+      - they share a normalized 10-digit phone and the birth dates are close;
+      - normalized first+family names are within edit distance 1 and the birth
+        dates are close.
+    "Close" means edit distance <= 1 on the ISO date or a month/day swap. A name
+    match with a clearly different birth date is a legitimate hard negative and
+    is not flagged."""
+    ssn_a, ssn_b = ssn_of(a), ssn_of(b)
+    if ssn_a is not None and ssn_b is not None and _edit_distance(ssn_a, ssn_b, 1) <= 1:
+        return True
+    if not _dobs_close(a, b):
+        return False
+    if _phone_set(a) & _phone_set(b):
+        return True
+    key_a, key_b = identity_key_names(a), identity_key_names(b)
+    return (
+        key_a is not None and key_b is not None and _edit_distance(key_a, key_b, 1) <= 1
+    )
+
+
+def identity_key_names(patient: Patient) -> str | None:
+    """Normalized 'first family', or None if either is missing."""
+    names = patient.get("name") or []
+    if not names:
+        return None
+    given = names[0].get("given") or []
+    first = normalize_token(given[0]) if given else ""
+    family = normalize_token(names[0].get("family"))
+    return f"{first} {family}" if first and family else None
+
+
 class SamePersonIndex:
     """O(1) lookup of every indexed patient id that could be the same person as
     a given record - the indexed equivalent of calling is_possible_same_person()
