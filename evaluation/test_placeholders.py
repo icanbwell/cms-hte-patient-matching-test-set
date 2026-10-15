@@ -200,6 +200,27 @@ class TestPlaceholderCollisions:
             == []
         )
 
+    def test_a_placeholder_birth_date_is_not_given_to_two_people_sharing_a_phone(
+        self,
+    ):
+        # Household members share a phone; a shared placeholder birth date on top
+        # would make them look like one person recorded twice.
+        people = [
+            _patient("a", "Smith", "Ana", ssn="892-39-5115", dob="1980-01-01"),
+            _patient("b", "Okafor", "Beatriz", ssn="601-22-7788", dob="1990-02-02"),
+        ]
+        assert (
+            construct_placeholder_collision_negatives(
+                people, "dob", rng=random.Random(0)
+            )
+            == []
+        )
+        # the same two people are still a valid collision on a field that does not
+        # combine with their shared phone into a duplicate
+        assert construct_placeholder_collision_negatives(
+            people, "ssn", rng=random.Random(0)
+        )
+
     def test_does_not_mutate_inputs_and_respects_max_pairs(self):
         people = self._people()
         snapshot = [dict(p) for p in people]

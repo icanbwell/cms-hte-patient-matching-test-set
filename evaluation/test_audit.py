@@ -9,6 +9,7 @@ import pytest
 from audit import (
     age_band_shares,
     all_yes_f1,
+    candidate_query_id_overlap,
     category_of,
     conformance_violations,
     decoy_no_overlap_rate,
@@ -16,20 +17,25 @@ from audit import (
     identical_positive_pairs,
     match_count_share,
     matches_first_rate,
+    minors_with_same_surname_adult_share,
     missing_hard_negative_categories,
     negative_share,
     pairwise_two_of_three_f1,
     people_per_address,
+    population_all_yes_f1,
     population_categories,
     population_pairs,
     positive_field_disagreement,
     probable_duplicate_negatives,
+    query_id_leak_f1,
+    query_id_leak_lift,
     same_person_negatives,
     shared_contact_rate,
     tier_parity_gap,
     twin_pairs_with_name_variants,
 )
 from fhir_conformance import export_ready
+from household_assignment import MAX_PARENT_AGE_GAP, MIN_PARENT_AGE_GAP
 from identity_guard import SSN_SYSTEM
 
 
@@ -531,6 +537,62 @@ class TestTwinNameVariants:
         assert twin_pairs_with_name_variants(rows) == []
 
 
+class TestMinorsWithSameSurnameAdultShare:
+    AS_OF = date(2026, 1, 1)
+
+    def _family(self, parent_birth_year, child_birth_year=2016, same_street=True):
+        parent = _patient("a", "Ana", "Rivera", dob=f"{parent_birth_year}-05-05")
+        child = _patient(
+            "c",
+            "Cleo",
+            "Rivera",
+            dob=f"{child_birth_year}-05-05",
+            street="1 Main St" if same_street else "9 Other Rd",
+        )
+        return [parent, child]
+
+    def test_a_child_with_a_same_surname_same_address_parent_age_adult_counts(self):
+        assert minors_with_same_surname_adult_share(self._family(1990), self.AS_OF) == 1
+
+    @pytest.mark.parametrize(
+        "parent_birth_year", [2005, 1950]
+    )  # 4 years older / 66 years older than a 2016 child
+    def test_an_adult_outside_18_to_50_years_older_does_not_count(
+        self, parent_birth_year
+    ):
+        share = minors_with_same_surname_adult_share(
+            self._family(parent_birth_year), self.AS_OF
+        )
+        assert share == 0
+
+    def test_a_different_address_or_surname_does_not_count(self):
+        assert (
+            minors_with_same_surname_adult_share(
+                self._family(1990, same_street=False), self.AS_OF
+            )
+            == 0
+        )
+        people = self._family(1990)
+        people[0]["name"][0]["family"] = "Lopez"
+        assert minors_with_same_surname_adult_share(people, self.AS_OF) == 0
+
+    def test_children_without_a_home_are_counted_as_not_housed(self):
+        people = self._family(1990)
+        people.append(_patient("d", "Dan", "Okafor", dob="2015-01-01"))
+        assert minors_with_same_surname_adult_share(people, self.AS_OF) == 0.5
+
+    def test_no_children_is_nan_and_the_window_matches_the_generators(self):
+        assert math.isnan(
+            minors_with_same_surname_adult_share(self._family(1990)[:1], self.AS_OF)
+        )
+        from audit import _PARENT_MAX_GAP, _PARENT_MIN_GAP
+
+        assert (_PARENT_MIN_GAP, _PARENT_MAX_GAP) == (
+            MIN_PARENT_AGE_GAP,
+            MAX_PARENT_AGE_GAP,
+        )
+
+
 class TestIdenticalPositivePairs:
     def test_flags_byte_identical_positives_in_both_tiers(self):
         a = _patient("a")
@@ -575,6 +637,55 @@ class TestIdEqualityF1:
         a, b = _patient("a"), _patient("b")
         rows = [_row("p", a, _patient("c"), True), _row("n", a, b, False)]
         assert id_equality_f1(rows) == 0.0
+
+
+def _pop_row(query_id, candidate_ids, expected):
+    return {
+        "query_id": query_id,
+        "query": _patient(query_id),
+        "candidate_ids": list(candidate_ids),
+        "expected_match_ids": list(expected),
+        "rationale": "population/fuzzy_variant",
+    }
+
+
+class TestQueryIdLeak:
+    """The leak: a pool's non-matching candidates were other sampled patients, so
+    their ids were also query ids, while true matches never were."""
+
+    def _leaky(self):
+        # q1's pool: m1 (true match, not a query id) and q2, q3 (queries, so decoys)
+        return [
+            _pop_row("q1", ["m1", "q2", "q3"], ["m1"]),
+            _pop_row("q2", ["m2", "q1", "q3"], ["m2"]),
+            _pop_row("q3", ["m3", "q1", "q2"], ["m3"]),
+        ]
+
+    def _namespaced(self):
+        return [
+            _pop_row("Q1", ["m1", "c2", "c3"], ["m1"]),
+            _pop_row("Q2", ["m2", "c1", "c3"], ["m2"]),
+            _pop_row("Q3", ["m3", "c1", "c2"], ["m3"]),
+        ]
+
+    def test_the_overlap_rule_is_perfect_on_shared_ids(self):
+        rows = self._leaky()
+        assert query_id_leak_f1(rows) == 1.0
+        assert query_id_leak_lift(rows) > 0.4
+
+    def test_it_falls_to_the_all_yes_level_when_namespaced(self):
+        rows = self._namespaced()
+        assert query_id_leak_f1(rows) == population_all_yes_f1(rows)
+        assert query_id_leak_lift(rows) == 0
+        assert population_all_yes_f1(rows) == pytest.approx(0.5)  # p = 1/3
+
+    def test_overlap_lists_ids_that_are_both_a_query_and_a_candidate(self):
+        assert candidate_query_id_overlap(self._leaky(), {}) == ["q1", "q2", "q3"]
+        assert candidate_query_id_overlap(self._namespaced(), {}) == []
+
+    def test_overlap_also_checks_the_candidates_file(self):
+        rows = self._namespaced()
+        assert candidate_query_id_overlap(rows, {"Q1": _patient("Q1")}) == ["Q1"]
 
 
 class TestMatchCountShare:

@@ -47,6 +47,10 @@ PLACEHOLDER_RATES: Dict[str, float] = {
     # remaining queries keep every match. Real shares are unknown (BAI-1159).
     "query_no_match": 0.10,
     "query_single_match": 0.15,
+    # Realistic set (family_adults.py): target share of children who live with a
+    # same-surname adult. Unsourced (Open Question 6); a surname match is only a
+    # proxy for a parent. The sample allows far fewer without added adults.
+    "minors_with_same_surname_adult": 0.70,
 }
 
 DEFAULT_SOURCE = (

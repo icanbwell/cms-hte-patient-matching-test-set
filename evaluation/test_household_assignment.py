@@ -243,7 +243,7 @@ class TestAssignHouseholds:
                 ] == anchor_phone
 
     def test_prefers_a_same_surname_parent_for_a_child(self):
-        adults = [_person(i, 1960, FAMILIES[i % 8]) for i in range(40)]
+        adults = [_person(i, 1985, FAMILIES[i % 8]) for i in range(40)]
         minors = [_person(100 + i, 2015, FAMILIES[i % 8]) for i in range(16)]
         result = assign_households(adults + minors, seed=0, as_of=AS_OF)
         assert result.report.n_same_surname_minors > 0
@@ -258,6 +258,22 @@ class TestAssignHouseholds:
                     assert (age_of(people[household[0]], AS_OF) or 0) - (
                         age_of(people[pid], AS_OF) or 0
                     ) >= 18
+
+    def test_a_same_surname_adult_over_50_years_older_is_not_a_parent(self):
+        adults = [_person(i, 1950, FAMILIES[i % 8]) for i in range(40)]  # age 76
+        minors = [_person(100 + i, 2015, FAMILIES[i % 8]) for i in range(16)]  # 11
+        result = assign_households(adults + minors, seed=0, as_of=AS_OF)
+        assert result.report.n_same_surname_minors == 0
+        assert result.report.n_same_surname_possible == 0
+
+    def test_a_same_surname_adult_without_an_address_is_not_a_parent_anchor(self):
+        adults = [_person(i, 1985, FAMILIES[i % 8]) for i in range(40)]
+        for adult in adults:
+            del adult["address"]
+        minors = [_person(100 + i, 2015, FAMILIES[i % 8]) for i in range(16)]
+        result = assign_households(adults + minors, seed=0, as_of=AS_OF)
+        assert result.report.n_same_surname_minors == 0
+        assert result.report.n_same_surname_possible == 0
 
     def test_deterministic_for_a_seed_and_not_mutating_the_input(self):
         original = _population()

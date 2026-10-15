@@ -115,6 +115,20 @@ def _family(patient: Patient) -> str:
     return normalize_token(names[0].get("family")) if names else ""
 
 
+def _looks_alike_with_placeholder(a: Patient, b: Patient, field: str) -> bool:
+    """True if giving both records any catalog placeholder for `field` would make
+    them look like one person (a placeholder birth date plus a phone they already
+    share, e.g. as household members). Checked per catalog value, so the seeded
+    choice of value is not consumed here."""
+    return any(
+        looks_like_same_person(
+            apply_placeholder(a, field, value, create_missing=True),
+            apply_placeholder(b, field, value, create_missing=True),
+        )
+        for value in CATALOG[field]
+    )
+
+
 def construct_placeholder_collision_negatives(
     patients: Iterable[Patient],
     field: str,
@@ -142,6 +156,7 @@ def construct_placeholder_collision_negatives(
                 and _family(patient)
                 and _family(other) != _family(patient)
                 and not looks_like_same_person(other, patient)
+                and not _looks_alike_with_placeholder(other, patient, field)
             ),
             None,
         )
