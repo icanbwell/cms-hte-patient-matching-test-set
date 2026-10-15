@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "3f2c184c4006fe4f67db67d6ae9621ef0ae95ce50ee178981749acb7f31f0188",
+  "generator_fingerprint": "6ff0349f4e5ca479d2de085969fb8b7389c30a796019d02ce6ad4d167cf1b594",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -69,9 +69,9 @@
     "pairwise_per_kind_cap": 3,
     "yield_by_kind": {
       "twin": {
-        "queries": 41,
-        "kept": 44,
-        "seen": 44
+        "queries": 5,
+        "kept": 6,
+        "seen": 6
       },
       "dob_zip": {
         "queries": 449,
@@ -115,8 +115,8 @@
       }
     }
   },
-  "negative_share": 0.5578823375433545,
+  "negative_share": 0.5573319355261434,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 30562,
+  "n_labeled_cases": 30524,
   "n_population_queries": 2000
 }

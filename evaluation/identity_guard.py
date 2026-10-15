@@ -164,11 +164,29 @@ def identity_key_names(patient: Patient) -> str | None:
 TWIN_MIN_GIVEN_NAME_DISTANCE = 3
 
 
+def _street_zip(patient: Patient) -> str:
+    addresses = patient.get("address") or []
+    if not addresses:
+        return ""
+    lines = addresses[0].get("line") or []
+    street = normalize_token(lines[0]) if lines else ""
+    zip_code = normalize_token(addresses[0].get("postalCode"))
+    return f"{street}|{zip_code}" if street and zip_code else ""
+
+
+def _shares_phone_or_address(a: Patient, b: Patient) -> bool:
+    if phone_set(a) & phone_set(b):
+        return True
+    address = _street_zip(a)
+    return bool(address) and address == _street_zip(b)
+
+
 def is_twin_pair(a: Patient, b: Patient) -> bool:
     """True if a and b look like twins (or other same-day siblings): the same
-    family name and the same birth date, with first names far enough apart that
-    one cannot be a typo of the other, and no SSN that matches or is one edit
-    away. Such a pair legitimately shares a phone and an address, which
+    family name and the same birth date, first names far enough apart that one
+    cannot be a typo of the other, no SSN that matches or is one edit away, and a
+    shared phone or address (what makes them siblings and not a coincidence on a
+    common surname). Such a pair legitimately shares a phone, which
     `is_probable_duplicate` would otherwise reject as one person recorded twice."""
     dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
     names_a, names_b = a.get("name") or [], b.get("name") or []
@@ -188,11 +206,13 @@ def is_twin_pair(a: Patient, b: Patient) -> bool:
     ):
         return False
     ssn_a, ssn_b = ssn_of(a), ssn_of(b)
-    return not (
+    if (
         ssn_a is not None
         and ssn_b is not None
         and levenshtein_distance(ssn_a, ssn_b, 1) <= 1
-    )
+    ):
+        return False
+    return _shares_phone_or_address(a, b)
 
 
 def looks_like_same_person(a: Patient, b: Patient) -> bool:

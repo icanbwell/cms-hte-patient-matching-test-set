@@ -161,9 +161,9 @@ def _dob_close(a: str, b: str, limit: int, allow_swap: bool) -> bool:
 
 
 def _audit_twins(a: Patient, b: Patient) -> bool:
-    """Same family name and birth date but first names at least 3 edits apart and
-    no near-identical SSN: legitimately shares a phone or address (a twin), so it
-    is not one person recorded twice. Independent of the generator's version."""
+    """Same family name and birth date, first names at least 3 edits apart, no
+    near-identical SSN, and a shared phone or address: a twin or same-day sibling,
+    so not one person recorded twice. Independent of the generator's version."""
     names_a, names_b = a.get("name") or [], b.get("name") or []
     dob = str(a.get("birthDate") or "")
     if not (dob and dob == str(b.get("birthDate") or "") and names_a and names_b):
@@ -177,7 +177,24 @@ def _audit_twins(a: Patient, b: Patient) -> bool:
     if not (first_a and first_b) or _levenshtein(first_a, first_b, 2) <= 2:
         return False
     ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
-    return not (ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1)
+    if ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1:
+        return False
+    return bool(_audit_phones(a) & _audit_phones(b)) or _audit_same_address(a, b)
+
+
+def _audit_address(p: Patient) -> str:
+    addresses = p.get("address") or []
+    if not addresses:
+        return ""
+    lines = addresses[0].get("line") or []
+    street = normalize_token(lines[0]) if lines else ""
+    zip_code = normalize_token(addresses[0].get("postalCode"))
+    return f"{street}|{zip_code}" if street and zip_code else ""
+
+
+def _audit_same_address(a: Patient, b: Patient) -> bool:
+    address = _audit_address(a)
+    return bool(address) and address == _audit_address(b)
 
 
 def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
