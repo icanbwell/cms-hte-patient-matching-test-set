@@ -124,7 +124,7 @@ reality. Always two genuinely distinct ONC-derived records instead:
   with birth years ≥15 years apart (a parent/child pattern). ONC addresses are near-unique, so
   in the committed sample all household pairs are *constructed* (the mined same-street path yields
   none here; it remains for inputs with co-resident records): an ONC-derived younger same-surname record
-  is given the elder's real address (identities unchanged, tagged `address_source=constructed` in
+  is given the elder's ONC-sourced address (identities unchanged, tagged `address_source=constructed` in
   the rationale). Each constructed pair is its family's smallest-gap (≥15 years) eligible pair,
   i.e. the closest available approximation of a parent/child.
 - **Institutional negatives** (8 categories: shelter, nursing facility, correctional institution,
@@ -151,7 +151,7 @@ reality. Always two genuinely distinct ONC-derived records instead:
   no corroborating field.
 
 Every non-match pair is checked with `identity_guard.is_possible_same_person`; none may share a
-real SSN or first+family+DOB.
+SSN or first+family+DOB.
 
 ### Assembly, export, and reproducibility
 
@@ -289,12 +289,12 @@ One JSON object per line (JSON Lines / `.jsonl`):
 | `rationale` | Which category/provenance this case traces to (e.g. `fuzzy_variant/dob_day`, `hard_negative`, `special_population/shelter`, `normalization_edge_case/diacritic`) — per Design Principle 2, every case traces to a specific reason, not a black box. See `SYNTHETIC_DATA_COMPARISON.md`'s "Coverage against the Doc's §2 ground-truth pair categories" for what each `rationale` prefix means. |
 | `frequency` | A relative real-world-prevalence weight for this case's category — **currently `1.0` for every case** (uniform), meaning no real-world weighting has been applied yet. See "Frequency and real-world representativeness" below before using this field or the file's raw per-category case counts to infer anything about real-world prevalence. |
 
-**Data provenance, read before trusting a result:** every `source`/`target` pair here is either a
-real ONC 2017 Patient Matching Algorithm Challenge record (a public, synthetic, non-PHI dataset —
+**Data provenance, read before trusting a result:** every `source`/`target` pair here is either an
+ONC-derived record from the 2017 Patient Matching Algorithm Challenge (a public, synthetic, non-PHI dataset —
 see `evaluation/fixtures/onc/`) or a same-record mutation of one. `special_population`
 institutional-category pairs additionally carry a **fabricated address**, deliberately marked as
 synthetic (`"SYNTHETIC TEST ADDRESS"` in the address line, a reserved `000xx` ZIP block) — see
-`evaluation/special_populations.py`'s module docstring for exactly which fields are real vs.
+`evaluation/special_populations.py`'s module docstring for exactly which fields are ONC-sourced vs.
 constructed, per case category.
 
 ## Population-query file format
@@ -327,17 +327,17 @@ Two JSON Lines files, split so a candidate shared across multiple queries' pools
 | `expected_match_ids` | The subset of `candidate_ids` that are the same person as the query — **possibly empty** (a query with no known duplicate in the pool is a real, intentional case, not a bug). |
 | `rationale` | Which generation categories contributed to this pool. |
 
-A candidate id with no `::` suffix is a real, unmodified ONC record (either the query's own
+A candidate id with no `::` suffix is an unmodified ONC-derived record (either the query's own
 population co-member, used as a distractor, or a mined hard-negative/household decoy). A `::`
 suffix marks a generated variant (`::family_transpose`, `::diacritic`, `::punctuation`, one of
 `mutations.MUTATIONS`' keys) or a constructed special-population candidate
-(`::household::constructed`, a same-surname record given its elder's real address, or
+(`::household::constructed`, a same-surname record given its elder's ONC-sourced address, or
 `::institutional::<type>`, whose `address` is a fabricated, unambiguously-synthetic institutional
-address per `special_populations.py` — the underlying identity is still a real, distinct ONC
+address per `special_populations.py` — the underlying identity is still an ONC-derived, distinct
 record). **Known simplification, read before treating this tier as equivalent to
 `labeled_pairs.py`'s institutional pairs:** `special_populations.construct_institutional_negatives()`
 fabricates the same address on *both* sides of a pair; this tier only injects the fabricated side
-into the decoy pool, so the query here keeps its real address. See `population_cases.py`'s module
+into the decoy pool, so the query here keeps its ONC-sourced address. See `population_cases.py`'s module
 docstring for why.
 
 ## Frequency and real-world representativeness
@@ -580,7 +580,7 @@ other true-match/hard-negative/special-population category is present at full sc
   exclusion, register an `ExclusionRule` in `DEFAULT_RULES` (steps in the module docstring).
 
 - **BAI-1067** — `sample_labeled_pairs.jsonl` negatives reduced from 446 to 282 rows: 164 non-match
-  pairs that could be the same person (shared real SSN, or identical first name + family + DOB) were
+  pairs that could be the same person (shared SSN, or identical first name + family + DOB) were
   removed. `::sibling` case ids changed, and a new `::household_constructed` id class was added
   (an ONC-derived younger record given an ONC-derived elder's address; the pair-tier target keeps the younger
   record's id). Positives are unchanged. `population_*.jsonl` no longer contains such pairs but does
@@ -672,10 +672,10 @@ match is a label defect. Run the new categories through the reference algorithm 
 such rows.
 
 Highest label-defect risk: subtypes whose only differing identifying field is a name field. Appended
-row counts, and how many of them have no shared real SSN between source and target (placeholder SSNs
+row counts, and how many of them have no shared SSN between source and target (placeholder SSNs
 do not count), so no SSN-based rule can match them:
 
-| Subtype | Rows | No shared real SSN |
+| Subtype | Rows | No shared SSN |
 |---|---|---|
 | `placeholder/given` | 78 | 16 |
 | `surname_change/no_history` | 96 | 20 |

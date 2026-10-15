@@ -395,7 +395,7 @@ def marriage_variant(patient: Patient, donor: Patient) -> Patient:
     surname proxy, since ONC has no dedicated maiden-name column) and its
     address replaced by `donor`'s address (modeling a marriage-driven move -
     ONC carries no address history for one person to draw a second address
-    from, so an unrelated real ONC record's address stands in for it).
+    from, so an unrelated ONC-derived record's address stands in for it).
     Represents the "surname + address changed together" scenario Luke Breyer
     (Epic) raised in the 2026-09-22 workgroup meeting. No-op on the name
     change if `patient` has fewer than two `name` entries."""
@@ -739,7 +739,7 @@ Add to `evaluation/special_populations.py`, immediately after
 def mine_sibling_negatives(
     patients: Iterable[Patient], *, max_age_gap_years: int = 3
 ) -> List[HardNegativeCandidate]:
-    """Mine real ONC pairs sharing a postal code AND family name, with birth
+    """Mine ONC-derived pairs sharing a postal code AND family name, with birth
     years close enough together to represent siblings (or twins, which
     ONC's per-row structure cannot distinguish from close-in-age siblings
     without a family-relationship column) - the complementary near-DOB case
