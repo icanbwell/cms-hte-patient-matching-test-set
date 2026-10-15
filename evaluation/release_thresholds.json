@@ -5,6 +5,8 @@
   "probable_duplicate_negatives": {"max": 0, "status": "tracked"},
   "twin_pairs_with_name_variants": {"max": 0, "status": "enforced"},
   "id_equality_f1": {"max": 0.1, "status": "enforced"},
+  "candidate_query_id_overlap": {"max": 0, "status": "enforced"},
+  "query_id_leak_lift": {"max": 0.01, "status": "enforced"},
   "matches_first_rate": {"max": 0.05, "status": "enforced"},
   "zero_match_query_share": {"min": 0.05, "status": "enforced"},
   "single_match_query_share": {"min": 0.05, "status": "enforced"},

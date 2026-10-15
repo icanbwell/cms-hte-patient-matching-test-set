@@ -395,6 +395,54 @@ def id_equality_f1(pair_rows: Sequence[Row]) -> float:
     return 2 * tp / (2 * tp + fp + fn) if tp else 0.0
 
 
+def candidate_query_id_overlap(
+    query_rows: Sequence[Row], candidates: Dict[str, Patient]
+) -> List[str]:
+    """Ids that appear both as a population query id and as a candidate id (in a
+    pool or in the candidates file). Queries and candidates are hashed in separate
+    namespaces (release_rows.py), so this must be empty: a candidate that is also
+    a query is, by construction, another sampled patient and so a non-match, and
+    the shared id would hand that label to any matcher that reads ids."""
+    query_ids = {q["query_id"] for q in query_rows}
+    pooled = {c for q in query_rows for c in q["candidate_ids"]}
+    return sorted(query_ids & (pooled | set(candidates)))
+
+
+def _f1_of_rule(
+    query_rows: Sequence[Row], is_match: Callable[[Row, str], bool]
+) -> float:
+    tp = fp = fn = 0
+    for q in query_rows:
+        expected = set(q["expected_match_ids"])
+        for candidate_id in q["candidate_ids"]:
+            predicted, actual = is_match(q, candidate_id), candidate_id in expected
+            tp += predicted and actual
+            fp += predicted and not actual
+            fn += actual and not predicted
+    return 2 * tp / (2 * tp + fp + fn) if tp else 0.0
+
+
+def query_id_leak_f1(query_rows: Sequence[Row]) -> float:
+    """F1 of the rule "a candidate whose id is also a query_id is a non-match,
+    anything else is a match" over every (query, pool candidate) pair: the
+    label-leak measure that scored 0.992 on the curated population tier before
+    queries and candidates were hashed in separate namespaces. With no shared ids
+    the rule predicts "match" for everything, i.e. all-yes F1 (the chance level)."""
+    query_ids = {q["query_id"] for q in query_rows}
+    return _f1_of_rule(query_rows, lambda _q, c: c not in query_ids)
+
+
+def population_all_yes_f1(query_rows: Sequence[Row]) -> float:
+    """F1 of answering "match" for every (query, pool candidate) pair."""
+    return _f1_of_rule(query_rows, lambda _q, _c: True)
+
+
+def query_id_leak_lift(query_rows: Sequence[Row]) -> float:
+    """How much better than all-yes the id-overlap rule does (`query_id_leak_f1`
+    minus `population_all_yes_f1`): 0 means ids carry no label."""
+    return query_id_leak_f1(query_rows) - population_all_yes_f1(query_rows)
+
+
 def _same_id(row: Row) -> bool:
     return row["source"].get("id") == row["target"].get("id")
 
@@ -749,6 +797,12 @@ def build_report(
             pair_rows, query_rows, candidates
         ),
         "id_equality_f1": id_equality_f1(pair_rows),
+        "candidate_query_id_overlap": candidate_query_id_overlap(
+            query_rows, candidates
+        ),
+        "query_id_leak_f1": query_id_leak_f1(query_rows),
+        "population_all_yes_f1": population_all_yes_f1(query_rows),
+        "query_id_leak_lift": query_id_leak_lift(query_rows),
         "matches_first_rate": matches_first_rate(query_rows),
         "zero_match_query_share": match_count_share(query_rows, 0),
         "single_match_query_share": match_count_share(query_rows, 1),

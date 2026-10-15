@@ -264,13 +264,16 @@ near-misses. Pairs can express neither."*
 ## The file format
 
 **Identifiers carry no label.** Every `Patient.id`, population candidate `id` and population
-`query_id` is an opaque hash (`release_rows.py`), and each query's `candidate_ids` are shuffled. A
-source's id is the hash of its ONC id (the same across the cases that share the source); a target's id
+`query_id` is an opaque hash (`release_rows.py`), and each query's `candidate_ids` are shuffled. Query ids and
+candidate ids are hashed in separate namespaces (`query:<raw id>` and `candidate:<raw id>`), so a record that
+is both a query and a decoy in another query's pool has two different ids, and no candidate id ever equals
+any query id. A source's id is the hash of its ONC id (the same across the cases that share the source); a target's id
 is the hash of its case, so a match and a non-match are indistinguishable by id. The pairwise `case_id`
 (`<ONC id>::<variant>`) is provenance next to `expected_match`, not model input: do not feed it to an
 algorithm. Model input is only `source` and `target` (pairwise tier) and `query` plus each candidate's
 `patient` (population tier); `case_id`, `rationale`, `frequency`, `expected_match` and `expected_match_ids`
-are metadata and answers. `audit.id_equality_f1` and `audit.matches_first_rate` (both enforced) gate this.
+are metadata and answers. `audit.id_equality_f1`, `audit.matches_first_rate`, `audit.candidate_query_id_overlap` (max 0) and
+`audit.query_id_leak_lift` (max 0.01) (all enforced) gate this.
 
 One JSON object per line (JSON Lines / `.jsonl`):
 
@@ -558,6 +561,7 @@ other true-match/hard-negative/special-population category is present at full sc
 - Population pools now carry up to 10 ONC-derived look-alikes per kind per query (was 3; 8 in the first version of this change), so `decoy_no_overlap_rate` falls from 0.7147 to 0.4237 (it is 0.4996 with a cap of 8 once BAI-1159 thins some queries' matches and BAI-1160 changes the sample, too close to the 0.5 gate) and is enforced (BAI-1162). The pairwise tier keeps the cap of 3 per kind, but its rows still changed: `realistic_labeled_pairs.jsonl` (measured on the BAI-1162 change alone, before later changes in this stack) had the same 30,538 rows and the same share of non-matches, yet 8,677 of its non-match rows (28.4% of the file; no positive changed) were replaced by different look-alike decoys, because the near-miss search now keeps a seeded sample of each kind rather than the first 3 it found (measured by diffing `case_id` sets before and after: 8,677 ids gone, 8,677 new, 21,861 unchanged). Re-pin pairwise case ids against version 2. `realistic_population_candidates.jsonl` grows from 14.4 MB to 24.3 MB.
 - The population top-up now excludes probable typo duplicates of the query, not only exact same-person matches (BAI-1164). The remaining known gap is the heuristic itself: a duplicate with no SSN on either side and two or more edits in both name and birth date still passes.
 - Dataset version 2 applies to every file in this directory, curated (`sample_labeled_pairs.jsonl`, `population_*.jsonl`) and realistic (`realistic_*`); only `realistic_manifest.json` carries the number. It is the data-format version and is independent of the package version in `pyproject.toml` and of git tags; the realistic files are the v1 release candidate of the benchmark.
+- Label leak between queries and candidates (BAI-1160 review): queries and candidates were hashed from the same raw ONC id, so a pool's non-matching candidates (other sampled patients) carried the same id as their own query row while true-match candidates (`<query_id>::<variant>`) did not. The rule "a candidate whose id is also a query_id is a non-match, otherwise a match" scored F1 0.9924 on the curated population tier (`population_queries.jsonl`, 80,000 pool pairs, 2,000 shared ids, against 0.2390 for always answering "match") and 0.3623 on the realistic tier (0.2263 for all-yes), with no patient data. Queries and candidates are now hashed in separate namespaces (`release_rows.QUERY_NAMESPACE`, `CANDIDATE_NAMESPACE`), so after regenerating both tiers the same rule predicts "match" for every pair and scores exactly the all-yes F1 (0.2390 curated, 0.2263 realistic; 0 shared ids). `audit.candidate_query_id_overlap` (max 0) and `audit.query_id_leak_lift` (the rule's F1 minus all-yes F1, max 0.01) are enforced for both sets. Every `query_id`, candidate `id`, `candidate_ids` entry and `expected_match_ids` entry in `population_*.jsonl` and `realistic_population_*.jsonl` changed; the pairwise files and all patient content are unchanged. Re-pin population ids against this version of dataset version 2.
 - Ids are opaque and pools are shuffled (see "The file format"). Before this, every true match had `source.id == target.id` and every population pool listed its true matches first, so either alone scored F1 1.0 (found in adversarial review of this PR; the same pattern existed in version 1 of the data).
 - Case ids changed for many rows of the curated sample: of the 14,201 ids on `main`, 3,435 are gone and 3,529 are new (10,766 are unchanged). Cause: variants were drawn from one RNG shared by all patients, so the loader's changes to which fields exist shifted every later patient's draws. Variants now come from a per-patient RNG (`<seed>:variants:<ONC id>`), so a patient's case ids no longer depend on any other patient and the same id names the same variant in both tiers. Re-pin by id only against version 2 or later.
 - `ssn_dropped`, `diacritic` and `punctuation` no longer emit a positive whose source and target are identical (415 realistic and 469 curated `ssn_dropped` rows before the fix); a phone-churn "replaced" target keeps the replaced number's `rank`. `audit.identical_positive_pairs` is enforced at 0.
@@ -604,7 +608,7 @@ other true-match/hard-negative/special-population category is present at full sc
 (label validity, tier parity, positive phone drift, naive-baseline F1) for the committed set. A metric
 marked `"tracked"` is reported but does not fail; `"enforced"` fails CI. Enforced for the committed
 set: `same_person_negatives` (max 0) and `tier_parity_gap` (max 0; `placeholder_collision_negative` is
-exempt because it is pairwise-only by design). Tracked: `positive_phone_drift_rate` (min 0.05; the floor
+exempt because it is pairwise-only by design); the id-leak checks `id_equality_f1` (max 0.1), `candidate_query_id_overlap` (max 0) and `query_id_leak_lift` (max 0.01) are enforced for both sets. Tracked: `positive_phone_drift_rate` (min 0.05; the floor
 is **provisional** and is to be re-set when the workgroup supplies measured rates),
 `best_single_field_f1` (max 0.9; the committed set reports 0.9486, tracked-fail) and
 `multi_field_margin` (min 0.05; 0.035, tracked-fail). `make audit-realistic` additionally enforces

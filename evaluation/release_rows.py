@@ -7,6 +7,15 @@ true-match candidates were named `<query_id>::<mutation>`. The raw ONC id stays
 in the pairwise `case_id`, which sits next to `expected_match` and is
 provenance, not model input.
 
+Queries and candidates are hashed in separate namespaces (`QUERY_NAMESPACE`,
+`CANDIDATE_NAMESPACE`). Before, both hashed the raw ONC id, so a pool's
+non-matching candidates (other sampled patients) carried the same id as that
+patient's own query row, while true-match candidates (`<query_id>::<mutation>`)
+did not: "a candidate id that is also a query_id is a non-match" scored F1
+0.992 on the curated population tier with no patient data. No candidate id now
+equals any query id, even when it is the same ONC record; `audit.py` enforces it
+(`candidate_query_id_overlap`).
+
 The source resource's id is the hash of the source patient's own id (stable
 across the cases that share it, which `audit.unique_source_patients` relies
 on); a target's id is the hash of its case, so true and non-match targets are
@@ -28,10 +37,16 @@ Row = Dict[str, Any]
 
 _ID_HEX_LENGTH = 16
 
+# Population ids are salted by role so a candidate never shares an id with a
+# query. The pairwise tier hashes without a namespace (it has no queries).
+QUERY_NAMESPACE = "query"
+CANDIDATE_NAMESPACE = "candidate"
 
-def opaque_id(raw: str) -> str:
-    """A deterministic, label-free id for `raw`."""
-    return hashlib.sha256(raw.encode()).hexdigest()[:_ID_HEX_LENGTH]
+
+def opaque_id(raw: str, namespace: str = "") -> str:
+    """A deterministic, label-free id for `raw`, in `namespace` when given."""
+    salted = f"{namespace}:{raw}" if namespace else raw
+    return hashlib.sha256(salted.encode()).hexdigest()[:_ID_HEX_LENGTH]
 
 
 def exported(patient: Patient, new_id: str) -> Patient:
@@ -54,18 +69,23 @@ def pair_row(record: LabeledCaseRecord) -> Row:
 
 def candidate_row(candidate_id: str, patient: Patient) -> Row:
     """One population candidate row; its id and the patient's id are the same
-    opaque hash of `candidate_id`."""
-    opaque = opaque_id(candidate_id)
+    opaque hash of `candidate_id` in the candidate namespace."""
+    opaque = opaque_id(candidate_id, CANDIDATE_NAMESPACE)
     return {"id": opaque, "patient": exported(patient, opaque)}
 
 
 def query_row(case: PopulationCase) -> Row:
-    """One population query row with the query, candidate and expected-match ids
-    all hashed the same way as `candidate_row`."""
+    """One population query row: the query id is hashed in the query namespace;
+    the candidate and expected-match ids are hashed as `candidate_row` hashes them."""
+    query_id = opaque_id(case.query_id, QUERY_NAMESPACE)
     return {
-        "query_id": opaque_id(case.query_id),
-        "query": exported(case.query_patient, opaque_id(case.query_id)),
-        "candidate_ids": [opaque_id(c) for c in case.candidate_ids],
-        "expected_match_ids": [opaque_id(c) for c in case.expected_match_ids],
+        "query_id": query_id,
+        "query": exported(case.query_patient, query_id),
+        "candidate_ids": [
+            opaque_id(c, CANDIDATE_NAMESPACE) for c in case.candidate_ids
+        ],
+        "expected_match_ids": [
+            opaque_id(c, CANDIDATE_NAMESPACE) for c in case.expected_match_ids
+        ],
         "rationale": case.rationale,
     }
