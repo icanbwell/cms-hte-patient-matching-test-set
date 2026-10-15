@@ -38,6 +38,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Sequence
 
+from dob_shift import shift_birth_date
 from drift_profile import DriftProfile
 from export_inputs import DEFAULT_DONOR_SIZE, iter_shard_batches, load_profile
 from export_population_dataset import write_population_dataset
@@ -61,7 +62,9 @@ from population_targets import (
     AGE_BAND_TARGETS,
     AGE_BANDS,
     AS_OF,
+    DOB_SHIFT_YEARS,
     MEAN_HOUSEHOLD_SIZE,
+    ONC_AS_OF,
     SINGLE_PERSON_HOUSEHOLD_SHARE,
     age_band_targets,
 )
@@ -137,23 +140,30 @@ def generate_realistic(
             "per_kind_cap and pairwise_per_kind_cap must be at least 1, got "
             f"{per_kind_cap} and {pairwise_per_kind_cap}"
         )
+    # Sampling runs on ONC's own vintage; every record the release uses (sample,
+    # donors and streamed decoys alike, so birth-date keys still line up) is then
+    # moved forward so the same people have the same ages as of AS_OF.
     sample = stratified_sample(batches, sample_size, donor_n=donor_size, seed=seed)
-    housed = assign_households(sample.patients, profile=profile, seed=seed)
+    sample_patients = [shift_birth_date(p, DOB_SHIFT_YEARS) for p in sample.patients]
+    donors = [shift_birth_date(d, DOB_SHIFT_YEARS) for d in sample.donors]
+    housed = assign_households(sample_patients, profile=profile, seed=seed)
     near_result = None
     if decoy_batches is not None:
         near_result = find_near_misses(
             housed.patients,
-            decoy_batches(),
-            exclude_ids={p["id"] for p in sample.patients}
-            | {d["id"] for d in sample.donors},
+            (
+                [shift_birth_date(p, DOB_SHIFT_YEARS) for p in batch]
+                for batch in decoy_batches()
+            ),
+            exclude_ids={p["id"] for p in sample_patients} | {d["id"] for d in donors},
             per_kind_cap=per_kind_cap,
             seed=seed,
-            originals={p["id"]: p for p in sample.patients},
+            originals={p["id"]: p for p in sample_patients},
         )
     near_misses = near_result.near_misses if near_result else []
     records = build_test_case_records(
         housed.patients,
-        donors=sample.donors,
+        donors=donors,
         profile=profile,
         households=housed.households,
         near_misses=limit_per_kind(near_misses, pairwise_per_kind_cap, seed=seed),
@@ -167,7 +177,7 @@ def generate_realistic(
         )
     population = build_population_dataset(
         housed.patients,
-        donors=sample.donors,
+        donors=donors,
         profile=profile,
         households=housed.households,
         near_misses=near_misses,
@@ -186,6 +196,8 @@ def generate_realistic(
         "sample_size": sample_size,
         "donor_size": donor_size,
         "as_of": AS_OF.isoformat(),
+        "onc_as_of": ONC_AS_OF.isoformat(),
+        "dob_shift_years": DOB_SHIFT_YEARS,
         "caveats": list(CAVEATS),
         "age_band_targets": age_band_targets(),
         "target_sources": _target_sources(),

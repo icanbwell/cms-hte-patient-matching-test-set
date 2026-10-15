@@ -46,7 +46,7 @@ The ONC 2017 Patient Matching Algorithm Challenge dataset: 9 alphabetically-shar
 | `SSN` | `identifier[]` | `system: http://hl7.org/fhir/sid/us-ssn`, `type` code `SS` |
 
 Values are copied through as-is — this repo's generation pipeline does not normalize
-case/punctuation. No empty strings, empty arrays or nulls are emitted: an empty ONC column is omitted. **Verified (session 12): every `EnterpriseID` across all 9 shards is unique** —
+case/punctuation (the one exception: birth dates in the `realistic_*` files are shifted forward 9 years, see the age vintage notes below). No empty strings, empty arrays or nulls are emitted: an empty ONC column is omitted. **Verified (session 12): every `EnterpriseID` across all 9 shards is unique** —
 this specific vendored copy has no native duplicate-person clusters. Every true-match cluster
 below is built by this repo's own generators, not looked up from ONC.
 
@@ -546,9 +546,10 @@ other true-match/hard-negative/special-population category is present at full sc
 ## Dataset changelog
 
 ### Dataset version 2 (BAI-1156)
+- Age vintage (BAI-1161): the realistic set is built at `AS_OF = 2026-01-01`. Sampling still runs on ONC's own 2017 ages, then every sampled, donor and streamed decoy birth date is moved forward 9 years (month and day kept, 29 February becomes 28 February in a non-leap year), so ages and age-band shares are unchanged and ONC's youngest records are now infants. `manifest.as_of` is 2026-01-01, with `onc_as_of` and `dob_shift_years` added. The realistic gate measures ages at `AS_OF`; the committed curated files are not shifted and are audited at `ONC_AS_OF` (2017-01-01). Birth dates in `realistic_*` differ from the curated files' for the same ONC record, and the workgroup has not yet confirmed this choice (session_16 Open Question 7).
 - Family structure and same-day siblings (BAI-1160): household anchors that can take a same-surname child are chosen first, raising same-surname minors from 46 to 89 of 430 (the sample allows 91; `households.n_same_surname_possible` reports it). New `twin_like_negative` category (44 pairwise rows, 41 population queries): same surname and birth date, first names 3 or more edits apart, no near-identical SSN. These pairs may share a phone and address; they bypass the typo-duplicate guard and the audit's `probable_duplicate_negatives` detector by an explicit twin test. It is not a literal-twin case (see "Literal twins" above). `twin_like_negative` is a required category in the realistic gate.
 - Population queries now include searches with no true match and with exactly one (BAI-1159): `query_no_match` (0.10) and `query_single_match` (0.15) in `drift_profile.py` are placeholder shares, not measured. In the committed files 9% (curated) and 10% (realistic) of queries have 0 expected matches and 14% and 17% have 1; the rest keep every match (2 to 11). A query's `rationale` lists only the match categories whose candidates remain in its pool. `audit.zero_match_query_share` and `single_match_query_share` (enforced, min 0.05) gate both tiers' populations.
-- Population pools now carry up to 8 real look-alikes per kind per query (was 3), so `decoy_no_overlap_rate` falls from 0.7147 to 0.4707 (0.4946 once BAI-1159 thins some queries' matches and tops those pools up with random candidates) and is enforced (BAI-1162). The pairwise tier keeps 3 per kind and is unchanged. `realistic_population_candidates.jsonl` grows from 14.4 MB to 23.7 MB.
+- Population pools now carry up to 8 real look-alikes per kind per query (was 3), so `decoy_no_overlap_rate` falls from 0.7147 to 0.4707 (0.4933 once BAI-1159 thins some queries' matches and tops those pools up with random candidates) and is enforced (BAI-1162). The pairwise tier keeps 3 per kind and is unchanged. `realistic_population_candidates.jsonl` grows from 14.4 MB to 23.7 MB.
 - The population top-up now excludes probable typo duplicates of the query, not only exact same-person matches (BAI-1164). The remaining known gap is the heuristic itself: a duplicate with no SSN on either side and two or more edits in both name and birth date still passes.
 - Dataset version 2 applies to every file in this directory, curated (`sample_labeled_pairs.jsonl`, `population_*.jsonl`) and realistic (`realistic_*`); only `realistic_manifest.json` carries the number. It is the data-format version and is independent of the package version in `pyproject.toml` and of git tags; the realistic files are the v1 release candidate of the benchmark.
 - Ids are opaque and pools are shuffled (see "The file format"). Before this, every true match had `source.id == target.id` and every population pool listed its true matches first, so either alone scored F1 1.0 (found in adversarial review of this PR; the same pattern existed in version 1 of the data).
@@ -559,7 +560,7 @@ other true-match/hard-negative/special-population category is present at full sc
 - `marriage_variant` is kept, with two changes: its surname now comes from the `patient-mothersMaidenName` extension (the loader no longer emits the mother's maiden name as a second `name` entry), and its donor address comes from the held-out donors instead of the next patient in the list, so a patient's variant no longer depends on its neighbour. New `surname_address_change` composes `surname_change` and `address_move` (rate placeholder 0.10, both tiers) as the better-founded surname-plus-address case.
 - Realistic set committed (`realistic_*`): real look-alike decoys from all shards in both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`; strata `found_by=near_miss`), pairwise tier targets 50% negatives and lands at `negative_share` 0.556 with no positives subsampled (`manifest.n_positives_dropped` = 0: the near-miss negatives alone exceeded the target), enforced gates for `negative_share`, `all_yes_f1`, required hard-negative categories and `probable_duplicate_negatives`. The near-miss finder rejects decoys that are probable typo duplicates of the query (`identity_guard.is_probable_duplicate`) or of its pre-household original.
 - Committed curated files regenerated in full at the default seed: `sample_labeled_pairs.jsonl` 14,295 rows (13,721 true matches, 574 non-matches; was 14,201 rows, 13,619 and 582), `population_queries.jsonl` 2,000 queries, `population_candidates.jsonl` 13,016 candidates (was 15,747 per the BAI-1061 entry). Consumers that pin row counts or case ids should re-pin.
-- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: the age vintage.
+- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address.
 
 - **BAI-1061 (regenerated cases)** - `sample_labeled_pairs.jsonl` and `population_*.jsonl` regenerated
   at the default seed with the generators as of the case-exclusion mechanism (rule 29 excluded in
@@ -703,16 +704,16 @@ committed as the v1 release candidate, with `make audit-realistic` run in CI) fr
 | Stage | What it does | Source of the target |
 |---|---|---|
 | Age-stratified sample | 2,000 patients with exact band counts: 21.5% under 18 (430, including infants and toddlers), 61.2% 18-64, 15.35% 65-84, 1.95% 85+ (39) | Census Vintage 2024 (under 18); ACL 2023 Profile of Older Americans citing Census 2022 (65+ 17.3%, 85+ 6.5 million) |
-| Households | sizes with 29% one-person and target mean 2.5 (realized 2.60 patients per household and 2.48 patients per address at seed 0); members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email (or have none when the anchor has none) and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
+| Households | sizes with 29% one-person and target mean 2.5 (realized 2.60 patients per household and 2.50 patients per address at seed 0); members share the anchor adult's real address; a share of members share the anchor's phone and email; children under 13 always take the anchor's phone and email (or have none when the anchor has none) and usually have no SSN | Census 2024 (one-person households); reviewer's "roughly 2.5 nationally" (mean; not independently verified against a Census table) |
 | Household non-matches | every pair of co-residents is a non-match in the pairwise file, and each co-resident is a decoy in the other's population pool (`household_member_negative/shared_contact` or `/same_address`) | n/a |
 
-Measured on the generated set (seed 0): exact age bands; 2.48 patients per address (committed: 1.03);
-60% of patients share a phone and 56% an email (committed: 6% and 32%); 769 households, 89 of the 430
+Measured on the generated set (seed 0): exact age bands; 2.50 patients per address (committed: 1.03);
+63% of patients share a phone and 54% an email (committed: 6% and 32%); 769 households, 89 of the 430
 children placed with a same-surname adult (91 is the most the sample allows: only 91 minors have a
 same-surname adult at least 18 years older). Naive-baseline F1 on the population tier (as reported by `audit.py`):
 committed set phone-only 0.954 (best single field), address-only 0.845, multi-field margin 0.030;
-realistic set phone-only 0.853 (best single field), address-only 0.538, DOB-only 0.495, multi-field margin
-0.125 (above the 0.05 floor). `best_single_field_f1` (max 0.9) is enforced for the realistic set.
+realistic set phone-only 0.849 (best single field), address-only 0.539, DOB-only 0.495, multi-field margin
+0.128 (above the 0.05 floor). `best_single_field_f1` (max 0.9) is enforced for the realistic set.
 
 The committed audit (`make audit`) now reports age shares as of 2017-01-01, so its JSON age bands read
 21.5% under 18 and 12.8% aged 85+ for the committed files; the earlier 8.0% / 21.1% figures are the same
@@ -742,21 +743,20 @@ What this is not:
 - **Mined negative categories.** A random 2,000-of-1M draw removes the alphabetical clustering the
   per-sample miners relied on, so hard negatives now come from `near_miss.py`, a streaming
   reverse-blocking finder over all shards (`found_by=near_miss`). Pairwise rows per category in the
-  realistic file: `hard_negative` 625, `name_collision_negative` 1,488, `sibling_negative` 530,
-  `near_miss_negative` 11,449 (committed set: 4, 70, 36, 0). The pairwise tier targets 50% negatives; the
+  realistic file: `hard_negative` 582, `name_collision_negative` 1,486, `sibling_negative` 509,
+  `near_miss_negative` 11,518, `twin_like_negative` 44 (committed set: 4, 70, 33, 0, 0). The pairwise tier targets 50% negatives; the
   near-miss negatives alone exceed that, so no positives are subsampled
-  (`manifest.n_positives_dropped` = 0 at the default seed) and `negative_share` is 0.556;
-  `all_yes_f1` is 0.6149 (committed: 0.980). A naive pairwise rule (match iff at least 2 of first name,
-  family name, birth date agree) scores F1 0.899 on the pairwise tier (`pairwise_two_of_three_f1`, tracked,
+  (`manifest.n_positives_dropped` = 0 at the default seed) and `negative_share` is 0.558;
+  `all_yes_f1` is 0.6132 (committed: 0.980). A naive pairwise rule (match iff at least 2 of first name,
+  family name, birth date agree) scores F1 0.898 on the pairwise tier (`pairwise_two_of_three_f1`, tracked,
   max 0.95).
-- **Harder decoys (BAI-1162).** `decoy_no_overlap_rate` is 0.4946 (enforced, max 0.5): 49% of
+- **Harder decoys (BAI-1162).** `decoy_no_overlap_rate` is 0.4933 (enforced, max 0.5): 49% of
   non-matching candidates in the realistic population pools share nothing with their query, down from
   0.7147. Population pools keep up to 8 look-alikes per kind per query (`DEFAULT_POOL_PER_KIND_CAP`;
-  30,664 near-miss decoys, about 15 per query), while the pairwise tier is limited to 3 per kind
+  30,792 near-miss decoys, about 15 per query), while the pairwise tier is limited to 3 per kind
   (`DEFAULT_PER_KIND_CAP`, applied by `near_miss.limit_per_kind`) so it is not flooded with negatives. The
   remaining pool slots are filled by random top-ups.
-  The age vintage is not addressed in this release.
-- Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
+- Age is measured as of `AS_OF = 2026-01-01` against Census targets from 2022 and 2024 (Open Question 5). ONC's data is from 2017, so every sampled, donor and decoy birth date in the realistic set is moved forward 9 years (`dob_shift.py`; `manifest.dob_shift_years`): the same people have the same ages as of 2026, ONC's youngest records become infants, and the 85+ skew (12.8% before sampling) is still removed by the stratified sample. Birth dates in the realistic files are therefore synthetic shifts of ONC's, and month and day are unchanged. The committed curated files are not shifted and are audited at ONC's own vintage (`ONC_AS_OF = 2017-01-01`).
 
 `make audit-realistic` evaluates `release_thresholds_realistic.json` against the generated files;
 `test_realistic_dataset.py` does the same on a 300-patient version in CI.

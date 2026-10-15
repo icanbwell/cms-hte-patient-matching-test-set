@@ -4,12 +4,18 @@ Every number here is a cited public estimate or an explicit reviewer-supplied
 approximation, never a guess. Age is measured as `AS_OF.year - birth year`, so
 a dataset is deterministic regardless of the day it is built.
 
-AS_OF is 2017-01-01, ONC's own vintage (its latest birth year is 2016). Measured
-as of 2026 the same data has no one under age 10, so infants and toddlers (the
-hardest children to match) could never be sampled, and ONC looks 8.7% under 18;
-as of 2017 it is 20.1% under 18. Aged 85+ is 12.6% as of 2017 (21.3% as of 2026)
-against about 2% nationally: the elderly skew is the one that persists. Open
-Question 5: the workgroup may pin a different date or Census vintage.
+ONC_AS_OF is 2017-01-01, ONC's own vintage (its latest birth year is 2016).
+Measured as of 2026 the raw data has no one under age 10, so infants and
+toddlers (the hardest children to match) could never be sampled, and ONC looks
+8.7% under 18; as of 2017 it is 20.1% under 18. Sampling therefore runs at
+ONC_AS_OF. The realistic release then moves every birth date forward by
+DOB_SHIFT_YEARS (dob_shift.py) so the same people have the same ages as of AS_OF,
+2026-01-01: ONC's youngest records become infants and the Census targets below
+apply to a current population. Aged 85+ is 12.6% as of 2017 (21.3% as of 2026,
+unshifted) against about 2% nationally: the elderly skew is the one that
+persists. The committed curated files are not shifted and are audited at
+ONC_AS_OF. Open Question 5: the workgroup may pin a different date or Census
+vintage.
 
 Age bands (shares of the U.S. population):
 
@@ -43,7 +49,9 @@ from datetime import date
 from typing import Dict, Tuple
 
 # Fixed (not date.today()) so output is deterministic. See module docstring.
-AS_OF = date(2017, 1, 1)
+ONC_AS_OF = date(2017, 1, 1)
+AS_OF = date(2026, 1, 1)
+DOB_SHIFT_YEARS = AS_OF.year - ONC_AS_OF.year
 
 # (band name, inclusive lower age, exclusive upper age)
 AGE_BANDS: Tuple[Tuple[str, int, int], ...] = (

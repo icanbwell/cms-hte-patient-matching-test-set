@@ -1,11 +1,13 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "1398114d1cfe062ff01e47b2f0e4a6851da4746c76b01ccf5661a0edf28e335e",
+  "generator_fingerprint": "3f2c184c4006fe4f67db67d6ae9621ef0ae95ce50ee178981749acb7f31f0188",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
-  "as_of": "2017-01-01",
+  "as_of": "2026-01-01",
+  "onc_as_of": "2017-01-01",
+  "dob_shift_years": 9,
   "caveats": [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
@@ -79,7 +81,7 @@
       "name": {
         "queries": 704,
         "kept": 2464,
-        "seen": 5057
+        "seen": 5056
       },
       "sibling": {
         "queries": 298,

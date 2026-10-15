@@ -268,6 +268,8 @@ distributed job (Spark), not a single-process Python list — see `SYNTHETIC_DAT
 - Field values are copied through from the ONC CSVs as-is — this repo's generation pipeline does
   **not** normalize case/punctuation (that step was intentionally dropped in session 13 along with
   the removed matching-engine dependency). Any consumer must apply its own normalization before comparing.
+  One exception: the `realistic_*` files move every birth date forward 9 years (`dob_shift.py`, BAI-1161)
+  so ages are current; the curated files keep ONC's birth dates.
 - Every generated case's `rationale` field traces to a specific category/provenance — never a
   black box (Design Principle 2 in `DESIGN.md`/the workgroup Doc).
 - `docs/sessions/` narrates the design history chronologically (`completed/` and `pending/`) —
