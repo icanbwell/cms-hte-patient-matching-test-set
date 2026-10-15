@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import csv
 from typing import Any, Dict
 
+from export_inputs import ONC_DIR
 from fhir_conformance import SSN_SYSTEM, V2_0203_SYSTEM, prune_empty, violations
+from onc_loader import _row_to_patient
 
 SSN_TYPE = {"coding": [{"system": V2_0203_SYSTEM, "code": "SS"}]}
 
@@ -97,3 +100,17 @@ class TestPruneEmpty:
         value: Dict[str, Any] = {"identifier": []}
         prune_empty(value)
         assert value == {"identifier": []}
+
+
+class TestCorpus:
+    def test_every_50th_row_of_every_onc_shard_is_conformant(self) -> None:
+        checked = 0
+        for path in sorted(ONC_DIR.glob("*.csv")):
+            with open(path, newline="", encoding="utf-8") as f:
+                for index, row in enumerate(csv.DictReader(f)):
+                    if index % 50:
+                        continue
+                    patient = _row_to_patient(row)
+                    assert violations(patient) == [], (path.name, row["EnterpriseID"])
+                    checked += 1
+        assert checked > 15000

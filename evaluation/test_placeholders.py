@@ -6,6 +6,7 @@ import random
 from typing import Any, Dict
 
 import pytest
+from fhir_conformance import prune_empty, violations
 from identity_guard import SSN_SYSTEM, is_possible_same_person
 from placeholders import (
     CATALOG,
@@ -67,6 +68,13 @@ class TestApplyPlaceholder:
             assert apply_placeholder(bare, field, "X") == bare
         created = apply_placeholder(bare, "ssn", "999-99-9999", create_missing=True)
         assert created["identifier"][0]["value"] == "999-99-9999"
+
+    def test_created_ssn_identifier_carries_the_ssn_type(self):
+        # _patient leaves empty telecom/identifier arrays; prune them so only the
+        # created identifier's shape is under test.
+        bare = prune_empty(_patient("p1", ssn=None, phone=None, dob=None))
+        created = apply_placeholder(bare, "ssn", "999-99-9999", create_missing=True)
+        assert violations(created) == []
 
     def test_bare_patient_is_returned_unchanged_for_every_field(self):
         bare = {"resourceType": "Patient", "id": "x"}
