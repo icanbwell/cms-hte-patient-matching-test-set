@@ -299,18 +299,34 @@ class TestIsTwinPair:
     def _twins(self):
         a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn="892-39-5115")
         b = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn="601-22-7788")
+        for p in (a, b):
+            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
         return a, b
 
     def test_same_surname_and_birth_date_with_different_first_names(self):
         a, b = self._twins()
         assert is_twin_pair(a, b)
 
-    def test_still_a_twin_when_they_share_a_phone(self):
+    def test_a_shared_phone_is_what_the_duplicate_guard_would_have_rejected(self):
         a, b = self._twins()
-        for p in (a, b):
-            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
         assert is_probable_duplicate(a, b)
         assert is_twin_pair(a, b)
+
+    def test_a_shared_address_without_a_shared_phone_is_enough(self):
+        a, b = self._twins()
+        address = [
+            {"line": ["1 Main St"], "city": "NY", "state": "NY", "postalCode": "10001"}
+        ]
+        for p in (a, b):
+            p["telecom"] = []
+            p["address"] = [dict(address[0])]
+        assert is_twin_pair(a, b)
+
+    def test_sharing_neither_phone_nor_address_is_a_coincidence_not_a_twin(self):
+        a, b = self._twins()
+        a["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        b["telecom"] = [{"system": "phone", "value": "212-555-0199"}]
+        assert not is_twin_pair(a, b)
 
     def test_a_first_name_typo_is_not_a_twin(self):
         a = _patient("a", "Katherine", "Smith", "1980-06-15")

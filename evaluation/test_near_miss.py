@@ -319,3 +319,16 @@ class TestTwinKind:
         query = _p("q", "ANA", "RIVERA", "2010-03-04", ssn="892-39-5115")
         same = _p("t", "BEATRIZ", "RIVERA", "2010-03-04", ssn="892-39-5115")
         assert _kinds(_find([same], queries=(query,))) == set()
+
+    def test_same_surname_and_birth_date_sharing_nothing_is_not_a_twin(self):
+        query = _p("q", "ANA", "RIVERA", "2010-03-04", phone="212-555-0101")
+        elsewhere = _p(
+            "t",
+            "BEATRIZ",
+            "RIVERA",
+            "2010-03-04",
+            zip_="90210",
+            street="9 ELM ST",
+            phone="212-555-0199",
+        )
+        assert ("t", "twin") not in _kinds(_find([elsewhere], queries=(query,)))
