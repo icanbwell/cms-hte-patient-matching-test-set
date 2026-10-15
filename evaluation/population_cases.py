@@ -22,7 +22,9 @@ For each query patient:
     sibling/name-collision near-misses, topped up with random distractors from
     the broader sample up
     to `pool_size` (per the current Doc's own "forty near-misses" framing) -
-    never displacing a true match to make room.
+    never displacing a true match to make room. Near-miss decoys (near_miss.py)
+    are real records found across all ONC shards that share a name, DOB,
+    address or contact with the query.
 
 A query for which no true-match candidate was generated (e.g.
 n_fuzzy_variants_per_patient=0 and include_normalization_edge_cases=False)
@@ -69,6 +71,7 @@ from mutations import (
     generate_compound_variant,
     generate_fuzzy_variant,
 )
+from near_miss import NearMiss
 from normalization_edge_cases import diacritic_variant, punctuation_variant
 from scenarios import generate_scenario_variants
 from special_populations import (
@@ -140,6 +143,7 @@ def build_population_dataset(
     donors: Sequence[Patient] = (),
     profile: DriftProfile | None = None,
     households: Sequence[Sequence[str]] = (),
+    near_misses: Sequence[NearMiss] = (),
     exclusions: ExclusionPolicy | None = None,
     seed: int = 0,
 ) -> PopulationDataset:
@@ -301,6 +305,15 @@ def build_population_dataset(
                     False,
                     "special_population",
                 )
+
+    # Real look-alike decoys found by near_miss.py. Added last so every existing
+    # decoy category keeps its slot when a pool is trimmed to `pool_size`; the
+    # decoy is not in `patients`, so its plain id cannot collide with a sample id.
+    for miss in near_misses:
+        if miss.query_id in by_id:
+            add_candidate(
+                miss.query_id, str(miss.decoy["id"]), miss.decoy, False, miss.pair_type
+            )
 
     all_ids = list(by_id)
     same_person = SamePersonIndex(patients)
