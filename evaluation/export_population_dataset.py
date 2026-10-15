@@ -33,6 +33,7 @@ from pathlib import Path
 
 from case_exclusions import ExclusionPolicy
 from export_inputs import load_profile, load_sample_and_donors
+from fhir_conformance import export_ready
 from labeled_pairs import DEFAULT_SAMPLE_SIZE
 from population_cases import (
     DEFAULT_POOL_SIZE,
@@ -55,7 +56,10 @@ def write_population_dataset(
 
     with candidates_path.open("w") as f:
         for candidate_id, patient in sorted(dataset.candidates.items()):
-            f.write(json.dumps({"id": candidate_id, "patient": patient}) + "\n")
+            f.write(
+                json.dumps({"id": candidate_id, "patient": export_ready(patient)})
+                + "\n"
+            )
 
     with queries_path.open("w") as f:
         for case in dataset.cases:
@@ -63,7 +67,7 @@ def write_population_dataset(
                 json.dumps(
                     {
                         "query_id": case.query_id,
-                        "query": case.query_patient,
+                        "query": export_ready(case.query_patient),
                         "candidate_ids": case.candidate_ids,
                         "expected_match_ids": case.expected_match_ids,
                         "rationale": case.rationale,

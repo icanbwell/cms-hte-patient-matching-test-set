@@ -213,3 +213,41 @@ class TestIncludeNameCollisionNegatives:
             for r in build_test_case_records(self._patients())
             if r.case_id in with_ids - without_ids
         )
+
+
+def test_write_jsonl_drops_empty_arrays_and_strings(tmp_path):
+    patient = _patient("p1")  # has identifier: [] and telecom: []
+    patient["name"][0]["suffix"] = []
+    record = LabeledCaseRecord(
+        case_id="p1::x",
+        source=patient,
+        target=patient,
+        expected_match=True,
+        rationale="r",
+    )
+    path = tmp_path / "out.jsonl"
+    write_jsonl([record], path)
+    row = json.loads(path.read_text())
+    for side in ("source", "target"):
+        assert "identifier" not in row[side]
+        assert "telecom" not in row[side]
+        assert "suffix" not in row[side]["name"][0]
+
+
+def test_write_jsonl_renumbers_duplicate_telecom_ranks(tmp_path):
+    patient = _patient("p1")
+    patient["telecom"] = [
+        {"system": "phone", "value": "1", "rank": 1},
+        {"system": "phone", "value": "2", "rank": 1},
+    ]
+    record = LabeledCaseRecord(
+        case_id="p1::x",
+        source=patient,
+        target=patient,
+        expected_match=True,
+        rationale="r",
+    )
+    path = tmp_path / "out.jsonl"
+    write_jsonl([record], path)
+    row = json.loads(path.read_text())
+    assert [t["rank"] for t in row["source"]["telecom"]] == [1, 2]

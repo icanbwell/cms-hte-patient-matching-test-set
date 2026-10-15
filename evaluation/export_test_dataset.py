@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, List, Sequence
 from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
 from export_inputs import load_profile, load_sample_and_donors
+from fhir_conformance import export_ready
 from labeled_pairs import DEFAULT_SAMPLE_SIZE, generate_raw_pairs
 
 Patient = Dict[str, Any]
@@ -192,8 +193,8 @@ def write_jsonl(records: List[LabeledCaseRecord], path: Path) -> None:
                 json.dumps(
                     {
                         "case_id": record.case_id,
-                        "source": record.source,
-                        "target": record.target,
+                        "source": export_ready(record.source),
+                        "target": export_ready(record.target),
                         "expected_match": record.expected_match,
                         "rationale": record.rationale,
                         "frequency": record.frequency,

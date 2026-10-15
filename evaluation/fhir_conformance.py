@@ -8,6 +8,7 @@ per release (session 16 design doc, Workstream 1).
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, Iterator, List
 
 Patient = Dict[str, Any]
@@ -35,6 +36,25 @@ def prune_empty(value: Any) -> Any:
         items = [prune_empty(item) for item in value]
         return [item for item in items if item not in _EMPTY]
     return value
+
+
+def renumber_telecom_ranks(patient: Patient) -> Patient:
+    """A copy of `patient` whose ranked telecom entries are renumbered 1..n per
+    system in list order. Entries without a `rank` stay without one. Some
+    mutators move or merge telecom entries and leave ranks stale or duplicated."""
+    result = copy.deepcopy(patient)
+    next_rank: Dict[str, int] = {}
+    for contact in result.get("telecom") or []:
+        if "rank" in contact:
+            system = str(contact.get("system"))
+            next_rank[system] = next_rank.get(system, 0) + 1
+            contact["rank"] = next_rank[system]
+    return result
+
+
+def export_ready(patient: Patient) -> Patient:
+    """The form of `patient` that is written to a release file."""
+    return prune_empty(renumber_telecom_ranks(patient))
 
 
 def _empties(value: Any, path: str) -> Iterator[str]:

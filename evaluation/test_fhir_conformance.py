@@ -5,8 +5,18 @@ from __future__ import annotations
 import csv
 from typing import Any, Dict
 
-from export_inputs import ONC_DIR
-from fhir_conformance import SSN_SYSTEM, V2_0203_SYSTEM, prune_empty, violations
+from drift_profile import DriftProfile
+from export_inputs import ONC_DIR, load_sample_and_donors
+from fhir_conformance import (
+    SSN_SYSTEM,
+    V2_0203_SYSTEM,
+    export_ready,
+    prune_empty,
+    renumber_telecom_ranks,
+    violations,
+)
+from household_assignment import assign_households
+from labeled_pairs import generate_raw_pairs
 from onc_loader import _row_to_patient
 
 SSN_TYPE = {"coding": [{"system": V2_0203_SYSTEM, "code": "SS"}]}
@@ -114,3 +124,82 @@ class TestCorpus:
                     assert violations(patient) == [], (path.name, row["EnterpriseID"])
                     checked += 1
         assert checked > 15000
+
+
+class TestRenumberTelecomRanks:
+    def test_duplicate_rank_one_becomes_one_two(self) -> None:
+        telecom = [
+            {"system": "phone", "value": "1", "rank": 1},
+            {"system": "phone", "value": "2", "rank": 1},
+        ]
+        result = renumber_telecom_ranks(_patient(telecom=telecom))
+        assert [t["rank"] for t in result["telecom"]] == [1, 2]
+        assert violations(result) == []
+
+    def test_stale_lone_rank_two_becomes_one(self) -> None:
+        telecom = [{"system": "phone", "value": "1", "rank": 2}]
+        result = renumber_telecom_ranks(_patient(telecom=telecom))
+        assert result["telecom"][0]["rank"] == 1
+
+    def test_ranks_restart_per_system(self) -> None:
+        telecom = [
+            {"system": "phone", "value": "1", "rank": 3},
+            {"system": "email", "value": "a@x.org", "rank": 2},
+            {"system": "phone", "value": "2", "rank": 1},
+        ]
+        result = renumber_telecom_ranks(_patient(telecom=telecom))
+        assert [(t["system"], t["rank"]) for t in result["telecom"]] == [
+            ("phone", 1),
+            ("email", 1),
+            ("phone", 2),
+        ]
+
+    def test_rankless_entries_stay_rankless(self) -> None:
+        telecom = [
+            {"system": "phone", "value": "1"},
+            {"system": "phone", "value": "2", "rank": 5},
+        ]
+        result = renumber_telecom_ranks(_patient(telecom=telecom))
+        assert "rank" not in result["telecom"][0]
+        assert result["telecom"][1]["rank"] == 1
+
+    def test_patient_without_telecom_is_unchanged(self) -> None:
+        patient = _patient()
+        del patient["telecom"]
+        assert renumber_telecom_ranks(patient) == patient
+
+    def test_input_is_not_mutated(self) -> None:
+        telecom = [
+            {"system": "phone", "value": "1", "rank": 1},
+            {"system": "phone", "value": "2", "rank": 1},
+        ]
+        patient = _patient(telecom=telecom)
+        renumber_telecom_ranks(patient)
+        assert [t["rank"] for t in patient["telecom"]] == [1, 1]
+
+
+class TestExportReady:
+    def test_prunes_and_renumbers(self) -> None:
+        telecom = [
+            {"system": "phone", "value": "1", "rank": 2},
+            {"system": "phone", "value": "2", "rank": 2},
+        ]
+        result = export_ready(_patient(telecom=telecom, identifier=[]))
+        assert "identifier" not in result
+        assert [t["rank"] for t in result["telecom"]] == [1, 2]
+
+
+class TestGeneratedPairs:
+    def test_every_generated_pair_is_conformant_after_export_ready(self) -> None:
+        patients, donors = load_sample_and_donors(300, 300)
+        profile = DriftProfile()
+        housed = assign_households(patients, profile=profile, seed=0)
+        for pair in generate_raw_pairs(
+            housed.patients,
+            donors=donors,
+            profile=profile,
+            households=housed.households,
+            seed=0,
+        ):
+            for side in (pair.query_patient, pair.candidate_patient):
+                assert violations(export_ready(side)) == [], pair.pair_id

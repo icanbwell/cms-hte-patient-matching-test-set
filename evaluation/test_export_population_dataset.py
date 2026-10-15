@@ -59,3 +59,16 @@ class TestWritePopulationDataset:
         write_population_dataset(dataset, candidates_path, queries_path)
         assert candidates_path.exists()
         assert queries_path.exists()
+
+
+def test_population_files_drop_empty_arrays(tmp_path):
+    dataset = build_population_dataset(
+        [_patient("p1"), _patient("p2", family="Jones", given="Robert")], seed=0
+    )
+    candidates_path = tmp_path / "c.jsonl"
+    queries_path = tmp_path / "q.jsonl"
+    write_population_dataset(dataset, candidates_path, queries_path)
+    for line in candidates_path.read_text().splitlines():
+        assert "identifier" not in json.loads(line)["patient"]
+    for line in queries_path.read_text().splitlines():
+        assert "identifier" not in json.loads(line)["query"]

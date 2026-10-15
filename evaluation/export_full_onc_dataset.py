@@ -51,6 +51,7 @@ import os
 from pathlib import Path
 
 from export_test_dataset import build_test_case_records
+from fhir_conformance import export_ready
 from onc_loader import load_onc_patients
 from population_cases import DEFAULT_POOL_SIZE, build_population_dataset
 from prevalence_estimates import researched_frequency
@@ -87,8 +88,8 @@ def export_full_test_dataset(output_path: Path) -> None:
                     json.dumps(
                         {
                             "case_id": record.case_id,
-                            "source": record.source,
-                            "target": record.target,
+                            "source": export_ready(record.source),
+                            "target": export_ready(record.target),
                             "expected_match": record.expected_match,
                             "rationale": record.rationale,
                             "frequency": record.frequency,
@@ -125,13 +126,16 @@ def export_full_population_dataset(
             patients = load_onc_patients([shard])
             dataset = build_population_dataset(patients, pool_size=pool_size)
             for candidate_id, patient in sorted(dataset.candidates.items()):
-                cf.write(json.dumps({"id": candidate_id, "patient": patient}) + "\n")
+                cf.write(
+                    json.dumps({"id": candidate_id, "patient": export_ready(patient)})
+                    + "\n"
+                )
             for case in dataset.cases:
                 qf.write(
                     json.dumps(
                         {
                             "query_id": case.query_id,
-                            "query": case.query_patient,
+                            "query": export_ready(case.query_patient),
                             "candidate_ids": case.candidate_ids,
                             "expected_match_ids": case.expected_match_ids,
                             "rationale": case.rationale,
