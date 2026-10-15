@@ -40,6 +40,8 @@ def exported(patient: Patient, new_id: str) -> Patient:
 
 
 def pair_row(record: LabeledCaseRecord) -> Row:
+    """One pairwise-tier row: the source id is stable per source patient, the
+    target id is per case (see the module docstring)."""
     return {
         "case_id": record.case_id,
         "source": exported(record.source, opaque_id(str(record.source["id"]))),
@@ -51,11 +53,15 @@ def pair_row(record: LabeledCaseRecord) -> Row:
 
 
 def candidate_row(candidate_id: str, patient: Patient) -> Row:
+    """One population candidate row; its id and the patient's id are the same
+    opaque hash of `candidate_id`."""
     opaque = opaque_id(candidate_id)
     return {"id": opaque, "patient": exported(patient, opaque)}
 
 
 def query_row(case: PopulationCase) -> Row:
+    """One population query row with the query, candidate and expected-match ids
+    all hashed the same way as `candidate_row`."""
     return {
         "query_id": opaque_id(case.query_id),
         "query": exported(case.query_patient, opaque_id(case.query_id)),

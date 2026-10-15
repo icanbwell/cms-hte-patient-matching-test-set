@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "3eff6dbf5bc7262c27ae8da9a8b6f9b68c462a4bfd40fa965a79833461aa3198",
+  "generator_fingerprint": "3eac7c1466d9225a924648fe7c48b00ac3f23d7190786ce2d26353c4da4ab9b9",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -9,7 +9,7 @@
   "caveats": [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address"
+    "households are mostly unrelated ONC-derived records placed at one address"
   ],
   "age_band_targets": {
     "0-17": 0.215,
