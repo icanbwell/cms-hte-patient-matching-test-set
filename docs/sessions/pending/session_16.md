@@ -258,7 +258,7 @@ Open Question 7, already open from session 15 as Open Question 5.
 
 ## Rollout
 
-1. **PR 1 — Conformance (R4).** Scope: loader + validator. Defers all sampling and pool changes.
+1. **PR 1 — Conformance (R4).** Scope: loader + validator, plus deleting the stale rule-29 caveat. Defers all sampling and pool changes.
    Regenerates both datasets; positive/negative counts must match except the documented
    maiden-name subtypes.
 2. **PR 2 — Near-miss finder (foundation).** Scope: module + export plumbing + yield report, no
@@ -272,6 +272,26 @@ If any of these is opened stacked on another, merging is left to the maintainer.
 
 **Versioning.** `dataset_version` bumps in PR 1 (resource content changed) and again in PR 4
 (committed files replaced). `case_id`s for existing categories are stable; new categories add ids.
+
+## Release caveats: what blocks inclusion of the realistic set
+
+`export_realistic_dataset.py` writes five caveats (`CAVEATS`) into `realistic_manifest.json`. Status
+and resolution:
+
+| # | Caveat | Status | Resolution | Blocks inclusion? |
+|---|---|---|---|---|
+| 1 | Not filtered for CMS Table 2 rule 29 (BAI-1061) | Stale: commits `bd4f4ae` and `ea2d2e2` moved the exclusion into the generators | Delete the line from `CAVEATS` (PR 1) | No |
+| 2 | Drift positives not verified against the CMS reference algorithm | Open; this repo has no matching engine | Reviewer runs the realistic positives through their CMS 3.3.0/3.4.0 harness after PR 4 and returns rejected case ids; we drop or fix them via `case_exclusions.py`. Manifest keeps the caveat until they confirm (open question 8) | No, but must stay disclosed |
+| 3 | Drift and household sharing rates are placeholders | Open | Reviewer supplies measured cross-organization rates (session 15, open question 1). Without them the profile stays `has_public_estimate=False` and the dataset is marked provisional | No; ship as provisional |
+| 4 | Households are mostly unrelated real records at one address | Open; reviewer enhancement E1 | PR 5 (parent-first households, gated same-surname minors rate). Until then, disclosed in the manifest and `cases/README.md` | No |
+| 5 | Mined sibling, name-collision and hard-negative categories are scarce | Open; reviewer blocker R2 | PR 2 (near-miss finder) and PR 4 (negative balance), verified by the per-category minimums enforced in the realistic gate | **Yes** |
+
+**Inclusion criteria for v1:** reviewer blockers R1-R4 closed, caveat 5 closed, realistic gate green
+from a fresh clone in CI, and the manifest and `cases/README.md` list every caveat still open
+(2, 3 and 4 if PR 5 has not shipped).
+
+**Asks of the reviewer** (shortens the path): (a) run the realistic positives through the CMS harness
+once PR 4 lands; (b) share measured disagreement and share rates now, which closes caveat 3.
 
 ## Non-goals
 
