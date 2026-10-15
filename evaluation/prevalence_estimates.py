@@ -357,6 +357,11 @@ PREVALENCE_ESTIMATES: Dict[str, PrevalenceEstimate] = {
         for scenario, cases in {
             "surname_change": ("no_history", "prior_name_on_target", "hyphenated"),
             "address_move": ("current_vs_prior", "history_on_one_side"),
+            "surname_address_change": tuple(
+                f"{surname}+{address}"
+                for surname in ("no_history", "prior_name_on_target", "hyphenated")
+                for address in ("current_vs_prior", "history_on_one_side")
+            ),
             "phone_churn": ("replaced", "dropped", "added"),
             "email_churn": ("replaced", "dropped", "added"),
             "placeholder": ("ssn", "phone", "given", "address"),

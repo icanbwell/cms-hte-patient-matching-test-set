@@ -34,6 +34,7 @@ LEGACY_RATES: Dict[str, float] = {
 PLACEHOLDER_RATES: Dict[str, float] = {
     "surname_change": 0.15,
     "address_move": 0.20,
+    "surname_address_change": 0.10,
     "phone_churn": 0.50,
     "email_churn": 0.25,
     "gender_drift": 0.0,

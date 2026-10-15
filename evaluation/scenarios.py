@@ -26,6 +26,7 @@ from drift_mutations import (
     email_churn_variant,
     gender_drift_variant,
     phone_churn_variant,
+    surname_address_change_variant,
     surname_change_variant,
 )
 from drift_profile import DriftProfile
@@ -87,6 +88,15 @@ def _address_move(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | No
     )
 
 
+def _surname_address_change(
+    patient: Patient, ctx: ScenarioContext
+) -> ScenarioResult | None:
+    return _with_subtype(
+        "surname_address_change",
+        surname_address_change_variant(patient, ctx.donors, ctx.rng),
+    )
+
+
 def _phone_churn(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
     return _with_subtype(
         "phone_churn", phone_churn_variant(patient, ctx.donors, ctx.rng)
@@ -116,6 +126,7 @@ REGISTRY: Dict[str, Scenario] = {
         Scenario("phone_variant", _phone_variant),
         Scenario("surname_change", _surname_change),
         Scenario("address_move", _address_move),
+        Scenario("surname_address_change", _surname_address_change),
         Scenario("phone_churn", _phone_churn),
         Scenario("email_churn", _email_churn),
         Scenario("gender_drift", _gender_drift),

@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "e7d95194dfde4aa0806c4d667c9ba21b9d330d474e1938a15439a26446a25305",
+  "generator_fingerprint": "90fc42c510c1a60363b35f770db2997ff57721b33007384efe238f9aa57c50af",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -49,6 +49,7 @@
     "phone_variant": 1.0,
     "surname_change": 0.15,
     "address_move": 0.2,
+    "surname_address_change": 0.1,
     "phone_churn": 0.5,
     "email_churn": 0.25,
     "gender_drift": 0.0,
@@ -102,8 +103,8 @@
       }
     }
   },
-  "negative_share": 0.5991038667795653,
+  "negative_share": 0.5950103367321911,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 28344,
+  "n_labeled_cases": 28539,
   "n_population_queries": 2000
 }
