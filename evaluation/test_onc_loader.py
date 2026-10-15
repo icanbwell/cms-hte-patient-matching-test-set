@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from onc_loader import _row_to_patient
+from fhir_conformance import violations
+from onc_loader import MOTHERS_MAIDEN_NAME_URL, _row_to_patient
 
 
 def _row(**overrides):
@@ -56,3 +57,43 @@ class TestPhone2Loading:
     def test_missing_both_phones_yields_no_phone_entries(self) -> None:
         patient = _row_to_patient(_row())
         assert not any(t["system"] == "phone" for t in patient["telecom"])
+
+
+class TestNames:
+    def test_empty_first_name_emits_no_given(self) -> None:
+        patient = _row_to_patient(_row(FIRST=""))
+        assert "given" not in patient["name"][0]
+        # restored to == [] in Task 3
+        assert not [v for v in violations(patient) if v.startswith("name")]
+
+    def test_blank_suffix_and_middle_are_omitted(self) -> None:
+        patient = _row_to_patient(_row(MIDDLE="", SUFFIX=""))
+        assert patient["name"] == [
+            {"use": "official", "family": "SMITH", "given": ["JANE"]}
+        ]
+
+    def test_middle_is_appended_to_given_and_suffix_kept(self) -> None:
+        patient = _row_to_patient(_row(MIDDLE="Q", SUFFIX="JR"))
+        assert patient["name"][0]["given"] == ["JANE", "Q"]
+        assert patient["name"][0]["suffix"] == ["JR"]
+
+    def test_alias_is_a_separate_nickname_entry_not_a_given_name(self) -> None:
+        patient = _row_to_patient(_row(ALIAS="JANIE"))
+        assert patient["name"][0]["given"] == ["JANE"]
+        assert patient["name"][1] == {"use": "nickname", "text": "JANIE"}
+
+    def test_row_with_no_name_parts_omits_name(self) -> None:
+        patient = _row_to_patient(_row(FIRST="", LAST="", MIDDLE="", SUFFIX=""))
+        assert "name" not in patient
+
+
+class TestMothersMaidenName:
+    def test_maps_to_the_standard_extension_not_a_name_entry(self) -> None:
+        patient = _row_to_patient(_row(MOTHERS_MAIDEN_NAME="JONES"))
+        assert len(patient["name"]) == 1
+        assert patient["extension"] == [
+            {"url": MOTHERS_MAIDEN_NAME_URL, "valueString": "JONES"}
+        ]
+
+    def test_absent_when_the_column_is_empty(self) -> None:
+        assert "extension" not in _row_to_patient(_row())

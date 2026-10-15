@@ -2,11 +2,12 @@
 Patient dicts, for use as this repo's test-case generation input
 (labeled_pairs.py, population_cases.py, and the export_*.py manifest writers).
 
-Column mapping mirrors the legacy production matching engine's own
-create_patient_resource() transform (confirmed via direct inspection of its CMS
-test suite), extended to also populate MOTHERS_MAIDEN_NAME, ALIAS, and PHONE2,
-which that transform reads from the CSV but never maps into the output FHIR
-resource.
+Column mapping started from the legacy production matching engine's own
+create_patient_resource() transform and is now FHIR R4 conformant: empty
+columns are omitted (never emitted as ""/[]), ALIAS becomes a separate
+`use: nickname` name, and MOTHERS_MAIDEN_NAME maps to the standard
+patient-mothersMaidenName extension (it is the mother's maiden name, not the
+patient's own prior surname).
 
 Values are copied through as-is (raw CSV case/punctuation) - this repo's own
 generation pipeline does not normalize them (see session_13, which dropped
@@ -43,6 +44,31 @@ _GENDER_MAP = {
     "F": "female",
     "U": "unknown",
 }
+MOTHERS_MAIDEN_NAME_URL = (
+    "http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName"
+)
+
+
+def _clean(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _human_names(row: Dict[str, str]) -> List[Dict[str, Any]]:
+    official: Dict[str, Any] = {"use": "official"}
+    family = _clean(row.get("LAST"))
+    if family:
+        official["family"] = family
+    given = [g for g in (_clean(row.get("FIRST")), _clean(row.get("MIDDLE"))) if g]
+    if given:
+        official["given"] = given
+    suffix = _clean(row.get("SUFFIX"))
+    if suffix:
+        official["suffix"] = [suffix]
+    names: List[Dict[str, Any]] = [official] if len(official) > 1 else []
+    alias = _clean(row.get("ALIAS"))
+    if alias:
+        names.append({"use": "nickname", "text": alias})
+    return names
 
 
 def _decode_sas_date(raw: str) -> str:
@@ -57,34 +83,22 @@ def _decode_sas_date(raw: str) -> str:
 
 
 def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
-    given = [row["FIRST"]]
-    if row.get("MIDDLE"):
-        given.append(row["MIDDLE"])
-    if row.get("ALIAS"):
-        given.append(row["ALIAS"])
-    family_names = [row["LAST"]]
-    # Not mapped by the legacy production matching engine's transform - included
-    # here so this repo's normalization/matching sees prior/maiden names per
-    # Core Principle 10.
-    if row.get("MOTHERS_MAIDEN_NAME"):
-        family_names.append(row["MOTHERS_MAIDEN_NAME"])
-
     patient: Dict[str, Any] = {
         "resourceType": "Patient",
         "id": row["EnterpriseID"],
-        "name": [
-            {
-                "family": fam,
-                "given": given,
-                "suffix": [row["SUFFIX"]] if row.get("SUFFIX") else [],
-            }
-            for fam in family_names
-        ],
         "gender": _GENDER_MAP.get(row.get("GENDER", "").upper(), "unknown"),
         "telecom": [],
         "address": [],
         "identifier": [],
     }
+    names = _human_names(row)
+    if names:
+        patient["name"] = names
+    mothers_maiden_name = _clean(row.get("MOTHERS_MAIDEN_NAME"))
+    if mothers_maiden_name:
+        patient["extension"] = [
+            {"url": MOTHERS_MAIDEN_NAME_URL, "valueString": mothers_maiden_name}
+        ]
     # The dataset's "Null" shard has intentionally-missing fields for incomplete-data
     # testing; the legacy production matching engine's transform only sets
     # birthDate when DOB is present (`if row["DOB"]:`) - mirrored here rather
