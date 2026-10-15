@@ -237,7 +237,7 @@ class TestIsProbableDuplicate:
 
     def test_names_two_edits_apart_are_not_a_duplicate(self):
         a = _patient("a", "Rosalind", "Vandermeer", "1980-06-15")
-        b = _patient("b", "Rosalind", "Vandermoor", "1980-06-15")
+        b = _patient("b", "Rosamund", "Vandermeer", "1980-06-15")
         assert not is_probable_duplicate(a, b)
 
     def test_missing_birth_dates_never_trigger_the_name_or_phone_rules(self):
@@ -292,3 +292,27 @@ class TestProbableDuplicateIndex:
     def test_unrelated_records_match_nothing(self):
         people = self._people()
         assert ProbableDuplicateIndex(people).matching_ids(people[4]) == set()
+
+
+class TestSurnameChangeLooksLikeADuplicate:
+    def test_same_first_name_and_birth_date_under_another_surname_is_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", "1980-06-15")
+        assert not is_possible_same_person(a, b)
+        assert is_probable_duplicate(a, b)
+        assert looks_like_same_person(a, b)
+
+    def test_a_different_first_name_or_birth_date_is_not_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        assert not is_probable_duplicate(
+            a, _patient("b", "Maria", "Okafor", "1980-06-15")
+        )
+        assert not is_probable_duplicate(
+            a, _patient("c", "Katherine", "Okafor", "1990-01-01")
+        )
+
+    def test_a_missing_first_name_is_not_flagged(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", "1980-06-15")
+        b["name"][0]["given"] = []
+        assert not is_probable_duplicate(a, b)

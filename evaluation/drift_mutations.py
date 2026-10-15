@@ -81,8 +81,8 @@ def surname_address_change_variant(
     patient: Patient, donors: Sequence[Patient], rng: random.Random
 ) -> Result:
     """A surname change and an address move on the same person, as when a
-    marriage changes both (the case the retired `marriage_variant` approximated
-    with the mother's maiden name). Composes `surname_change_variant` and
+    marriage changes both (the case `marriage_variant` approximates with the
+    mother's maiden name, which is only a stand-in for the patient's own). Composes `surname_change_variant` and
     `address_move_variant`, so the new surname is not on the patient's record
     and the new address is a real donor address. The subtype joins the two
     ("no_history+current_vs_prior"). None unless both apply."""

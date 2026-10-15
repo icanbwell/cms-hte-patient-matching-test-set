@@ -3,6 +3,12 @@
 Run from the repo root:
 
     PYTHONPATH=. uv run python evaluation/audit.py
+
+The duplicate detector below (SSN, phone, name, birth-date and edit-distance
+helpers) is deliberately written separately from `identity_guard.py` and
+`text_distance.py`: the audit must catch what the generators' own guards miss,
+so it must not share their blind spots. Keep the two independent when changing
+either side.
 """
 
 from __future__ import annotations
@@ -123,6 +129,14 @@ def _levenshtein(a: str, b: str, limit: int) -> int:
     return row[-1]
 
 
+# Thresholds of the audit's own duplicate detector (independent of the guard's).
+_PHONE_DIGITS = 10
+_ISO_DATE_LENGTH = 10
+_DUPLICATE_NAME_EDITS = 2
+_DUPLICATE_DOB_EDITS = 1
+_TWO_OF_THREE_AGREEMENTS = 2
+
+
 def _audit_ssn(p: Patient) -> str | None:
     for ident in p.get("identifier") or []:
         if "ssn" in str(ident.get("system") or "").lower():
@@ -133,7 +147,7 @@ def _audit_ssn(p: Patient) -> str | None:
 
 
 def _audit_phones(p: Patient) -> FrozenSet[str]:
-    return frozenset(v for v in _phones(p) if len(v) == 10)
+    return frozenset(v for v in _phones(p) if len(v) == _PHONE_DIGITS)
 
 
 def _audit_name(p: Patient) -> str:
@@ -153,11 +167,17 @@ def _dob_close(a: str, b: str, limit: int, allow_swap: bool) -> bool:
         return True
     return bool(
         allow_swap
-        and len(a) == len(b) == 10
+        and len(a) == len(b) == _ISO_DATE_LENGTH
         and a[:4] == b[:4]
         and a[5:7] == b[8:10]
         and a[8:10] == b[5:7]
     )
+
+
+def _audit_first(p: Patient) -> str:
+    names = p.get("name") or []
+    given = (names[0].get("given") or []) if names else []
+    return normalize_token(given[0]) if given else ""
 
 
 def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
@@ -167,12 +187,17 @@ def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
     dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
     if _audit_phones(a) & _audit_phones(b) and _dob_close(dob_a, dob_b, 0, False):
         return True
+    # Same first name and an identical birth date under another family name: a
+    # surname change that no SSN or phone survived.
+    first = _audit_first(a)
+    if first and first == _audit_first(b) and dob_a and dob_a == dob_b:
+        return True
     name_a, name_b = _audit_name(a), _audit_name(b)
     return bool(
         name_a
         and name_b
-        and _levenshtein(name_a, name_b, 2) <= 2
-        and _dob_close(dob_a, dob_b, 1, True)
+        and _levenshtein(name_a, name_b, _DUPLICATE_NAME_EDITS) <= _DUPLICATE_NAME_EDITS
+        and _dob_close(dob_a, dob_b, _DUPLICATE_DOB_EDITS, True)
     )
 
 
@@ -297,7 +322,7 @@ def _two_of_three(source: Patient, target: Patient) -> bool:
         bool(source.get("birthDate"))
         and source.get("birthDate") == target.get("birthDate"),
     ]
-    return sum(agreements) >= 2
+    return sum(agreements) >= _TWO_OF_THREE_AGREEMENTS
 
 
 def pairwise_two_of_three_f1(pair_rows: Sequence[Row]) -> float:

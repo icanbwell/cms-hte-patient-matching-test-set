@@ -73,7 +73,9 @@ class TestPopulationRows:
 
 
 def test_true_matches_are_not_listed_first_in_the_pool():
-    patients = [_patient(f"p{i}", family=f"Name{i}") for i in range(30)]
+    patients = [
+        _patient(f"p{i}", family=f"Name{i}", given=f"Given{i}") for i in range(30)
+    ]
     dataset = build_population_dataset(patients, pool_size=20, seed=0)
     first_is_match = [
         case.candidate_ids[0] in case.expected_match_ids for case in dataset.cases

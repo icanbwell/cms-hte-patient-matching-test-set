@@ -102,7 +102,7 @@ def generator_fingerprint() -> str:
 CAVEATS: List[str] = [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address",
+    "households are mostly unrelated ONC-derived records placed at one address",
 ]
 
 
