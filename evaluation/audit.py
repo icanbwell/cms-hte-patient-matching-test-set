@@ -160,7 +160,29 @@ def _dob_close(a: str, b: str, limit: int, allow_swap: bool) -> bool:
     )
 
 
+def _audit_twins(a: Patient, b: Patient) -> bool:
+    """Same family name and birth date but first names at least 3 edits apart and
+    no near-identical SSN: legitimately shares a phone or address (a twin), so it
+    is not one person recorded twice. Independent of the generator's version."""
+    names_a, names_b = a.get("name") or [], b.get("name") or []
+    dob = str(a.get("birthDate") or "")
+    if not (dob and dob == str(b.get("birthDate") or "") and names_a and names_b):
+        return False
+    family = normalize_token(names_a[0].get("family"))
+    if not family or family != normalize_token(names_b[0].get("family")):
+        return False
+    given_a, given_b = names_a[0].get("given") or [], names_b[0].get("given") or []
+    first_a = normalize_token(given_a[0]) if given_a else ""
+    first_b = normalize_token(given_b[0]) if given_b else ""
+    if not (first_a and first_b) or _levenshtein(first_a, first_b, 2) <= 2:
+        return False
+    ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
+    return not (ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1)
+
+
 def _looks_like_duplicate(a: Patient, b: Patient) -> bool:
+    if _audit_twins(a, b):
+        return False
     ssn_a, ssn_b = _audit_ssn(a), _audit_ssn(b)
     if ssn_a and ssn_b and _levenshtein(ssn_a, ssn_b, 1) <= 1:
         return True
@@ -321,6 +343,7 @@ REQUIRED_HARD_NEGATIVE_CATEGORIES = (
     "name_collision_negative",
     "sibling_negative",
     "near_miss_negative",
+    "twin_like_negative",
 )
 
 _OVERLAP_FEATURES = ("ssn", "dob", "family", "given", "address", "phone", "email")

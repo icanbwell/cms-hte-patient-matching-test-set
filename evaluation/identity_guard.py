@@ -161,6 +161,40 @@ def identity_key_names(patient: Patient) -> str | None:
     return f"{first} {family}" if first and family else None
 
 
+TWIN_MIN_GIVEN_NAME_DISTANCE = 3
+
+
+def is_twin_pair(a: Patient, b: Patient) -> bool:
+    """True if a and b look like twins (or other same-day siblings): the same
+    family name and the same birth date, with first names far enough apart that
+    one cannot be a typo of the other, and no SSN that matches or is one edit
+    away. Such a pair legitimately shares a phone and an address, which
+    `is_probable_duplicate` would otherwise reject as one person recorded twice."""
+    dob_a, dob_b = str(a.get("birthDate") or ""), str(b.get("birthDate") or "")
+    names_a, names_b = a.get("name") or [], b.get("name") or []
+    if not (dob_a and dob_a == dob_b and names_a and names_b):
+        return False
+    family_a = normalize_token(names_a[0].get("family"))
+    if not family_a or family_a != normalize_token(names_b[0].get("family")):
+        return False
+    given_a, given_b = names_a[0].get("given") or [], names_b[0].get("given") or []
+    first_a = normalize_token(given_a[0]) if given_a else ""
+    first_b = normalize_token(given_b[0]) if given_b else ""
+    if not (first_a and first_b):
+        return False
+    if (
+        levenshtein_distance(first_a, first_b, TWIN_MIN_GIVEN_NAME_DISTANCE - 1)
+        < TWIN_MIN_GIVEN_NAME_DISTANCE
+    ):
+        return False
+    ssn_a, ssn_b = ssn_of(a), ssn_of(b)
+    return not (
+        ssn_a is not None
+        and ssn_b is not None
+        and levenshtein_distance(ssn_a, ssn_b, 1) <= 1
+    )
+
+
 def looks_like_same_person(a: Patient, b: Patient) -> bool:
     """The predicate every negative-pair generator applies: an exact same-person
     match (`is_possible_same_person`) or a typo duplicate (`is_probable_duplicate`)."""

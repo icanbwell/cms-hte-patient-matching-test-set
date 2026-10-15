@@ -11,6 +11,7 @@ from identity_guard import (
     identity_key,
     is_possible_same_person,
     is_probable_duplicate,
+    is_twin_pair,
     looks_like_same_person,
     normalize_phone,
     normalize_token,
@@ -292,3 +293,42 @@ class TestProbableDuplicateIndex:
     def test_unrelated_records_match_nothing(self):
         people = self._people()
         assert ProbableDuplicateIndex(people).matching_ids(people[4]) == set()
+
+
+class TestIsTwinPair:
+    def _twins(self):
+        a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn="892-39-5115")
+        b = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn="601-22-7788")
+        return a, b
+
+    def test_same_surname_and_birth_date_with_different_first_names(self):
+        a, b = self._twins()
+        assert is_twin_pair(a, b)
+
+    def test_still_a_twin_when_they_share_a_phone(self):
+        a, b = self._twins()
+        for p in (a, b):
+            p["telecom"] = [{"system": "phone", "value": "212-555-0101"}]
+        assert is_probable_duplicate(a, b)
+        assert is_twin_pair(a, b)
+
+    def test_a_first_name_typo_is_not_a_twin(self):
+        a = _patient("a", "Katherine", "Smith", "1980-06-15")
+        assert not is_twin_pair(a, _patient("b", "Katharine", "Smith", "1980-06-15"))
+
+    def test_a_different_birth_date_or_surname_is_not_a_twin(self):
+        a, _ = self._twins()
+        assert not is_twin_pair(a, _patient("b", "Beatriz", "Rivera", "2010-03-05"))
+        assert not is_twin_pair(a, _patient("b", "Beatriz", "Lopez", "2010-03-04"))
+
+    def test_a_matching_or_near_identical_ssn_is_not_a_twin(self):
+        a = _patient("a", "Ana", "Rivera", "2010-03-04", ssn="892-39-5115")
+        same = _patient("b", "Beatriz", "Rivera", "2010-03-04", ssn="892-39-5115")
+        typo = _patient("c", "Beatriz", "Rivera", "2010-03-04", ssn="892-39-5116")
+        assert not is_twin_pair(a, same)
+        assert not is_twin_pair(a, typo)
+
+    def test_missing_names_or_dates_are_not_twins(self):
+        a, b = self._twins()
+        b["name"] = []
+        assert not is_twin_pair(a, b)

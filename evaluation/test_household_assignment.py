@@ -308,3 +308,23 @@ class TestSharedContactCase:
     def test_records_without_contacts_are_same_address(self):
         bare = {"resourceType": "Patient", "id": "x"}
         assert shared_contact_case(bare, dict(bare, id="y")) == "same_address"
+
+
+class TestFamilyPlacement:
+    def _family_population(self):
+        adults = [_person(i, 1975, family=f"Fam{i}") for i in range(60)]
+        minors = [
+            _person(60 + i, 2012, family=f"Fam{i}") for i in range(0, 40, 2)
+        ]  # 20 minors, each with a same-surname adult
+        return adults + minors
+
+    def test_every_minor_with_an_available_same_surname_adult_is_placed_with_one(self):
+        result = assign_households(self._family_population(), seed=0)
+        assert result.report.n_same_surname_possible == 20
+        assert result.report.n_same_surname_minors == 20
+
+    def test_possible_is_zero_without_a_matching_surname(self):
+        patients = _population(n_adults=60, n_minors=20)
+        result = assign_households(patients, seed=0)
+        assert result.report.n_same_surname_possible == 0
+        assert result.report.n_same_surname_minors == 0

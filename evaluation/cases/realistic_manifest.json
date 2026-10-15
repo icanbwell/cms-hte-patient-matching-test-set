@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "0ad78ebd0528aada1f1157d828f6ad6970569c1c439de7619a87059cc40a9137",
+  "generator_fingerprint": "22f6e8387acf6eab507a0b11a02a6ac8f6a45bbb1c6d6af102ad779704187d9b",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -41,7 +41,8 @@
     "n_households": 769,
     "mean_size": 2.600780234070221,
     "n_minors": 430,
-    "n_same_surname_minors": 46
+    "n_same_surname_minors": 89,
+    "n_same_surname_possible": 91
   },
   "profile_source": "PLACEHOLDER rates, not measured; supply the workgroup's measured cross-organization disagreement rates via a profile JSON file",
   "profile_rates": {
@@ -65,50 +66,55 @@
     "per_kind_cap": 8,
     "pairwise_per_kind_cap": 3,
     "yield_by_kind": {
+      "twin": {
+        "queries": 41,
+        "kept": 44,
+        "seen": 44
+      },
       "dob_zip": {
-        "queries": 469,
-        "kept": 631,
-        "seen": 631
+        "queries": 449,
+        "kept": 589,
+        "seen": 589
       },
       "name": {
         "queries": 704,
-        "kept": 2463,
-        "seen": 5067
+        "kept": 2464,
+        "seen": 5057
       },
       "sibling": {
-        "queries": 301,
-        "kept": 690,
-        "seen": 740
+        "queries": 298,
+        "kept": 665,
+        "seen": 697
       },
       "address": {
-        "queries": 1369,
-        "kept": 6720,
-        "seen": 278352
+        "queries": 1341,
+        "kept": 6626,
+        "seen": 273916
       },
       "phone": {
-        "queries": 64,
-        "kept": 65,
-        "seen": 65
+        "queries": 56,
+        "kept": 56,
+        "seen": 56
       },
       "email": {
-        "queries": 114,
-        "kept": 523,
-        "seen": 12291
+        "queries": 121,
+        "kept": 775,
+        "seen": 5742
       },
       "dob_only": {
         "queries": 2000,
         "kept": 15981,
-        "seen": 60157
+        "seen": 60199
       },
       "surname_zip": {
-        "queries": 773,
-        "kept": 3591,
-        "seen": 9760
+        "queries": 795,
+        "kept": 3592,
+        "seen": 9612
       }
     }
   },
-  "negative_share": 0.5560285545877268,
+  "negative_share": 0.5578823375433545,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 30538,
+  "n_labeled_cases": 30562,
   "n_population_queries": 2000
 }

@@ -346,6 +346,7 @@ class TestNegativeBalance:
             "name_collision_negative",
             "sibling_negative",
             "near_miss_negative",
+            "twin_like_negative",
         ]
 
 
@@ -459,6 +460,21 @@ class TestProbableDuplicateNegatives:
         rows = [_query_row(query, [typo, other, true_match], expected=["m"])]
         candidates = {p["id"]: p for p in (typo, other, true_match)}
         assert probable_duplicate_negatives([], rows, candidates) == ["q::typo"]
+
+
+class TestProbableDuplicateExemptsTwins:
+    def _pair(self, second_given, phone="212-555-0101"):
+        a = _patient("a", "Ana", "Rivera", dob="2010-03-04", phones=(phone,))
+        b = _patient("b", second_given, "Rivera", dob="2010-03-04", phones=(phone,))
+        return probable_duplicate_negatives(
+            [_row("c", a, b, False, "twin_like_negative")], [], {}
+        )
+
+    def test_twins_sharing_a_phone_are_not_flagged(self):
+        assert self._pair("Beatriz") == []
+
+    def test_a_name_typo_sharing_a_phone_is_still_flagged(self):
+        assert self._pair("Anna") == ["c"]
 
 
 class TestIdenticalPositivePairs:
