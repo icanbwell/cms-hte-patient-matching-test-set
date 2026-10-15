@@ -2,7 +2,7 @@
 
 A random 2,000-of-1M sample almost never contains a same-surname adult for a
 sampled child (91 of 430 minors do). This module streams the ONC shards once for
-real adult records that share a surname with a child who has none, adds enough of
+ONC-derived adult records that share a surname with a child who has none, adds enough of
 them to reach a target share of children with a same-surname adult, and drops the
 same number of other adults from the same age band, so the sample size and every
 age-band count are unchanged and the age-band gate still holds.
@@ -65,7 +65,7 @@ def find_adult_candidates(
     as_of: date = ONC_AS_OF,
 ) -> Dict[str, List[Patient]]:
     """Stream `batches` once and keep, per surname in `needed`, up to
-    `per_surname_cap` real adults old enough to be a parent of that surname's
+    `per_surname_cap` ONC-derived adults old enough to be a parent of that surname's
     youngest uncovered child (`needed` maps surname -> that child's age). Kept by
     seeded reservoir sampling."""
     kept: Dict[str, List[Patient]] = {s: [] for s in needed}
@@ -100,7 +100,7 @@ def add_family_adults(
     per_surname_cap: int = DEFAULT_PER_SURNAME_CAP,
     as_of: date = ONC_AS_OF,
 ) -> FamilyAdultsResult:
-    """`patients` with enough real same-surname adults swapped in that at least
+    """`patients` with enough ONC-derived same-surname adults swapped in that at least
     `target_share` of the children have one (as far as the shards allow).
     `batches_factory` is a zero-argument callable returning the shard batches."""
     if not 0.0 <= target_share <= 1.0:

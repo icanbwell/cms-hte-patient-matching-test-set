@@ -32,7 +32,7 @@
 - **Patient with no name parts, or no phone/address/SSN/email:** keys are omitted and no reader raises. Pinned in Tasks 2, 3 and 7.
 - **`PHONE2` with `^` and empty parts (`"^^"`, `"555^"`, `"^555"`):** empties dropped, no caret survives. Pinned in Task 3.
 - **Mutators leaving `[]` behind, and placeholder SSNs created from nothing:** pruned at write time and typed. Pinned in Tasks 4 and 5.
-- **`marriage_variant` retirement:** no case id contains `::marriage_variant`; a custom profile that still names it loads. Pinned in Task 6.
+- **`marriage_variant` retirement:** superseded. Task 6 was not carried out as written: `marriage_variant` was kept (it reads the mother's maiden name from the extension) and its case ids still exist.
 - **A query with no look-alikes anywhere (rare surname, no DOB, no address):** the finder returns nothing for it and the pools and pairs still build. Pinned in Task 8.
 - **A common DOB or surname flooding a query:** per-kind cap keeps at most 3 per kind per query, deterministically. Pinned in Task 8.
 - **A decoy that is secretly the query (same SSN, or same first name + family + DOB under another id):** never emitted. Pinned in Task 8.
@@ -736,7 +736,7 @@ git commit -m "BAI-1156 prune empty values when serializing patients"
 
 ---
 
-### Task 6: Retire `marriage_variant`
+### Task 6: Retire `marriage_variant` (SUPERSEDED: not carried out; `marriage_variant` was kept)
 
 **Decision for the reviewer (flagged in the design doc):** `marriage_variant` swapped `name[0].family` for the second `name` entry, which was MOTHERS_MAIDEN_NAME. With that column now an extension, the swap never fires, so all ~1,993 `marriage_variant` positives would become address-only changes mislabeled as marriages (session 15 finding F4 criticized exactly this). Surname change is already covered by `surname_change`, and address change by `address_move`. This task removes the scenario. Consumers pinned to `::marriage_variant` case ids lose them; the changelog in Task 15 records the removal.
 
@@ -2303,7 +2303,7 @@ git commit -m "BAI-1156 regenerate committed datasets with conformant resources;
   - Caveats: 1 (stale rule 29) Task 7; 5 (scarce hard negatives) Task 12; 2, 3, 4 stay disclosed (Task 15 changelog and manifest).
   - Partly covered enhancement: harder decoys (Task 11 puts real look-alikes in pools; `decoy_no_overlap_rate` is tracked, not enforced).
   - Not covered by design: E1 family structure, E2 age vintage, E3 queries with 0/1 matches.
-- **Placeholder scan:** three steps say "open the file first" (Tasks 4, 5 and 7) because the surrounding test body or `json.dumps` argument list was not captured here; each names the exact lines and what to copy or wrap. Task 14 Step 3 and Task 12 Step 4 give explicit decision rules for measured values (cap, floor, enforce-or-track) instead of guessed numbers.
+- **Placeholder scan:** the three steps that said "open the file first" (Tasks 4, 5 and 7) were resolved during implementation; the shipped code and tests in the PR are the source of truth, not those step bodies. Task 14 Step 3 and Task 12 Step 4 give explicit decision rules for measured values (cap, floor, enforce-or-track) instead of guessed numbers.
 - **Type consistency:** `NearMiss(query, decoy, kind, shared_fields)` and its properties `query_id`/`pair_type` are defined in Task 8 and used unchanged in Tasks 10-12; `find_near_misses(...) -> NearMissResult(near_misses, yield_by_kind)` is used in Task 12; `rebalance_negatives(records, *, target_share, seed, min_per_category)` is defined and used in Tasks 10 and 12; `negative_share`, `all_yes_f1`, `missing_hard_negative_categories`, `decoy_no_overlap_rate` are defined in Task 9 and named identically in the Task 13 thresholds.
 - **Known risks:**
   - Near-miss yield per kind is data-dependent; Task 12's manifest reports it and Task 14 Step 3 stops on a shortfall instead of weakening a gate.

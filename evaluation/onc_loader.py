@@ -144,6 +144,9 @@ def _row_to_patient(row: Dict[str, str]) -> Dict[str, Any]:
     return patient
 
 
+REQUIRED_COLUMNS = ("FIRST", "LAST")
+
+
 def load_onc_patients(csv_paths: List[Path]) -> List[Dict[str, Any]]:
     """Load one or more ONC shard CSVs into normalized FHIR Patient dicts."""
     patients: List[Dict[str, Any]] = []
@@ -151,6 +154,13 @@ def load_onc_patients(csv_paths: List[Path]) -> List[Dict[str, Any]]:
         if ".." in str(path):
             raise ValueError(f"Invalid file path: {path!r}")
         with open(path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
+            reader = csv.DictReader(f)
+            missing = [
+                c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])
+            ]
+            if missing:
+                # A missing header would otherwise load as silently empty names.
+                raise ValueError(f"{path}: missing required column(s) {missing}")
+            for row in reader:
                 patients.append(_row_to_patient(row))
     return patients

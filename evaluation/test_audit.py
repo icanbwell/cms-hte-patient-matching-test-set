@@ -388,6 +388,16 @@ def _query_row(query, candidates, expected=()):
 
 
 class TestProbableDuplicateNegatives:
+    def test_flags_the_same_first_name_and_birth_date_under_another_surname(self):
+        a = _patient("a", "Katherine", "Smith", dob="1980-06-15")
+        b = _patient("b", "Katherine", "Okafor", dob="1980-06-15")
+        assert self._flag(a, b) == ["c1"]
+
+    def test_does_not_flag_a_different_first_name_with_the_same_birth_date(self):
+        a = _patient("a", "Katherine", "Smith", dob="1980-06-15")
+        b = _patient("b", "Maria", "Okafor", dob="1980-06-15")
+        assert self._flag(a, b) == []
+
     def _flag(self, a, b):
         row = _row("c1", a, b, False, "hard_negative")
         return probable_duplicate_negatives([row], [], {})

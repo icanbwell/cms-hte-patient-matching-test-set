@@ -106,7 +106,7 @@ def generator_fingerprint() -> str:
 CAVEATS: List[str] = [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds real adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)",
+    "households are mostly unrelated ONC-derived records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds ONC-derived adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)",
 ]
 
 

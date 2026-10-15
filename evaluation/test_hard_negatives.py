@@ -12,7 +12,7 @@ def _patient(id_: str, family: str, zip_code: str = "10001", dob: str = "1980-01
     return {
         "resourceType": "Patient",
         "id": id_,
-        "name": [{"family": family, "given": ["Pat"]}],
+        "name": [{"family": family, "given": [f"Pat{family}"]}],
         "birthDate": dob,
         "telecom": [],
         "address": [

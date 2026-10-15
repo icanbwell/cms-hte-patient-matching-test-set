@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "0af948f6bd3e242a7cccbd2908bc03d63c79bf64b7204f4367595f8b2fdd2bfe",
+  "generator_fingerprint": "121fb59431f1342137a494f58a4cce88f459beb5de669ec6959b9b12c814220e",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -11,7 +11,7 @@
   "caveats": [
     "drift positives not verified against the CMS reference algorithm",
     "drift and household sharing rates are placeholders, not measured",
-    "households are mostly unrelated real records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds real adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)"
+    "households are mostly unrelated ONC-derived records placed at one address; 70% of minors live with a same-surname adult only because family_adults.py adds ONC-derived adults to the sample to reach a placeholder target (a surname is a proxy for a parent; see family_adults and households in this manifest)"
   ],
   "age_band_targets": {
     "0-17": 0.215,
@@ -83,8 +83,8 @@
       },
       "dob_zip": {
         "queries": 459,
-        "kept": 574,
-        "seen": 574
+        "kept": 573,
+        "seen": 573
       },
       "name": {
         "queries": 700,
@@ -123,8 +123,8 @@
       }
     }
   },
-  "negative_share": 0.5573968752042884,
+  "negative_share": 0.5573824077403328,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 30594,
+  "n_labeled_cases": 30593,
   "n_population_queries": 2000
 }
