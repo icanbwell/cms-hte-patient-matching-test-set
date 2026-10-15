@@ -320,6 +320,8 @@ def ssn_dropped_variant(patient: Patient) -> Patient:
     SSN identifier to begin with."""
     patient = _copy_patient(patient)
     identifiers = patient.get("identifier") or []
+    if not any(i.get("system") == SSN_SYSTEM for i in identifiers):
+        return patient
     patient["identifier"] = [i for i in identifiers if i.get("system") != SSN_SYSTEM]
     return patient
 

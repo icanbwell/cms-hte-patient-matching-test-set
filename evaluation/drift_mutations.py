@@ -148,6 +148,10 @@ def _contact_churn(
             return None
         entry = {"system": system, "value": rng.choice(donated)}
         if subtype == "replaced":
+            # Keep the replaced entry's rank so the new number stays the
+            # primary one rather than promoting the old secondary to rank 1.
+            if "rank" in new_telecom[own[0]]:
+                entry["rank"] = new_telecom[own[0]]["rank"]
             new_telecom[own[0]] = entry
         else:
             new_telecom.append(entry)

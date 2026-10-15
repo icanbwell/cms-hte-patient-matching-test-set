@@ -11,6 +11,7 @@ from audit import (
     all_yes_f1,
     category_of,
     decoy_no_overlap_rate,
+    identical_positive_pairs,
     missing_hard_negative_categories,
     negative_share,
     pairwise_two_of_three_f1,
@@ -453,6 +454,25 @@ class TestProbableDuplicateNegatives:
         rows = [_query_row(query, [typo, other, true_match], expected=["m"])]
         candidates = {p["id"]: p for p in (typo, other, true_match)}
         assert probable_duplicate_negatives([], rows, candidates) == ["q::typo"]
+
+
+class TestIdenticalPositivePairs:
+    def test_flags_byte_identical_positives_in_both_tiers(self):
+        a = _patient("a")
+        pair_rows = [
+            _row("same", a, dict(a), True),
+            _row("changed", a, _patient("a", dob="1980-06-16"), True),
+            _row("negative", a, dict(a), False),
+        ]
+        query = _patient("q")
+        twin = dict(query)
+        edited = _patient("q", dob="1980-06-16")
+        rows = [_query_row(query, [twin, edited], expected=["q", "q2"])]
+        candidates = {"q": twin, "q2": edited}
+        assert identical_positive_pairs(pair_rows, rows, candidates) == [
+            "same",
+            "q::q",
+        ]
 
 
 class TestPairwiseTwoOfThreeF1:

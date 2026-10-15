@@ -57,6 +57,13 @@ def export_ready(patient: Patient) -> Patient:
     return prune_empty(renumber_telecom_ranks(patient))
 
 
+def is_noop_variant(original: Patient, variant: Patient) -> bool:
+    """True when `variant` is indistinguishable from `original` in the form
+    written to a release file (e.g. a mutation that only added an empty field
+    that `prune_empty` then removes)."""
+    return export_ready(variant) == export_ready(original)
+
+
 def _empties(value: Any, path: str) -> Iterator[str]:
     if isinstance(value, dict):
         if not value and path:

@@ -101,8 +101,8 @@
       }
     }
   },
-  "negative_share": 0.5878829842478795,
+  "negative_share": 0.5990827306403246,
   "n_positives_dropped": 0,
-  "n_labeled_cases": 28885,
+  "n_labeled_cases": 28345,
   "n_population_queries": 2000
 }

@@ -241,6 +241,11 @@ class TestSsnDroppedVariant:
         result = ssn_dropped_variant(patient)
         assert result["identifier"] == []
 
+    def test_patient_without_an_identifier_key_is_returned_unchanged(self) -> None:
+        patient = _patient()
+        patient.pop("identifier", None)
+        assert ssn_dropped_variant(patient) == patient
+
     def test_does_not_mutate_input_patient(self) -> None:
         patient = _patient(identifier=[{"system": SSN_SYSTEM, "value": "1"}])
         ssn_dropped_variant(patient)

@@ -1,5 +1,6 @@
 {
   "same_person_negatives": {"max": 0, "status": "enforced"},
+  "identical_positive_pairs": {"max": 0, "status": "enforced"},
   "tier_parity_gap": {"max": 0, "status": "enforced"},
   "age_band_max_error": {"max": 0.01, "status": "enforced"},
   "people_per_address": {"min": 2.0, "status": "enforced"},

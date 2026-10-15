@@ -50,6 +50,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence
 
 from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
+from fhir_conformance import is_noop_variant
 from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
@@ -173,21 +174,29 @@ def _generate_all_raw_pairs(
             )
         if include_normalization_edge_cases:
             diacritic = diacritic_variant(p, rng=rng)
-            yield RawPair(
-                pair_id=f"{p['id']}::diacritic",
-                query_patient=p,
-                candidate_patient=diacritic,
-                is_true_match=True,
-                strata={"pair_type": "normalization_edge_case", "case": "diacritic"},
-            )
+            if not is_noop_variant(p, diacritic):
+                yield RawPair(
+                    pair_id=f"{p['id']}::diacritic",
+                    query_patient=p,
+                    candidate_patient=diacritic,
+                    is_true_match=True,
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "diacritic",
+                    },
+                )
             punctuated = punctuation_variant(p, rng=rng)
-            yield RawPair(
-                pair_id=f"{p['id']}::punctuation",
-                query_patient=p,
-                candidate_patient=punctuated,
-                is_true_match=True,
-                strata={"pair_type": "normalization_edge_case", "case": "punctuation"},
-            )
+            if not is_noop_variant(p, punctuated):
+                yield RawPair(
+                    pair_id=f"{p['id']}::punctuation",
+                    query_patient=p,
+                    candidate_patient=punctuated,
+                    is_true_match=True,
+                    strata={
+                        "pair_type": "normalization_edge_case",
+                        "case": "punctuation",
+                    },
+                )
         if include_compound_variants:
             compound, mutation_types = generate_compound_variant(
                 p, n_mutations=n_compound_mutations, rng=rng

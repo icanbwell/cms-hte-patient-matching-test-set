@@ -60,6 +60,7 @@ from typing import Any, Dict, List, Sequence, Set
 
 from case_exclusions import ExclusionPolicy
 from drift_profile import DriftProfile
+from fhir_conformance import is_noop_variant
 from hard_negatives import (
     mine_name_collision_negatives,
     mine_shared_address_hard_negatives,
@@ -192,13 +193,19 @@ def build_population_dataset(
             )
         if include_normalization_edge_cases:
             diacritic = diacritic_variant(patient, rng=rng)
-            add_candidate(
-                pid, f"{pid}::diacritic", diacritic, True, "normalization_edge_case"
-            )
+            if not is_noop_variant(patient, diacritic):
+                add_candidate(
+                    pid, f"{pid}::diacritic", diacritic, True, "normalization_edge_case"
+                )
             punctuated = punctuation_variant(patient, rng=rng)
-            add_candidate(
-                pid, f"{pid}::punctuation", punctuated, True, "normalization_edge_case"
-            )
+            if not is_noop_variant(patient, punctuated):
+                add_candidate(
+                    pid,
+                    f"{pid}::punctuation",
+                    punctuated,
+                    True,
+                    "normalization_edge_case",
+                )
         # Compound variants keep their own per-patient RNG so they never
         # perturb the stream above (session 15 tier parity).
         compound, mutation_types = generate_compound_variant(

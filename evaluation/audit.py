@@ -210,6 +210,26 @@ def probable_duplicate_negatives(
     return flagged
 
 
+def identical_positive_pairs(
+    pair_rows: Sequence[Row],
+    query_rows: Sequence[Row],
+    candidates: Dict[str, Patient],
+) -> List[str]:
+    """True-match pairs whose two records are byte-identical: they exercise no
+    matching logic and inflate recall. Returns case ids and population pair
+    ids ("<query_id>::<candidate_id>")."""
+    flagged = [
+        r["case_id"]
+        for r in pair_rows
+        if r["expected_match"] and r["source"] == r["target"]
+    ]
+    for q in query_rows:
+        for candidate_id in q["expected_match_ids"]:
+            if q["query"] == candidates[candidate_id]:
+                flagged.append(f"{q['query_id']}::{candidate_id}")
+    return flagged
+
+
 def _two_of_three(source: Patient, target: Patient) -> bool:
     def first(p: Patient) -> str:
         names = p.get("name") or []
@@ -456,6 +476,9 @@ def build_report(
     return {
         "same_person_negatives": same_person_negatives(pair_rows),
         "probable_duplicate_negatives": probable_duplicate_negatives(
+            pair_rows, query_rows, candidates
+        ),
+        "identical_positive_pairs": identical_positive_pairs(
             pair_rows, query_rows, candidates
         ),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),

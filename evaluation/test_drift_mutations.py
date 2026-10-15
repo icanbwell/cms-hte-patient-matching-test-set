@@ -173,6 +173,19 @@ class TestContactChurn:
                 return
         pytest.fail("replaced never drawn")
 
+    def test_phone_replaced_keeps_the_replaced_entrys_rank(self):
+        patient = _patient()
+        phones = [t for t in patient["telecom"] if t["system"] == "phone"]
+        for rank, phone in enumerate(phones, start=1):
+            phone["rank"] = rank
+        for seed in range(60):
+            variant, subtype = phone_churn_variant(patient, DONORS, random.Random(seed))
+            if subtype == "replaced":
+                new_phones = [t for t in variant["telecom"] if t["system"] == "phone"]
+                assert new_phones[0]["rank"] == 1
+                return
+        pytest.fail("replaced never drawn")
+
     def test_phone_dropped_removes_only_the_first_phone(self):
         for seed in range(60):
             variant, subtype = phone_churn_variant(
