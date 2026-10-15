@@ -72,7 +72,11 @@ class TestRegistry:
 
     def test_session_14_scenarios_keep_their_original_relative_order(self):
         names = list(REGISTRY)
-        assert names[:3] == ["ssn_dropped", "marriage_variant", "phone_variant"]
+        assert names[:2] == ["ssn_dropped", "phone_variant"]
+
+    def test_marriage_variant_is_retired(self):
+        assert "marriage_variant" not in REGISTRY
+        assert list(REGISTRY)[:2] == ["ssn_dropped", "phone_variant"]
 
 
 class TestGenerateScenarioVariants:
@@ -86,7 +90,6 @@ class TestGenerateScenarioVariants:
     def test_legacy_suffixes_are_unchanged(self):
         got = _variants(_patient("p1"), DriftProfile(rates={n: 1.0 for n in REGISTRY}))
         assert got["ssn_dropped"].suffix == "ssn_dropped"
-        assert got["marriage_variant"].suffix == "marriage_variant"
         assert got["phone_variant"].suffix == "phone_variant"
         assert dict(got["ssn_dropped"].strata) == {}
 
@@ -137,15 +140,6 @@ class TestGenerateScenarioVariants:
         profile = DriftProfile(rates={"ssn_dropped": 1.0})
         no_ssn = _patient("p1", identifier=[])
         assert _variants(no_ssn, profile) == {}
-
-    def test_marriage_variant_needs_a_next_patient(self):
-        profile = DriftProfile(rates={"marriage_variant": 1.0})
-        got = list(
-            generate_scenario_variants(
-                _patient("p1"), next_patient=None, donors=[], profile=profile, seed=0
-            )
-        )
-        assert got == []
 
     def test_bare_patient_never_raises(self):
         bare = {"resourceType": "Patient", "id": "x"}

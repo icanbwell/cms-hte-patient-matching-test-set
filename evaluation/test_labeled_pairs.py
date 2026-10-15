@@ -90,7 +90,6 @@ class TestGenerateRawPairs:
                 include_special_populations=False,
                 include_compound_variants=False,
                 include_ssn_dropped=False,
-                include_marriage_variant=False,
                 include_phone_variant=False,
                 seed=0,
             )
@@ -138,6 +137,12 @@ class TestGenerateRawPairs:
         assert len(institutional) > 0
         assert all(p.is_true_match is False for p in institutional)
 
+    def test_no_pair_id_mentions_marriage_variant(self) -> None:
+        pairs = list(
+            generate_raw_pairs(drift_population(), donors=drift_donors(), seed=0)
+        )
+        assert not [p.pair_id for p in pairs if "marriage_variant" in p.pair_id]
+
     def test_is_deterministic_given_a_seed(self) -> None:
         patients = [_patient("p1"), _patient("p2", family="Jones", given="Robert")]
         first = list(generate_raw_pairs(patients, seed=42))
@@ -151,7 +156,6 @@ class TestGenerateRawPairs:
                 "id": "p1",
                 "name": [
                     {"family": "Smith", "given": ["Katherine"]},
-                    {"family": "Jones", "given": ["Katherine"]},  # maiden-name proxy
                 ],
                 "birthDate": "1980-06-15",
                 "telecom": [
@@ -195,7 +199,6 @@ class TestGenerateRawPairs:
         assert {
             "compound_variant",
             "ssn_dropped",
-            "marriage_variant",
             "phone_variant",
             "sibling_negative",
             "name_collision_negative",
@@ -210,7 +213,6 @@ class TestGenerateRawPairs:
                 include_special_populations=False,
                 include_compound_variants=False,
                 include_ssn_dropped=False,
-                include_marriage_variant=False,
                 include_phone_variant=False,
                 include_sibling_negatives=False,
                 include_name_collision_negatives=False,
@@ -244,8 +246,7 @@ class TestGenerateRawPairs:
         degenerate_types = {
             p.strata["pair_type"]
             for p in pairs
-            if p.strata.get("pair_type")
-            in {"ssn_dropped", "marriage_variant", "phone_variant"}
+            if p.strata.get("pair_type") in {"ssn_dropped", "phone_variant"}
         }
         assert degenerate_types == set()
 
@@ -284,7 +285,6 @@ class TestGenerateRawPairs:
                 [patient],
                 include_normalization_edge_cases=False,
                 include_ssn_dropped=False,
-                include_marriage_variant=False,
                 include_phone_variant=False,
                 n_compound_mutations=3,  # forces the "given" group to be drawn
                 seed=0,
@@ -362,7 +362,6 @@ class TestDriftScenariosPerProvisionTier:
                 donors=drift_donors(),
                 profile=profile,
                 include_ssn_dropped=False,
-                include_marriage_variant=False,
                 include_phone_variant=False,
                 seed=0,
             )
@@ -375,7 +374,7 @@ class TestDriftScenariosPerProvisionTier:
         pairs = [
             p
             for p in generate_raw_pairs(patients, seed=0)
-            if p.strata["pair_type"] in {"ssn_dropped", "marriage_variant"}
+            if p.strata["pair_type"] in {"ssn_dropped"}
         ]
         ssn = [p for p in pairs if p.strata["pair_type"] == "ssn_dropped"]
         assert {p.pair_id for p in ssn} == {f"{x['id']}::ssn_dropped" for x in patients}

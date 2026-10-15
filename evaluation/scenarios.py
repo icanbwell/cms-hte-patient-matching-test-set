@@ -29,7 +29,7 @@ from drift_mutations import (
     surname_change_variant,
 )
 from drift_profile import DriftProfile
-from mutations import marriage_variant, phone_variant, ssn_dropped_variant
+from mutations import phone_variant, ssn_dropped_variant
 from placeholders import placeholder_variant
 
 Patient = Dict[str, Any]
@@ -61,14 +61,6 @@ class Scenario:
 
 def _ssn_dropped(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
     return ScenarioResult(ssn_dropped_variant(patient), "ssn_dropped")
-
-
-def _marriage_variant(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
-    if ctx.next_patient is None:
-        return None
-    return ScenarioResult(
-        marriage_variant(patient, ctx.next_patient), "marriage_variant"
-    )
 
 
 def _phone_variant(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | None:
@@ -116,13 +108,12 @@ def _placeholder(patient: Patient, ctx: ScenarioContext) -> ScenarioResult | Non
     return _with_subtype("placeholder", placeholder_variant(patient, rng=ctx.rng))
 
 
-# Order matters only for output ordering: the three session-14 scenarios keep
+# Order matters only for output ordering: the two remaining session-14 scenarios keep
 # their original relative order.
 REGISTRY: Dict[str, Scenario] = {
     s.name: s
     for s in (
         Scenario("ssn_dropped", _ssn_dropped),
-        Scenario("marriage_variant", _marriage_variant),
         Scenario("phone_variant", _phone_variant),
         Scenario("surname_change", _surname_change),
         Scenario("address_move", _address_move),

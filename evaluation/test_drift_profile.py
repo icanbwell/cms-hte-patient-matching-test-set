@@ -30,7 +30,14 @@ class TestDriftProfile:
         profile = DriftProfile().without("ssn_dropped", "phone_churn")
         assert profile.rate("ssn_dropped") == 0.0
         assert profile.rate("phone_churn") == 0.0
-        assert profile.rate("marriage_variant") == 1.0
+
+    def test_legacy_marriage_variant_key_in_a_custom_profile_is_ignored(self, tmp_path):
+        path = tmp_path / "profile.json"
+        path.write_text(
+            json.dumps({"source": "old", "rates": {"marriage_variant": 1.0}})
+        )
+        profile = DriftProfile.from_json(path)
+        assert profile.rate("phone_churn") == DriftProfile().rate("phone_churn")
 
     def test_from_json_reads_rates_and_source(self, tmp_path):
         path = tmp_path / "profile.json"

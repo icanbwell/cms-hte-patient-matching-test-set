@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Dict, Mapping
 
 # Session-14 scenarios keep emitting for every applicable patient, exactly as before.
+# Scenario names removed from the registry that older profile JSON may still name.
+RETIRED_SCENARIOS = frozenset({"marriage_variant"})
+
 LEGACY_RATES: Dict[str, float] = {
     "ssn_dropped": 1.0,
-    "marriage_variant": 1.0,
     "phone_variant": 1.0,
 }
 
@@ -78,13 +80,16 @@ class DriftProfile:
         if "rates" not in data:
             raise ValueError(f"{path}: profile JSON needs a 'rates' object")
         defaults = {**LEGACY_RATES, **PLACEHOLDER_RATES}
-        unknown = set(data["rates"]) - set(defaults)
+        # Scenarios retired from the registry are dropped, not rejected, so older
+        # profile files keep loading.
+        file_rates = {
+            k: v for k, v in data["rates"].items() if k not in RETIRED_SCENARIOS
+        }
+        unknown = set(file_rates) - set(defaults)
         if unknown:
             raise ValueError(
                 f"{path}: unknown scenario rates {sorted(unknown)}; "
                 f"expected a subset of {sorted(defaults)}"
             )
         # Rates the file omits keep their defaults rather than silently turning off.
-        return cls(
-            rates={**defaults, **data["rates"]}, source=str(data.get("source", ""))
-        )
+        return cls(rates={**defaults, **file_rates}, source=str(data.get("source", "")))
