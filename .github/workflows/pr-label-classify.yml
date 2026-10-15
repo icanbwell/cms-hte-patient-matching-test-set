@@ -285,8 +285,22 @@ jobs:
           # forever across that transition.
           ACTOR_LOGIN="$(gh api user -q .login 2>/dev/null || echo 'github-actions[bot]')"
           printf '%s\n' "$ACTOR_LOGIN" "github-actions[bot]" | sort -u > actor_logins.txt
+          # Axis of a label. The semver axis has two vocabularies (see
+          # semver_labels in pr-risk-mapping.yml): semver:* and the bare-word
+          # Major/Minor/Patch/do-not-release. Both must map to "semver", or a
+          # human's bare `Major` is invisible to the surviving-axes check below
+          # and the classifier adds its own `Minor` beside it, tripping
+          # pr-require-labels.yml's `exactly 1` semver gate.
+          axis_of() {
+            case "$1" in
+              risk:*) echo risk ;;
+              type:*) echo type ;;
+              semver:*|Major|Minor|Patch|do-not-release) echo semver ;;
+              *) echo "$1" ;;
+            esac
+          }
           gh pr view "$PR" --json labels \
-            -q '.labels[] | select(.name | test("^(risk|type|semver):")) | .name' \
+            -q '.labels[] | select(.name | test("^(risk|type|semver):|^(Major|Minor|Patch|do-not-release)$")) | .name' \
             | sort -u > current_managed_labels.txt
           gh api --paginate --slurp "repos/${{ github.repository }}/issues/$PR/timeline" \
             > timeline.json 2>/dev/null || echo '[]' > timeline.json
@@ -303,10 +317,13 @@ jobs:
           # pr-require-labels.yml's `mode: exactly, count: 1` gate and blocks
           # merge. That's a different, visible failure from the original
           # silent-override bug, but still a regression from before this fix.
-          comm -23 current_managed_labels.txt stale_labels.txt \
-            | sed -E 's/:.*//' | sort -u > surviving_axes.txt
+          : > surviving_axes.txt
+          while read -r kept; do
+            axis_of "$kept" >> surviving_axes.txt
+          done < <(comm -23 current_managed_labels.txt stale_labels.txt)
+          sort -u -o surviving_axes.txt surviving_axes.txt
           while read -r label; do
-            axis="${label%%:*}"
+            axis="$(axis_of "$label")"
             if grep -qx "$axis" surviving_axes.txt; then
               echo "Skipping $label — axis '$axis' already has a surviving (non-stale) label on this PR"
               continue
