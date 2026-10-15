@@ -27,6 +27,7 @@ from audit import (
     same_person_negatives,
     shared_contact_rate,
     tier_parity_gap,
+    twin_pairs_with_name_variants,
 )
 from fhir_conformance import export_ready
 from identity_guard import SSN_SYSTEM
@@ -485,6 +486,49 @@ class TestProbableDuplicateExemptsTwins:
 
     def test_a_name_typo_sharing_a_phone_is_still_flagged(self):
         assert self._pair("Anna") == ["c"]
+
+
+class TestTwinNameVariants:
+    """The audit's twin exemption must not pass one person recorded under a
+    nickname, an initial or a truncation (edit distance alone does)."""
+
+    VARIANTS = (
+        ("William", "Bill"),
+        ("Bill", "William"),
+        ("J", "John"),
+        ("Chris", "Christopher"),
+        ("Elizabeth", "Beth"),
+        ("Katherine", "Cathy"),
+    )
+
+    def _rows(self, first_a, first_b, phone="212-555-0101"):
+        a = _patient("a", first_a, "Rivera", dob="2010-03-04", phones=(phone,))
+        b = _patient("b", first_b, "Rivera", dob="2010-03-04", phones=(phone,))
+        return [_row("c", a, b, False, "twin_like_negative")]
+
+    @pytest.mark.parametrize("first_a,first_b", VARIANTS)
+    def test_variant_pairs_labeled_twin_are_flagged_twice_over(self, first_a, first_b):
+        rows = self._rows(first_a, first_b)
+        assert twin_pairs_with_name_variants(rows) == ["c"]
+        assert probable_duplicate_negatives(rows, [], {}) == ["c"]
+
+    @pytest.mark.parametrize("first_a,first_b", VARIANTS)
+    def test_variant_pairs_sharing_only_an_address_are_still_duplicates(
+        self, first_a, first_b
+    ):
+        rows = self._rows(first_a, first_b, phone="")
+        rows[0]["source"]["telecom"] = rows[0]["target"]["telecom"] = []
+        assert probable_duplicate_negatives(rows, [], {}) == ["c"]
+
+    def test_real_twins_are_not_flagged(self):
+        rows = self._rows("Ana", "Beatriz")
+        assert twin_pairs_with_name_variants(rows) == []
+        assert probable_duplicate_negatives(rows, [], {}) == []
+
+    def test_only_twin_labeled_negatives_are_listed(self):
+        rows = self._rows("William", "Bill")
+        rows[0]["rationale"] = "hard_negative"
+        assert twin_pairs_with_name_variants(rows) == []
 
 
 class TestIdenticalPositivePairs:
