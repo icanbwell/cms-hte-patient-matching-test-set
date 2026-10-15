@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from identity_guard import SSN_SYSTEM
-from near_miss import KINDS, PAIR_TYPE_BY_KIND, find_near_misses
+from near_miss import (
+    KINDS,
+    PAIR_TYPE_BY_KIND,
+    NearMiss,
+    find_near_misses,
+    limit_per_kind,
+)
 
 
 def _p(id_, first, family, dob, zip_="10001", street="1 MAIN ST", phone=None, ssn=None):
@@ -255,3 +261,42 @@ class TestCapsAndDeterminism:
         ]
         kinds = [m.kind for m in _find(records).near_misses]
         assert kinds == ["sibling", "dob_only", "dob_only"]
+
+
+class TestLimitPerKind:
+    def _misses(self):
+        query = _p("q", "Eugene", "Benally", "1971-01-01")
+        other = _p("q2", "Maria", "Lopez", "1999-09-09")
+        decoys = [_p(f"d{i}", "Ana", f"Name{i}", "1971-01-01") for i in range(6)]
+        return (
+            [NearMiss(query, d, "dob_only", {}) for d in decoys]
+            + [NearMiss(query, decoys[0], "address", {})]
+            + [NearMiss(other, d, "dob_only", {}) for d in decoys[:2]]
+        )
+
+    def test_keeps_at_most_cap_per_query_and_kind(self):
+        kept = limit_per_kind(self._misses(), 3, seed=0)
+        by_slot = {}
+        for miss in kept:
+            by_slot.setdefault((miss.query_id, miss.kind), []).append(miss)
+        assert len(by_slot[("q", "dob_only")]) == 3
+        assert len(by_slot[("q", "address")]) == 1
+        assert len(by_slot[("q2", "dob_only")]) == 2
+
+    def test_is_deterministic_and_preserves_input_order(self):
+        misses = self._misses()
+        first = limit_per_kind(misses, 3, seed=0)
+        assert first == limit_per_kind(misses, 3, seed=0)
+        positions = [misses.index(m) for m in first]
+        assert positions == sorted(positions)
+
+    def test_the_choice_depends_on_the_seed(self):
+        chosen = {
+            tuple(m.decoy["id"] for m in limit_per_kind(self._misses(), 2, seed=s))
+            for s in range(10)
+        }
+        assert len(chosen) > 1
+
+    def test_a_cap_above_the_group_size_keeps_everything(self):
+        misses = self._misses()
+        assert limit_per_kind(misses, 99, seed=0) == misses

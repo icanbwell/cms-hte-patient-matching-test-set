@@ -1,7 +1,7 @@
 {
   "kind": "realistic dataset: RELEASE CANDIDATE",
   "dataset_version": "2",
-  "generator_fingerprint": "3eac7c1466d9225a924648fe7c48b00ac3f23d7190786ce2d26353c4da4ab9b9",
+  "generator_fingerprint": "8ec7024a7e0707783745a46ce96d43f4ecccf7055fd7137576f3a9fd46e89f06",
   "seed": 0,
   "sample_size": 2000,
   "donor_size": 2000,
@@ -60,26 +60,27 @@
     "minor_ssn_absent": 0.7
   },
   "near_miss": {
-    "per_kind_cap": 3,
+    "per_kind_cap": 8,
+    "pairwise_per_kind_cap": 3,
     "yield_by_kind": {
       "dob_zip": {
         "queries": 469,
-        "kept": 624,
+        "kept": 631,
         "seen": 631
       },
       "name": {
         "queries": 704,
-        "kept": 1487,
+        "kept": 2463,
         "seen": 5067
       },
       "sibling": {
         "queries": 301,
-        "kept": 528,
+        "kept": 690,
         "seen": 740
       },
       "address": {
         "queries": 1369,
-        "kept": 3269,
+        "kept": 6720,
         "seen": 278352
       },
       "phone": {
@@ -89,17 +90,17 @@
       },
       "email": {
         "queries": 114,
-        "kept": 261,
+        "kept": 523,
         "seen": 12291
       },
       "dob_only": {
         "queries": 2000,
-        "kept": 5999,
+        "kept": 15981,
         "seen": 60157
       },
       "surname_zip": {
         "queries": 773,
-        "kept": 1855,
+        "kept": 3591,
         "seen": 9760
       }
     }

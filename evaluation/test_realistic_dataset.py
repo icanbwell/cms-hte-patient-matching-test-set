@@ -33,7 +33,9 @@ from release_gate import (
 )
 
 SAMPLE = 300
-SCALE_DEPENDENT = {"missing_hard_negative_categories"}
+# Both need the full corpus: a one-shard fixture has too few look-alikes. The
+# committed files are held to them by test_committed_realistic.py.
+SCALE_DEPENDENT = {"missing_hard_negative_categories", "decoy_no_overlap_rate"}
 
 
 @pytest.fixture(scope="module")
@@ -155,7 +157,8 @@ def test_manifest_reports_near_miss_yield_and_negative_share(realistic):
         "name",
         "dob_only",
     }
-    assert manifest["near_miss"]["per_kind_cap"] == 3
+    assert manifest["near_miss"]["per_kind_cap"] == 8
+    assert manifest["near_miss"]["pairwise_per_kind_cap"] == 3
     assert manifest["negative_share"] >= 0.45
     assert manifest["n_positives_dropped"] >= 0
 
