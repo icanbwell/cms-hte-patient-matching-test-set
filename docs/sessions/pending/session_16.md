@@ -1,6 +1,6 @@
 # Session 16 — v1 Release Blockers: Realistic-Set Hard Negatives, Negative Balance, FHIR Conformance
 
-**Status:** Draft, not yet reviewed. Written 2026-10-14 in response to written feedback from a
+**Status:** Implemented on branch IQ-BAI-1156; realistic set is a v1 release candidate with open caveats 2, 3, 4. Written 2026-10-14 in response to written feedback from a
 workgroup reviewer on the v1 release candidate.
 **Author:** Imran Qureshi
 **Ticket:** BAI-1156
@@ -90,9 +90,9 @@ realistic set would ship with no hard negatives.
 **A. Keep ignoring; consumers run `make generate-realistic-dataset`.** ❌ Requires the ~1M-row ONC
 fixtures (already vendored, but a ~1 minute, memory-sensitive run) and risks seed/version drift
 between consumers.
-**B. Commit the realistic files** (remove the ignore rule, or `git add -f`). Files are ~26 MB
-total (16 MB pairs, 7 MB candidates, 3 MB queries), the same order as the current committed set
-(~24 MB). ✅ Proposed.
+**B. Commit the realistic files** (remove the ignore rule, or `git add -f`). Files are ~51 MB
+total as built (34 MB pairs, 14 MB candidates, 3 MB queries; each under 50 MB), about twice the current committed set
+(~25 MB). ✅ Proposed.
 **C. GitHub Release artifact built in CI.** ⚠️ Cleaner repo, but a clone no longer holds the data and
 the reviewer's complaint is specifically about what a clone gets. Reconsider if file size grows
 (for example with the full-dataset export).
@@ -173,8 +173,9 @@ Near-miss kinds (`shared_fields` is recorded, as the miners do today):
   `population_topup`), shard order fixed.
 - **Existing miners stay** (they still serve the committed sample and unit tests). Both tiers call the
   new finder for the realistic export, so tier parity holds.
-- **Native duplicates:** every candidate decoy passes `is_possible_same_person`; the independent
-  looser audit detector from session 15 reports any leakage.
+- **Native duplicates:** every candidate decoy passes `is_possible_same_person` and `is_probable_duplicate`
+  (typo duplicates), against both the housed query and its pre-household original; the independent
+  `probable_duplicate_negatives` check in `audit.py` (enforced, max 0, both tiers) reports any leakage.
 
 Out of scope for PR 2: changing pool composition or pair counts (PR 3 and PR 4).
 
@@ -286,13 +287,13 @@ and resolution:
 | 2 | Drift positives not verified against the CMS reference algorithm | Open; this repo has no matching engine | Reviewer runs the realistic positives through their CMS 3.3.0/3.4.0 harness after PR 4 and returns rejected case ids; we drop or fix them via `case_exclusions.py`. Manifest keeps the caveat until they confirm (open question 8) | No, but must stay disclosed |
 | 3 | Drift and household sharing rates are placeholders | Open | Reviewer supplies measured cross-organization rates (session 15, open question 1). Without them the profile stays `has_public_estimate=False` and the dataset is marked provisional | No; ship as provisional |
 | 4 | Households are mostly unrelated real records at one address | Open; reviewer enhancement E1 | PR 5 (parent-first households, gated same-surname minors rate). Until then, disclosed in the manifest and `cases/README.md` | No |
-| 5 | Mined sibling, name-collision and hard-negative categories are scarce | **Closed.** Near-miss finder and negative rebalance; `missing_hard_negative_categories` is enforced in the realistic gate (0 missing). Pairwise counts: `hard_negative` 625, `name_collision_negative` 1,495, `sibling_negative` 534, `near_miss_negative` 11,450 | **Yes** |
+| 5 | Mined sibling, name-collision and hard-negative categories are scarce | **Closed.** Near-miss finder and negative rebalance; `missing_hard_negative_categories` is enforced in the realistic gate (0 missing). Pairwise counts: `hard_negative` 625, `name_collision_negative` 1,488, `sibling_negative` 530, `near_miss_negative` 11,449 | **Yes** |
 
 **Inclusion criteria for v1:** reviewer blockers R1-R4 closed, caveat 5 closed, realistic gate green
 from a fresh clone in CI, and the manifest and `cases/README.md` list every caveat still open
 (2, 3 and 4 if PR 5 has not shipped).
 
-**Status at release (2026-10-14):** caveats 1 and 5 are closed. Caveats 2, 3 and 4 remain open and disclosed. Also open: `decoy_no_overlap_rate` is 0.7213 (tracked, max 0.5, tracked-fail), so 72% of non-matching pool candidates in the realistic population tier still share nothing with their query and the "harder decoys" ask (E4) is only partly met; E3 (queries with exactly 0 or 1 expected matches), E1 (family structure) and E2 (age vintage) are not addressed. Measured on the realistic set: `negative_share` 0.5881, `all_yes_f1` 0.5835, `best_single_field_f1` 0.8596 (enforced, max 0.9), `multi_field_margin` 0.1187, 0 positives dropped by rebalancing.
+**Status at release (2026-10-14):** caveats 1 and 5 are closed. Caveats 2, 3 and 4 remain open and disclosed. Also open: `decoy_no_overlap_rate` is 0.7215 (tracked, max 0.5, tracked-fail), so 72% of non-matching pool candidates in the realistic population tier still share nothing with their query and the "harder decoys" ask (E4) is only partly met; E3 (queries with exactly 0 or 1 expected matches), E1 (family structure) and E2 (age vintage) are not addressed. Measured on the realistic set: `negative_share` 0.5879, `all_yes_f1` 0.5837, `best_single_field_f1` 0.8598 (enforced, max 0.9), `multi_field_margin` 0.1187, `pairwise_two_of_three_f1` 0.8854 (tracked, max 0.95), `probable_duplicate_negatives` 0 (enforced), 0 positives dropped by rebalancing (near-miss negatives alone exceeded the 50% target). The final review also found typo duplicates and original-record matches among the decoys; both are now rejected in `near_miss.py` (default run: 11 typo-duplicate decoys rejected against the housed query, 4 against the pre-household original).
 
 **Asks of the reviewer** (shortens the path): (a) run the realistic positives through the CMS harness
 once PR 4 lands; (b) share measured disagreement and share rates now, which closes caveat 3.
@@ -314,7 +315,7 @@ once PR 4 lands; (b) share measured disagreement and share rates now, which clos
 | Decoys are real ONC records, so no fabricated identities | Natural yield per kind is data-dependent; some kinds (for example `address`) may be thin and need a cap or a tagged constructed fallback |
 | Conformant resources | Resource shape changes, so consumers pinned to the old shape (`given` including aliases, second `name`) must re-run; a documented changelog covers it |
 | Near-miss pools give realistic FDR | FDR/precision on the new pools are not comparable to numbers from the previous release |
-| Committed realistic set matches what a clone gets | Repo grows by ~26 MB and a CI gate has to stay green |
+| Committed realistic set matches what a clone gets | Repo grows by ~51 MB and a CI gate has to stay green |
 
 ## Risks / stress test
 

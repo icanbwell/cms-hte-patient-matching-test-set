@@ -214,7 +214,7 @@ step (ONC's data is already public/synthetic).
   cited age-band and household targets, the age-stratified sampler (all ONC shards, one at a time),
   household assignment with shared addresses and contacts, and the generator for the parallel
   `realistic_*` files (the committed curated files are never overwritten; the realistic files are
-  committed as the v1 release and `make audit-realistic` runs in CI).
+  committed as the v1 release candidate and `make audit-realistic` runs in CI).
   `make generate-realistic-dataset` / `make audit-realistic`.
 - **`prevalence_estimates.py`** — real, cited public-source prevalence estimates (Census/CDC/Pew/
   peer-reviewed) per test-case category, for optional real-world-weighted aggregation. Every entry

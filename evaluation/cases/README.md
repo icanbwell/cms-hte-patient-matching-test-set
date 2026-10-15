@@ -528,9 +528,9 @@ other true-match/hard-negative/special-population category is present at full sc
 ### Dataset version 2 (BAI-1156)
 - Patient resources are FHIR-conformant: no empty strings/arrays, caret-joined phones split into one `telecom` entry each with `rank`, SSN identifiers carry type `SS`, ONC ALIAS is a separate `use: nickname` name (not in `given`), MOTHERS_MAIDEN_NAME is the `patient-mothersMaidenName` extension (not a second name).
 - Removed: the `marriage_variant` case ids (its surname swap relied on mother's maiden name as a name entry). Surname changes are covered by `surname_change`, address changes by `address_move`.
-- Realistic set committed (`realistic_*`): real look-alike decoys from all shards in both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`; strata `found_by=near_miss`), pairwise tier rebalanced to ~50% negatives by subsampling positives (`manifest.n_positives_dropped`), enforced gates for `negative_share`, `all_yes_f1` and required hard-negative categories.
+- Realistic set committed (`realistic_*`): real look-alike decoys from all shards in both tiers (`hard_negative`, `name_collision_negative`, `sibling_negative`, `near_miss_negative`; strata `found_by=near_miss`), pairwise tier targets 50% negatives and lands at `negative_share` 0.5879 with no positives subsampled (`manifest.n_positives_dropped` = 0: the near-miss negatives alone exceeded the target), enforced gates for `negative_share`, `all_yes_f1`, required hard-negative categories and `probable_duplicate_negatives`. The near-miss finder rejects decoys that are probable typo duplicates of the query (`identity_guard.is_probable_duplicate`) or of its pre-household original.
 - Committed curated files regenerated in full at the default seed: `sample_labeled_pairs.jsonl` 12,713 rows (12,136 true matches, 577 non-matches; was 14,201 rows, 13,619 and 582), `population_queries.jsonl` 2,000 queries, `population_candidates.jsonl` 14,262 candidates (was 15,747 per the BAI-1061 entry). Consumers that pin row counts or case ids should re-pin.
-- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: `decoy_no_overlap_rate` 0.7213 (tracked, max 0.5), queries with exactly 0 or 1 expected matches, family structure and the age vintage.
+- Open caveats at release (also in `realistic_manifest.json`): drift positives not verified against the CMS reference algorithm; drift and household sharing rates are placeholders; households are mostly unrelated records at one address. Also open: `decoy_no_overlap_rate` 0.7215 (tracked, max 0.5), queries with exactly 0 or 1 expected matches, family structure and the age vintage.
 
 - **BAI-1061 (regenerated cases)** - `sample_labeled_pairs.jsonl` and `population_*.jsonl` regenerated
   at the default seed with the generators as of the case-exclusion mechanism (rule 29 excluded in
@@ -572,8 +572,9 @@ exempt because it is pairwise-only by design). Tracked: `positive_phone_drift_ra
 is **provisional** and is to be re-set when the workgroup supplies measured rates),
 `best_single_field_f1` (max 0.9; the committed set reports 0.9486, tracked-fail) and
 `multi_field_margin` (min 0.05; 0.035, tracked-fail). `make audit-realistic` additionally enforces
-`negative_share` (min 0.45), `all_yes_f1` (max 0.70), `best_single_field_f1` (max 0.9) and
-`missing_hard_negative_categories` (max 0) for the realistic set, and runs in CI. The committed set is
+`negative_share` (min 0.45), `all_yes_f1` (max 0.70), `best_single_field_f1` (max 0.9),
+`missing_hard_negative_categories` (max 0) and `probable_duplicate_negatives` (max 0; a looser, independent
+check than `same_person_negatives`, run over both tiers) for the realistic set, and runs in CI. The committed set is
 not rebalanced: its `negative_share` is 0.0454 and its always-"match" F1 is 0.977, which is why the
 realistic set is the one to use for those metrics. Run `PYTHONPATH=. uv run python evaluation/audit.py` for the full
 JSON report (per-field positive drift rates, people per address, shared-phone rate, age bands).
@@ -662,7 +663,7 @@ year); the skew that persists is the elderly (12.8% aged 85+ against about 2%). 
 have almost no shared addresses (1.03 patients per address) or shared phones (6%). `make
 generate-realistic-dataset` builds a **parallel set** (`realistic_labeled_pairs.jsonl`,
 `realistic_population_candidates.jsonl`, `realistic_population_queries.jsonl`, `realistic_manifest.json`;
-committed as the v1 release, with `make audit-realistic` run in CI) from all nine ONC shards, one at a time:
+committed as the v1 release candidate, with `make audit-realistic` run in CI) from all nine ONC shards, one at a time:
 
 | Stage | What it does | Source of the target |
 |---|---|---|
@@ -704,12 +705,18 @@ What this is not:
 - **Mined negative categories.** A random 2,000-of-1M draw removes the alphabetical clustering the
   per-sample miners relied on, so hard negatives now come from `near_miss.py`, a streaming
   reverse-blocking finder over all shards (`found_by=near_miss`). Pairwise rows per category in the
-  realistic file: `hard_negative` 625, `name_collision_negative` 1,495, `sibling_negative` 534,
-  `near_miss_negative` 11,450 (committed set: 4, 70, 36, 0). The pairwise tier is rebalanced to
-  `negative_share` 0.5881 by subsampling positives (`manifest.n_positives_dropped` = 0 at the default seed);
-  `all_yes_f1` is 0.5835 (committed: 0.977).
-- **Harder decoys are only partly met.** `decoy_no_overlap_rate` is 0.7213 (tracked, max 0.5, tracked-fail):
+  realistic file: `hard_negative` 625, `name_collision_negative` 1,488, `sibling_negative` 530,
+  `near_miss_negative` 11,449 (committed set: 4, 70, 36, 0). The pairwise tier targets 50% negatives; the
+  near-miss negatives alone exceed that, so no positives are subsampled
+  (`manifest.n_positives_dropped` = 0 at the default seed) and `negative_share` is 0.5879;
+  `all_yes_f1` is 0.5837 (committed: 0.977). A naive pairwise rule (match iff at least 2 of first name,
+  family name, birth date agree) scores F1 0.885 on the pairwise tier (`pairwise_two_of_three_f1`, tracked,
+  max 0.95).
+- **Harder decoys are only partly met.** `decoy_no_overlap_rate` is 0.7215 (tracked, max 0.5, tracked-fail):
   72% of non-matching candidates in the realistic population pools still share nothing with their query.
+  This follows from the per-kind cap (3) and the low yield of most kinds (about 7 near-miss decoys per query
+  on average, 14,088 over 2,000 queries); the remaining pool slots are filled by random top-ups. It is not
+  caused by trimming.
   Queries with exactly 0 or 1 expected matches, family structure (same-surname minors) and the age vintage
   are not addressed in this release.
 - Age uses `AS_OF = 2017-01-01` (ONC's vintage) against Census targets from 2022 and 2024 (Open Question 5).
