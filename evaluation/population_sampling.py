@@ -21,12 +21,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
-from population_targets import AGE_BANDS, AS_OF, age_band_targets
+from population_targets import AGE_BANDS, ONC_AS_OF, age_band_targets
 
 Patient = Dict[str, Any]
 
 
-def age_of(patient: Patient, as_of: date = AS_OF) -> int | None:
+def age_of(patient: Patient, as_of: date = ONC_AS_OF) -> int | None:
     """Whole-year-difference age as of `as_of`, or None without a usable birthDate."""
     try:
         return as_of.year - int(str(patient.get("birthDate") or "")[:4])
@@ -73,7 +73,7 @@ def stratified_sample(
     donor_n: int = 0,
     seed: int = 0,
     targets: Mapping[str, float] | None = None,
-    as_of: date = AS_OF,
+    as_of: date = ONC_AS_OF,
 ) -> StratifiedSample:
     """A band-stratified sample of `n` patients and a disjoint `donor_n` donors.
 

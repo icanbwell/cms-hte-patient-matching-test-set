@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
 from audit import build_report, dataset_paths
+from population_targets import AS_OF, ONC_AS_OF
 
 THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds.json"
 REALISTIC_THRESHOLDS_PATH = Path(__file__).parent / "release_thresholds_realistic.json"
@@ -92,7 +93,8 @@ def run(dataset: str = "committed") -> List[GateResult]:
     thresholds = (
         REALISTIC_THRESHOLDS_PATH if dataset == "realistic" else THRESHOLDS_PATH
     )
-    return check(build_report(*paths), load_thresholds(thresholds))
+    as_of = AS_OF if dataset == "realistic" else ONC_AS_OF
+    return check(build_report(*paths, as_of=as_of), load_thresholds(thresholds))
 
 
 if __name__ == "__main__":

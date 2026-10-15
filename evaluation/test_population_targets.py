@@ -9,7 +9,9 @@ from population_targets import (
     AGE_BAND_TARGETS,
     AGE_BANDS,
     AS_OF,
+    DOB_SHIFT_YEARS,
     MEAN_HOUSEHOLD_SIZE,
+    ONC_AS_OF,
     SINGLE_PERSON_HOUSEHOLD_SHARE,
     age_band_targets,
 )
@@ -35,8 +37,12 @@ class TestAgeBandTargets:
         assert targets["85+"] == pytest.approx(0.0195)
         assert targets["65-84"] + targets["85+"] == pytest.approx(0.173)
 
-    def test_as_of_is_a_fixed_date(self):
-        assert (AS_OF.year, AS_OF.month, AS_OF.day) == (2017, 1, 1)
+    def test_the_two_vintages_are_fixed_dates(self):
+        assert (ONC_AS_OF.year, ONC_AS_OF.month, ONC_AS_OF.day) == (2017, 1, 1)
+        assert (AS_OF.year, AS_OF.month, AS_OF.day) == (2026, 1, 1)
+
+    def test_the_shift_is_the_gap_between_them(self):
+        assert DOB_SHIFT_YEARS == 9
 
 
 class TestHouseholdTargets:

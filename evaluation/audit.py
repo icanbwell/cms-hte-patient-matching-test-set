@@ -36,7 +36,7 @@ from naive_baselines import (
     SINGLE_FIELD_BASELINES,
     pair_features,
 )
-from population_targets import AGE_BANDS, AS_OF, age_band_targets
+from population_targets import AGE_BANDS, ONC_AS_OF, age_band_targets
 from rationale import category_of
 from rule_eval import LabeledPair, evaluate
 
@@ -622,7 +622,7 @@ def shared_contact_rate(patients: Sequence[Patient], system: str) -> float:
 
 
 def age_band_shares(
-    patients: Sequence[Patient], as_of: date = AS_OF
+    patients: Sequence[Patient], as_of: date = ONC_AS_OF
 ) -> Dict[str, float]:
     ages = []
     for p in patients:
@@ -638,7 +638,7 @@ def age_band_shares(
     }
 
 
-def age_band_max_error(patients: Sequence[Patient], as_of: date = AS_OF) -> float:
+def age_band_max_error(patients: Sequence[Patient], as_of: date = ONC_AS_OF) -> float:
     """Largest absolute gap between a band's share and its population target
     (population_targets.py); NaN without any dated patient."""
     shares = age_band_shares(patients, as_of)
@@ -675,7 +675,11 @@ def build_report(
     pairs_path: Path = PAIRS_PATH,
     queries_path: Path = QUERIES_PATH,
     candidates_path: Path = CANDIDATES_PATH,
+    as_of: date = ONC_AS_OF,
 ) -> Dict[str, Any]:
+    """`as_of` is the reference date ages are measured at: ONC's own vintage for
+    the committed curated files, population_targets.AS_OF for the realistic files
+    (whose birth dates are shifted forward)."""
     pair_rows = _read_nonempty(pairs_path)
     query_rows = _read_nonempty(queries_path)
     candidates = {r["id"]: r["patient"] for r in _read_nonempty(candidates_path)}
@@ -715,8 +719,8 @@ def build_report(
         "people_per_address": people_per_address(patients),
         "shared_phone_rate": shared_contact_rate(patients, "phone"),
         "shared_email_rate": shared_contact_rate(patients, "email"),
-        "age_band_shares": age_band_shares(patients),
-        "age_band_max_error": age_band_max_error(patients),
+        "age_band_shares": age_band_shares(patients, as_of),
+        "age_band_max_error": age_band_max_error(patients, as_of),
         "baseline_f1": f1s,
         "best_single_field_f1": best_single,
         "multi_field_margin": f1s[MULTI_FIELD_BASELINE_NAME] - best_single,

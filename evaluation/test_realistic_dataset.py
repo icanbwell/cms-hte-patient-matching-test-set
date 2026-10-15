@@ -20,8 +20,10 @@ from audit import (
 from drift_profile import DriftProfile
 from export_inputs import iter_shard_batches
 from export_realistic_dataset import generate_realistic, write_realistic_dataset
+from population_sampling import age_of
 from population_targets import (
     AGE_BANDS,
+    AS_OF,
     age_band_targets,
 )
 from release_gate import (
@@ -67,10 +69,18 @@ def test_writes_the_four_files(realistic):
 def test_age_bands_match_the_targets_within_rounding(realistic):
     dataset, out = realistic
     rows = read_jsonl(out / "realistic_labeled_pairs.jsonl")
-    assert age_band_max_error(unique_source_patients(rows)) < 0.01
+    assert age_band_max_error(unique_source_patients(rows), AS_OF) < 0.01
     counts = dataset.manifest["sample_band_counts"]
     assert sum(counts.values()) == SAMPLE
     assert counts["85+"] == round(SAMPLE * age_band_targets()["85+"])
+
+
+def test_birth_dates_are_shifted_so_infants_exist_at_the_release_vintage(realistic):
+    _, out = realistic
+    rows = read_jsonl(out / "realistic_labeled_pairs.jsonl")
+    ages = [age_of(p, AS_OF) for p in unique_source_patients(rows)]
+    assert any(a is not None and a < 10 for a in ages)
+    assert all(a is None or a >= 0 for a in ages)
 
 
 def test_households_reach_roughly_the_target_size(realistic):
@@ -85,6 +95,7 @@ def test_the_realistic_thresholds_pass_on_the_generated_files(realistic):
         out / "realistic_labeled_pairs.jsonl",
         out / "realistic_population_queries.jsonl",
         out / "realistic_population_candidates.jsonl",
+        as_of=AS_OF,
     )
     thresholds = {
         name: rule
@@ -110,7 +121,9 @@ def test_manifest_records_how_the_dataset_was_built(realistic):
     _, out = realistic
     manifest = json.loads((out / "realistic_manifest.json").read_text())
     assert "RELEASE CANDIDATE" in manifest["kind"]
-    assert manifest["as_of"] == "2017-01-01"
+    assert manifest["as_of"] == "2026-01-01"
+    assert manifest["onc_as_of"] == "2017-01-01"
+    assert manifest["dob_shift_years"] == 9
     assert manifest["age_band_targets"] == age_band_targets()
     assert "PLACEHOLDER" in manifest["profile_source"]
 
