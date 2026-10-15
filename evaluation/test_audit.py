@@ -8,7 +8,11 @@ from datetime import date
 import pytest
 from audit import (
     age_band_shares,
+    all_yes_f1,
     category_of,
+    decoy_no_overlap_rate,
+    missing_hard_negative_categories,
+    negative_share,
     people_per_address,
     population_categories,
     population_pairs,
@@ -305,3 +309,61 @@ def test_population_pairs_rejects_dangling_candidate():
     ]
     with pytest.raises(ValueError, match="unknown candidate"):
         list(population_pairs(queries, {}))
+
+
+class TestNegativeBalance:
+    def _rows(self, positives, negatives):
+        rows = [
+            _row(f"p{i}", _patient("a"), _patient("b"), True, "fuzzy_variant")
+            for i in range(positives)
+        ]
+        rows += [
+            _row(f"n{i}", _patient("a"), _patient("b"), False, "hard_negative")
+            for i in range(negatives)
+        ]
+        return rows
+
+    def test_negative_share_is_the_fraction_of_non_matches(self):
+        assert negative_share(self._rows(1, 1)) == 0.5
+        assert negative_share([]) == 0.0
+
+    def test_all_yes_f1_is_two_p_over_one_plus_p(self):
+        assert all_yes_f1(self._rows(1, 1)) == pytest.approx(2 * 0.5 / 1.5)
+        assert all_yes_f1(self._rows(959, 41)) == pytest.approx(0.9791, abs=1e-3)
+        assert all_yes_f1([]) == 0.0
+
+    def test_missing_hard_negative_categories_lists_absent_required_ones(self):
+        rows = self._rows(1, 1)  # only hard_negative present
+        assert missing_hard_negative_categories(rows) == [
+            "name_collision_negative",
+            "sibling_negative",
+            "near_miss_negative",
+        ]
+
+
+class TestDecoyOverlap:
+    def _p(self, id_, first, family, dob):
+        return {
+            "resourceType": "Patient",
+            "id": id_,
+            "name": [{"family": family, "given": [first]}],
+            "birthDate": dob,
+        }
+
+    def test_share_of_decoys_with_no_field_in_common(self):
+        query = self._p("q", "Jane", "Smith", "1980-01-01")
+        candidates = {
+            "m": self._p("m", "Jane", "Smith", "1980-01-01"),
+            "near": self._p("near", "Robert", "Smith", "1970-02-02"),
+            "far": self._p("far", "Robert", "Jones", "1970-02-02"),
+        }
+        rows = [
+            {
+                "query_id": "q",
+                "query": query,
+                "candidate_ids": ["m", "near", "far"],
+                "expected_match_ids": ["m"],
+                "rationale": "population",
+            }
+        ]
+        assert decoy_no_overlap_rate(rows, candidates) == 0.5

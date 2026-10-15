@@ -105,6 +105,56 @@ def same_person_negatives(pair_rows: Sequence[Row]) -> List[str]:
     ]
 
 
+REQUIRED_HARD_NEGATIVE_CATEGORIES = (
+    "hard_negative",
+    "name_collision_negative",
+    "sibling_negative",
+    "near_miss_negative",
+)
+
+_OVERLAP_FEATURES = ("ssn", "dob", "family", "given", "address", "phone", "email")
+
+
+def negative_share(pair_rows: Sequence[Row]) -> float:
+    """Fraction of pairwise cases labeled non-match."""
+    if not pair_rows:
+        return 0.0
+    return sum(1 for r in pair_rows if not r["expected_match"]) / len(pair_rows)
+
+
+def all_yes_f1(pair_rows: Sequence[Row]) -> float:
+    """F1 of a matcher that answers "match" to every pairwise case: 2p/(1+p),
+    p = positive share. The reviewer's check that "always yes" must not score well."""
+    if not pair_rows:
+        return 0.0
+    positive = 1.0 - negative_share(pair_rows)
+    return 2 * positive / (1 + positive)
+
+
+def missing_hard_negative_categories(pair_rows: Sequence[Row]) -> List[str]:
+    """Required hard-negative categories with no non-match row."""
+    present = {
+        category_of(r["rationale"]) for r in pair_rows if not r["expected_match"]
+    }
+    return [c for c in REQUIRED_HARD_NEGATIVE_CATEGORIES if c not in present]
+
+
+def decoy_no_overlap_rate(
+    query_rows: Sequence[Row], candidates: Dict[str, Patient]
+) -> float:
+    """Share of non-matching pool candidates that agree with their query on none
+    of ssn, dob, family, given, address, phone or email (the easy-to-reject decoys)."""
+    total = 0
+    disjoint = 0
+    for pair in population_pairs(query_rows, candidates):
+        if pair.is_true_match:
+            continue
+        total += 1
+        if not any(pair.features[name] for name in _OVERLAP_FEATURES):
+            disjoint += 1
+    return disjoint / total if total else 0.0
+
+
 # Both sides of a placeholder collision must carry the shared dummy value, but a
 # population query is a real record other pools also use, so this category
 # exists in the pairwise tier only (session 15, Workstream B).
@@ -270,6 +320,10 @@ def build_report(
     return {
         "same_person_negatives": same_person_negatives(pair_rows),
         "tier_parity_gap": tier_parity_gap(pair_rows, query_rows),
+        "negative_share": negative_share(pair_rows),
+        "all_yes_f1": all_yes_f1(pair_rows),
+        "missing_hard_negative_categories": missing_hard_negative_categories(pair_rows),
+        "decoy_no_overlap_rate": decoy_no_overlap_rate(query_rows, candidates),
         "positive_field_disagreement": disagreement,
         "positive_phone_drift_rate": disagreement["phone"],
         "people_per_address": people_per_address(patients),
